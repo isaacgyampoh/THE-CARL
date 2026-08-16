@@ -30,6 +30,13 @@ android {
             isReturnDefaultValues = true
         }
     }
+
+    sourceSets {
+        // Exported Room schemas are read by migration tests, which need them on the
+        // classpath as assets.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 ksp {
@@ -68,4 +75,11 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.mockk)
+
+    // Instrumentation: the Keystore and SQLCipher can only be exercised on a device.
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 }
