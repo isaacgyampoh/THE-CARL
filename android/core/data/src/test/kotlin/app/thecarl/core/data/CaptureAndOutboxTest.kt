@@ -301,7 +301,15 @@ class CaptureAndOutboxTest {
         assertThat(database.outboxDao().findByClientId(queued.clientTransactionId)!!.state)
             .isEqualTo(OutboxState.SYNCING.name)
 
-        val recovered = outbox.recoverStrandedItems()
+        // Recovery is lease-bounded. While the lease is live the item is left alone, because
+        // a worker may legitimately be mid-request right now and snatching the row would
+        // cause a concurrent double submission.
+        assertThat(outbox.recoverStrandedItems(leaseMillis = 5 * 60 * 1000L)).isEqualTo(0)
+        assertThat(database.outboxDao().findByClientId(queued.clientTransactionId)!!.state)
+            .isEqualTo(OutboxState.SYNCING.name)
+
+        // Once the lease has expired the item is presumed stranded by process death.
+        val recovered = outbox.recoverStrandedItems(leaseMillis = 0L)
 
         // Safe because the retry reuses the same ClientTransactionId: if the server did
         // commit, it resolves as a duplicate. Leaving it would strand the work forever.

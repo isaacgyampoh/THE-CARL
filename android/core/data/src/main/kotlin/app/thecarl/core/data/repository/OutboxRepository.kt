@@ -33,35 +33,21 @@ class OutboxRepository(
     fun observeUnsyncedCount(): Flow<Int> = database.outboxDao().observeUnsyncedCount()
 
     /**
-     * Items the worker may attempt now.
+     * Atomically claims a batch, marking each item SYNCING before it is sent.
      *
-     * Excludes SYNCING so an in-flight item is never sent twice concurrently, and respects
-     * each item's backoff.
+     * <p>Claiming and marking happen in one database transaction so two overlapping workers
+     * cannot both take the same item. Marking happens <b>before</b> the request: a crash
+     * mid-request must leave evidence that an attempt was made, otherwise recovery cannot
+     * distinguish "never sent" from "possibly committed".</p>
      */
     suspend fun claimBatch(limit: Int): List<OutboxItemEntity> =
-        database.outboxDao().findReadyForSync(now(), limit)
+        database.outboxDao().claimBatchForSync(now(), limit)
 
     /**
-     * Marks an item in flight <b>before</b> the request is made.
-     *
-     * <p>Writing this after the call would be useless: a crash mid-request would leave the
-     * row looking un-attempted, and recovery could not distinguish "never sent" from
-     * "possibly committed". Recording the attempt first makes the ambiguity explicit and
-     * recoverable.</p>
+     * Marks a single item in flight. Returns false when another worker already claimed it.
      */
-    suspend fun markInFlight(clientTransactionId: String) {
-        val item = database.outboxDao().findByClientId(clientTransactionId) ?: return
-        val timestamp = now()
-
-        database.outboxDao().update(
-            item.copy(
-                state = OutboxState.SYNCING.name,
-                attemptCount = item.attemptCount + 1,
-                lastAttemptAtUtcMillis = timestamp,
-                updatedAtUtcMillis = timestamp
-            )
-        )
-    }
+    suspend fun markInFlight(clientTransactionId: String): Boolean =
+        database.outboxDao().markInFlight(clientTransactionId, now()) > 0
 
     /**
      * Applies a per-item server result.
@@ -142,7 +128,10 @@ class OutboxRepository(
      * retry reuses the same ClientTransactionId — if the server did commit, it resolves as a
      * duplicate.</p>
      */
-    suspend fun recoverStrandedItems(): Int = database.outboxDao().recoverStrandedInFlight(now())
+    suspend fun recoverStrandedItems(leaseMillis: Long = DEFAULT_LEASE_MILLIS): Int {
+        val timestamp = now()
+        return database.outboxDao().recoverStrandedInFlight(timestamp, timestamp - leaseMillis)
+    }
 
     suspend fun countByState(state: OutboxState): Int =
         database.outboxDao().countByState(state.name)
@@ -167,6 +156,17 @@ class OutboxRepository(
         } else {
             null
         }
+
+    companion object {
+        /**
+         * How long an item may sit in SYNCING before it is presumed stranded.
+         *
+         * Comfortably longer than any realistic request, so a worker that is genuinely
+         * mid-flight is never interrupted, but short enough that a process death does not
+         * strand an agent's transaction for hours.
+         */
+        const val DEFAULT_LEASE_MILLIS = 5 * 60 * 1000L
+    }
 
     private suspend fun recordAttempt(
         item: OutboxItemEntity,

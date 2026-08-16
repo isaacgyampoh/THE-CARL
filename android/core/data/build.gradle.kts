@@ -74,6 +74,8 @@ dependencies {
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.retrofit)
+    testImplementation(libs.retrofit.kotlinx.serialization)
     testImplementation(libs.mockk)
 
     // Instrumentation: the Keystore and SQLCipher can only be exercised on a device.

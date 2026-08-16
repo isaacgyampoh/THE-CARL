@@ -145,21 +145,64 @@ interface OutboxDao {
     suspend fun findByState(state: String): List<OutboxItemEntity>
 
     /**
-     * Returns items stranded in SYNCING to PENDING at startup.
+     * Returns items stranded in SYNCING to PENDING.
      *
      * <p>SYNCING is written before the HTTP call, so a process death mid-request leaves the
      * row in that state with nothing driving it. Recovery is safe because retrying reuses the
      * same ClientTransactionId: if the server did commit, the retry resolves as a duplicate.
-     * The alternative — leaving them — strands the transaction permanently.</p>
+     * Leaving them would strand the transaction permanently.</p>
+     *
+     * <p><b>Lease-bounded.</b> Only items whose last attempt is older than the lease are
+     * recovered. Recovering unconditionally would snatch rows from a worker that is
+     * legitimately mid-request right now and cause a concurrent double submission — which
+     * the server would deduplicate, but which wastes an entire batch round trip.</p>
      */
     @Query(
         """
         UPDATE outbox_items
         SET state = 'PENDING', nextAttemptAtUtcMillis = :nowUtcMillis, updatedAtUtcMillis = :nowUtcMillis
         WHERE state = 'SYNCING'
+          AND (lastAttemptAtUtcMillis IS NULL OR lastAttemptAtUtcMillis < :leaseExpiredBeforeUtcMillis)
         """
     )
-    suspend fun recoverStrandedInFlight(nowUtcMillis: Long): Int
+    suspend fun recoverStrandedInFlight(nowUtcMillis: Long, leaseExpiredBeforeUtcMillis: Long): Int
+
+    /**
+     * Atomically claims a batch: selects eligible items and marks them SYNCING in one
+     * database transaction.
+     *
+     * <p><b>The database is the authority, not an in-memory lock.</b> WorkManager can run
+     * overlapping work, and two workers selecting before either marks would both submit the
+     * same items. Room serialises write transactions, so exactly one caller can transition a
+     * given row out of PENDING.</p>
+     *
+     * <p>Server idempotency remains the final safety net — this merely avoids wasting a
+     * round trip on work another worker already has in flight.</p>
+     */
+    @Transaction
+    suspend fun claimBatchForSync(nowUtcMillis: Long, limit: Int): List<OutboxItemEntity> {
+        val eligible = findReadyForSync(nowUtcMillis, limit)
+
+        eligible.forEach { item ->
+            markInFlight(item.clientTransactionId, nowUtcMillis)
+        }
+
+        // Re-read so callers see the claimed state rather than the pre-claim snapshot.
+        return eligible.mapNotNull { findByClientId(it.clientTransactionId) }
+    }
+
+    /** Marks one item in flight and increments its attempt count. */
+    @Query(
+        """
+        UPDATE outbox_items
+        SET state = 'SYNCING',
+            attemptCount = attemptCount + 1,
+            lastAttemptAtUtcMillis = :nowUtcMillis,
+            updatedAtUtcMillis = :nowUtcMillis
+        WHERE clientTransactionId = :clientTransactionId AND state IN ('PENDING', 'RETRYABLE_FAILURE')
+        """
+    )
+    suspend fun markInFlight(clientTransactionId: String, nowUtcMillis: Long): Int
 
     @Query("SELECT COUNT(*) FROM outbox_items")
     suspend fun count(): Int
