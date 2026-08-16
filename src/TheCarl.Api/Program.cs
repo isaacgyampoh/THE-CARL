@@ -10,7 +10,9 @@ using TheCarl.Api.Middleware;
 using TheCarl.Api.Security;
 using TheCarl.Application;
 using TheCarl.Application.Security;
+using TheCarl.Application.Evidence;
 using TheCarl.Application.Sync;
+using TheCarl.Infrastructure.Evidence;
 using TheCarl.Infrastructure;
 using TheCarl.Infrastructure.Services;
 
@@ -165,6 +167,7 @@ builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService>();
 builder.Services.AddScoped<ISyncTransactionService, SyncTransactionService>();
 builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
+builder.Services.AddScoped<ITransactionEvidenceSource, ManualEntryEvidenceSource>();
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();

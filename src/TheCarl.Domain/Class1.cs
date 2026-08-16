@@ -191,7 +191,28 @@ public sealed class Device : AggregateRoot
     public Guid BranchId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string DeviceIdentifier { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Legacy free-text platform string, retained for backward compatibility.
+    /// </summary>
+    /// <remarks>
+    /// Superseded by <see cref="DeviceType"/>, which is validated and drives capability
+    /// decisions. Kept rather than removed so existing records and any client reading this
+    /// field keep working; new code should read <see cref="DeviceType"/>.
+    /// </remarks>
     public string Platform { get; set; } = "Android";
+
+    /// <summary>
+    /// Validated platform and form factor. The authority for
+    /// <see cref="PlatformCapabilityPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="Role"/> by design: this is what the device <i>is</i>, while
+    /// <see cref="Role"/> is what it <i>does</i> for the business.
+    /// </remarks>
+    public DeviceType DeviceType { get; set; } = DeviceType.Other;
+
+    /// <summary>Business responsibility. Distinct from <see cref="DeviceType"/>.</summary>
     public DeviceRole Role { get; set; }
     public DeviceStatus Status { get; set; } = DeviceStatus.Active;
     public string Network { get; set; } = "MTN";

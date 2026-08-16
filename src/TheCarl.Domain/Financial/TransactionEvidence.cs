@@ -16,7 +16,21 @@ public enum EvidenceSourceType
     Relay = 3,
 
     /// <summary>Supplied by a provider API integration. Not yet implemented.</summary>
-    ProviderApi = 4
+    ProviderApi = 4,
+
+    /// <summary>
+    /// Read from a provider statement or export rather than observed live.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ManualEntry"/>: an import is a bulk transcription of a
+    /// provider's own record, not a person's recollection, and carries different trust.
+    /// <para>
+    /// iOS and Web manual capture deliberately reuse <see cref="ManualEntry"/>. A source type
+    /// per platform would fragment the evidence contract for no gain — the platform is
+    /// already recorded on the device.
+    /// </para>
+    /// </remarks>
+    ImportedEvidence = 5
 }
 
 /// <summary>

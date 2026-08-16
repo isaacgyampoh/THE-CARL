@@ -2,7 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TheCarl.Application;
+using TheCarl.Application.Sync;
 using TheCarl.Application.Security;
 using TheCarl.Domain;
 
@@ -25,11 +27,16 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
     private const int DisplayPrefixLength = 9;
 
     private readonly ApplicationDbContext _dbContext;
+    private readonly SyncOptions _syncOptions;
     private readonly ILogger<DeviceEnrollmentService> _logger;
 
-    public DeviceEnrollmentService(ApplicationDbContext dbContext, ILogger<DeviceEnrollmentService> logger)
+    public DeviceEnrollmentService(
+        ApplicationDbContext dbContext,
+        IOptions<SyncOptions> syncOptions,
+        ILogger<DeviceEnrollmentService> logger)
     {
         _dbContext = dbContext;
+        _syncOptions = syncOptions.Value;
         _logger = logger;
     }
 
@@ -226,6 +233,10 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             Name = string.IsNullOrWhiteSpace(request.Name) ? "Enrolled device" : request.Name.Trim(),
             DeviceIdentifier = request.DeviceIdentifier.Trim(),
             Platform = string.IsNullOrWhiteSpace(request.Platform) ? "Android" : request.Platform,
+            // Derived from the platform string rather than accepted as a separate client
+            // field: a handset that could name its own DeviceType could grant itself
+            // capabilities, including SMS capture.
+            DeviceType = DeviceTypeMapping.FromPlatformString(request.Platform),
             Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network,
             // Scope comes from the code, never from the enrolling handset.
             Role = code.DeviceRole,
@@ -338,6 +349,8 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
         var isRevoked = device.IsRevoked
             || device.Status is DeviceStatus.Revoked or DeviceStatus.Quarantined;
 
+        var platformCapabilities = PlatformCapabilityPolicy.For(device.DeviceType, isRevoked);
+
         return new DeviceSelfDto(
             device.Id,
             device.OrganizationId,
@@ -356,7 +369,19 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             CapabilitiesFor(device, isRevoked),
             // Server time lets a client detect its own clock drift instead of silently
             // stamping transactions with a wrong local time.
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow)
+        {
+            DeviceType = device.DeviceType,
+            PlatformCapabilities = platformCapabilities,
+            CanCaptureSms = PlatformCapabilityPolicy.CanCaptureSms(device.DeviceType, isRevoked),
+            // A revoked device is told nothing about how to sync; it has no authority to.
+            SyncConfiguration = isRevoked
+                ? null
+                : new DeviceSyncConfigurationDto(
+                    _syncOptions.MaxBatchSize,
+                    (int)_syncOptions.MaxClockSkewAhead.TotalSeconds,
+                    (int)_syncOptions.MaxBacklogAge.TotalDays)
+        };
     }
 
     /// <summary>

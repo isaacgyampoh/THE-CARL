@@ -130,6 +130,18 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.OsVersion).HasMaxLength(80);
             builder.HasIndex(x => new { x.OrganizationId, x.DeviceIdentifier }).IsUnique();
             builder.HasIndex(x => x.BranchId);
+            builder.HasIndex(x => new { x.OrganizationId, x.DeviceType });
+
+            builder.ToTable(table =>
+            {
+                // Capabilities are granted from DeviceType, so an out-of-range ordinal would
+                // silently produce an unknown platform with undefined capability behaviour.
+                // The C# enum cannot stop a bad value arriving from a raw SQL path or a
+                // future migration, so the database enforces the range too.
+                table.HasCheckConstraint(
+                    "CK_Devices_DeviceTypeInRange",
+                    "\"DeviceType\" >= 0 AND \"DeviceType\" <= 6");
+            });
         });
 
         modelBuilder.Entity<DeviceRegistration>(builder =>

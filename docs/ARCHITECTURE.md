@@ -65,3 +65,89 @@ All transactional values remain decimal-based to avoid floating-point errors. Ma
 ## Float alerts and owner dashboard foundation
 
 The platform now includes organization-level float alert thresholds and dashboard summaries. Alert thresholds can be configured per organization or branch for each network, and the evaluator raises critical or warning alerts when branch floats fall below configured levels. The dashboard service aggregates branch count, daily transaction volume, cash position, network float total, active sessions, active devices, and reconciliation variance so the owner dashboard has a real operational baseline without requiring a fake analytics layer.
+
+
+---
+
+# Core rule: four separate concepts
+
+THE CARL keeps four things apart that are easy to conflate. Folding any two together creates
+two sources of truth that drift, and in a financial system drift means wrong money.
+
+| Concept | Answers | Type | Authority |
+|---|---|---|---|
+| **DeviceType** | What the device *is* | `DeviceType` enum | Platform / form factor |
+| **DeviceRole** | What the device *does* for the business | `DeviceRole` enum | Business responsibility |
+| **PlatformCapability** | What the device *can technically do* | `PlatformCapability` + `PlatformCapabilityPolicy` | Server-side, per DeviceType |
+| **Authorization** | What the principal *may do* | `CarlPolicies` / `CarlRoles` / `ITenantGuard` | Per authenticated caller |
+| **EvidenceSourceType** | How evidence was *acquired* | `EvidenceSourceType` + `ITransactionEvidenceSource` | Acquisition method |
+
+## Why DeviceType excludes role
+
+Values like `AndroidAgent` or `AndroidOwner` were deliberately rejected. They fold a business
+role into a platform identity and duplicate `DeviceRole.OwnerDevice` — two fields that can
+disagree about whether a device belongs to an owner, with nothing to reconcile them.
+
+An owner's Android handset is `DeviceType.AndroidPhone` + `DeviceRole.OwnerDevice`.
+
+```
+DeviceType.AndroidPhone   ─┐
+                           ├─► capabilities  (PlatformCapabilityPolicy)
+DeviceRole.OwnerDevice    ─┘
+        │
+        └─────────────────────► permissions   (authorization policies)
+```
+
+## Capabilities are not permissions
+
+`PlatformCapability.SmsCapture` says the operating system *can* deliver incoming messages to
+an application. It says nothing about whether this user may record transactions — that
+remains the authorization policies' decision. A revoked device is granted **no** capabilities
+at all, because capabilities describe what a *trusted* device may do.
+
+## Platform reality
+
+| Platform | SMS capture | Manual capture | Offline store | Guaranteed background |
+|---|---|---|---|---|
+| Android phone | ✅ | ✅ | ✅ | ✅ |
+| Android tablet | ✖ (often no SIM) | ✅ | ✅ | ✅ |
+| iPhone / iPad | ✖ **never** | ✅ | ✅ | ✖ OS-scheduled |
+| Web browser | ✖ | ✅ | ✖ | ✖ |
+| GSM gateway | ✅ | ✖ (no operator) | ✅ | ✅ |
+| Other | ✖ | ✅ | ✖ | ✖ |
+
+**iOS grants third-party applications no access to arbitrary incoming SMS.** There is no
+entitlement and no supported workaround. `SmsCapture` is therefore absent from both iOS
+entries and must stay absent. iOS is not a degraded Android — it captures manually and
+receives every other capability its hardware supports.
+
+Clients **query** `GET /devices/me` for capabilities. They never hardcode
+`if (platform == "Android")`. That is what allows the server to correct a platform assumption
+without shipping a new app.
+
+## Evidence flow — the one path money may take
+
+```
+Evidence source  (Android SMS · manual entry · import · future gateway)
+      ↓
+TransactionEvidence          what was observed — always recorded, even when rejected
+      ↓
+SmsEvidencePolicy            is it complete enough to trust?
+      ↓
+FinancialTransaction         what was accepted
+      ↓
+LedgerPolicy                 the only authority for direction
+      ↓
+Balance projection → Reconciliation
+```
+
+No UI, controller or evidence source may bypass this. `ITransactionEvidenceSource`
+implementations produce evidence and nothing else — they never construct a
+`FinancialTransaction` directly and never touch a balance.
+
+## Legacy `Device.Platform`
+
+The free-text `Platform` string predates `DeviceType`, was never validated, and is **retained
+for backward compatibility**. `DeviceType` is derived from it at enrolment and was backfilled
+from it by `Phase1DeviceTypeAndCapabilities`. New code reads `DeviceType`; `Platform` is
+deprecated but not removed, because existing clients still read it.

@@ -363,8 +363,51 @@ public record DeviceSelfDto(
     string OsVersion,
     DateTimeOffset LastSeenAtUtc,
     DateTimeOffset? LastSyncAtUtc,
+    // Retained verbatim for backward compatibility. Existing clients read this list of
+    // action strings ("sync.submit", "sms.capture"); removing it would break them. New
+    // clients should read PlatformCapabilities, which is the structured, authoritative form.
     IReadOnlyList<string> Capabilities,
-    DateTimeOffset ServerTimeUtc);
+    DateTimeOffset ServerTimeUtc)
+{
+    /// <summary>
+    /// Validated platform and form factor. Clients read this instead of inferring a platform
+    /// from the legacy <c>Platform</c> string.
+    /// </summary>
+    public DeviceType DeviceType { get; init; } = DeviceType.Other;
+
+    /// <summary>
+    /// What this platform can technically do, decided server-side by
+    /// <see cref="PlatformCapabilityPolicy"/>.
+    /// </summary>
+    /// <remarks>
+    /// The client must branch on this rather than on its own platform. That is what allows
+    /// an iPhone to be told, authoritatively, that SMS capture is unavailable and manual
+    /// capture is the method — without the app hardcoding an assumption that could drift
+    /// from the server.
+    /// </remarks>
+    public IReadOnlyList<PlatformCapability> PlatformCapabilities { get; init; } = [];
+
+    /// <summary>
+    /// Convenience flag mirroring <see cref="PlatformCapability.SmsCapture"/>. Present so a
+    /// client never re-derives the product-level question "can this device capture SMS?"
+    /// </summary>
+    public bool CanCaptureSms { get; init; }
+
+    /// <summary>Sync limits the device must honour, so nothing is hardcoded client-side.</summary>
+    public DeviceSyncConfigurationDto? SyncConfiguration { get; init; }
+}
+
+/// <summary>
+/// Sync limits reported to a device.
+/// </summary>
+/// <remarks>
+/// Served so a client re-chunks from the server's value rather than a compiled-in constant.
+/// Without it, a device discovers the batch limit only by being rejected with 413.
+/// </remarks>
+public record DeviceSyncConfigurationDto(
+    int MaxBatchSize,
+    int MaxClockSkewAheadSeconds,
+    int MaxBacklogAgeDays);
 
 public interface IDeviceService
 {
