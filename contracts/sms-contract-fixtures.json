@@ -1,0 +1,313 @@
+{
+  "$comment": [
+    "SHARED SMS PARSING CONTRACT — read by BOTH the .NET and Android test suites.",
+    "",
+    "The two parsers cannot share code (C# and Kotlin), so this corpus is the mechanism that",
+    "keeps them from diverging. Every fixture states the expected outcome once; both suites",
+    "assert against it. A change on one platform that is not matched on the other fails there.",
+    "",
+    "This file exists because the platforms HAD already diverged: Android required a provider",
+    "reference before auto-posting while the server did not, so a message truncated from",
+    "'Cash In of GHS 500.00 ... Ref: ...' to 'Cash In of GHS 5' was held on Android and posted",
+    "as GHS 5 by the server.",
+    "",
+    "All MSISDNs, references and names are synthetic. No real customer data belongs here:",
+    "fixtures are committed, searchable, and copied into bug reports.",
+    "",
+    "autoPostAllowed is the safety-critical field. When false, the platform must preserve the",
+    "evidence for review and must NOT create a financial transaction or move any balance."
+  ],
+
+  "organizationId": "11111111-1111-1111-1111-111111111111",
+  "occurredAtUtc": "2026-08-15T09:30:00Z",
+
+  "fixtures": [
+    {
+      "id": "mtn-cash-in-complete",
+      "note": "Baseline: complete provider evidence posts.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 500.00 from 0241000001 JOHN SYNTHETIC. Ref: MP240815.1201.A00001. Your MoMo agent balance is GHS 12,340.00",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "500.00",
+        "reference": "MP240815.1201.A00001",
+        "customerPhone": "0241000001",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "mtn-cash-out-complete",
+      "sender": "MTN",
+      "body": "Cash Out of GHS 250.50 to 0241000002 AMA SYNTHETIC. Ref: MP240815.1202.A00002. Your MoMo agent balance is GHS 12,089.50",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_OUT",
+        "amount": "250.50",
+        "reference": "MP240815.1202.A00002",
+        "customerPhone": "0241000002",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "mtn-commission",
+      "sender": "MTN",
+      "body": "You have received Commission of GHS 12.75 for MoMo transactions. Ref: MP240815.1203.C00003. Balance: GHS 12,102.25",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "COMMISSION",
+        "amount": "12.75",
+        "reference": "MP240815.1203.C00003",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "mtn-reversal",
+      "note": "Reversal is classified but never auto-posts: it needs an original the parser cannot supply.",
+      "sender": "MTN",
+      "body": "Transaction Reversal of GHS 500.00 has been processed. Ref: MP240815.1204.R00004",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "REVERSAL",
+        "amount": "500.00",
+        "reference": "MP240815.1204.R00004",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "mtn-transfer",
+      "sender": "MTN",
+      "body": "Transfer of GHS 80.00 sent to 0241000003. Ref: MP240815.1205.T00005",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "TRANSFER",
+        "amount": "80.00",
+        "reference": "MP240815.1205.T00005",
+        "autoPostAllowed": true
+      }
+    },
+
+    {
+      "id": "truncated-loses-reference",
+      "note": "THE REGRESSION THIS CORPUS EXISTS FOR. Truncated from 'GHS 500.00 ... Ref: ...'. Looks like a valid GHS 5 cash-in. Must never post.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 5",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "5",
+        "reference": null,
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "complete-wording-no-reference",
+      "note": "Full sentence, plausible amount, no reference. Same danger as truncation.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 420.00 from 0241000009 KOFI SYNTHETIC completed successfully.",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "420.00",
+        "reference": null,
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "no-currency-marker",
+      "note": "A bare number must not be read as an amount; it could be a date or a code.",
+      "sender": "MTN",
+      "body": "MTN MoMo: Cash In 500 from 0241000001. Ref: MP240815.1206.A00006",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": null,
+        "reference": "MP240815.1206.A00006",
+        "autoPostAllowed": false
+      }
+    },
+
+    {
+      "id": "thousands-separator",
+      "note": "Server previously parsed this as 1.25 — a 1000x understatement.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 1,250,000.75 from 0241000001. Ref: MP240815.1207.A00007",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "1250000.75",
+        "reference": "MP240815.1207.A00007",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "cedi-symbol",
+      "sender": "MTN",
+      "body": "MTN MoMo Cash In of GH¢340.25 from 0241000004. Ref: MP240815.1208.A00008",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "340.25",
+        "reference": "MP240815.1208.A00008",
+        "autoPostAllowed": true
+      }
+    },
+
+    {
+      "id": "telecel-cash-in",
+      "sender": "TelecelCash",
+      "body": "Telecel Cash: Deposit of GHS 1,250.00 from 0201000001. Transaction ID: TC98765432. Balance GHS 8,400.00",
+      "expect": {
+        "provider": "TELECEL",
+        "transactionType": "CASH_IN",
+        "amount": "1250.00",
+        "reference": "TC98765432",
+        "customerPhone": "0201000001",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "airteltigo-cash-out",
+      "sender": "AirtelTigo",
+      "body": "AirtelTigo Money: Cash Out GHS 420.00 to 0271000002. Ref: AT20240815002",
+      "expect": {
+        "provider": "AIRTELTIGO",
+        "transactionType": "CASH_OUT",
+        "amount": "420.00",
+        "reference": "AT20240815002",
+        "customerPhone": "0271000002",
+        "autoPostAllowed": true
+      }
+    },
+
+    {
+      "id": "unrecognised-wording",
+      "note": "Recognised provider, wording that is not a transaction.",
+      "sender": "MTN",
+      "body": "MTN MoMo: Your service bundle has been updated. Ref: MP240815.1209.X00009",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "UNKNOWN",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "promotional",
+      "sender": "MTN",
+      "body": "Dear customer, buy MTN data bundles and get 50% extra. Dial *138# now!",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "UNKNOWN",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "unknown-provider",
+      "note": "Generic fallback never reaches the auto-post bar, whatever it extracts.",
+      "sender": "SomeBank",
+      "body": "SomeBank: You have received GHS 100.00 from ACCOUNT 123456. Ref: SB0001",
+      "expect": {
+        "provider": "UNKNOWN",
+        "transactionType": "UNKNOWN",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "empty-body",
+      "sender": "MTN",
+      "body": "",
+      "expect": {
+        "transactionType": "UNKNOWN",
+        "autoPostAllowed": false
+      }
+    }
+  ],
+
+  "fingerprintCases": [
+    {
+      "id": "canonical",
+      "note": "Baseline for the shared fingerprint algorithm.",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.00",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    },
+    {
+      "id": "msisdn-international",
+      "note": "Same event; MSISDN written internationally. Must fingerprint identically.",
+      "sameFingerprintAs": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.00",
+      "reference": "ABC123",
+      "customerPhone": "+233241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    },
+    {
+      "id": "reference-punctuation",
+      "sameFingerprintAs": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.00",
+      "reference": "abc-123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    },
+    {
+      "id": "amount-scale",
+      "note": "Trailing zeros must not change identity.",
+      "sameFingerprintAs": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.0000",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    },
+    {
+      "id": "second-drift",
+      "note": "Providers report seconds inconsistently; truncation to the minute absorbs it.",
+      "sameFingerprintAs": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.00",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:45Z"
+    },
+    {
+      "id": "different-minute",
+      "note": "A different minute is a different event.",
+      "differentFingerprintFrom": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.00",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:31:00Z"
+    },
+    {
+      "id": "different-amount",
+      "differentFingerprintFrom": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_IN",
+      "amount": "500.01",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    },
+    {
+      "id": "different-type",
+      "note": "A cash-in and a cash-out of the same value are opposite events.",
+      "differentFingerprintFrom": "canonical",
+      "provider": "MTN",
+      "transactionType": "CASH_OUT",
+      "amount": "500.00",
+      "reference": "ABC123",
+      "customerPhone": "0241234567",
+      "occurredAtUtc": "2026-08-15T09:30:00Z"
+    }
+  ]
+}
