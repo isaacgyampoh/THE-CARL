@@ -432,17 +432,24 @@ fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         Text(
-            if (queuedWorkCount > 0) {
-                // Stated explicitly. An agent whose device is cut off needs to know their
-                // work is safe, not wonder whether it was discarded.
-                "$queuedWorkCount transaction${if (queuedWorkCount == 1) "" else "s"} " +
-                    "recorded on this device are still stored safely and will sync once " +
-                    "access is restored."
-            } else {
-                "This device is no longer registered. Ask your manager to register it again."
-            },
+            "This device is no longer registered. Contact your manager or administrator to " +
+                "register it again.",
             style = MaterialTheme.typography.bodyMedium
         )
+
+        if (queuedWorkCount > 0) {
+            Spacer(Modifier.height(12.dp))
+
+            // Stated explicitly and unconditionally. An agent whose device is cut off needs
+            // to know their work is safe, not wonder whether it was discarded — and this is
+            // the moment they are most likely to assume the worst.
+            Text(
+                "$queuedWorkCount transaction${if (queuedWorkCount == 1) "" else "s"} " +
+                    "recorded on this device have not been deleted. They are still stored " +
+                    "here and will sync once access is restored.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
 
         Spacer(Modifier.height(24.dp))
         Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().height(52.dp)) {

@@ -95,4 +95,17 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // Instrumentation: the bulk sync test drives the real AppContainer graph on a device,
+    // so it lives here rather than in :core:data where the application does not exist.
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    // Test-only. :core:data keeps Room as an implementation detail, which is right — the
+    // application does not touch DAOs. The bulk sync test asserts the final state of
+    // specific outbox rows, so it needs the type on its own classpath. Adding a lookup to
+    // OutboxRepository purely to serve a test would put test shape into production API.
+    androidTestImplementation(libs.androidx.room.runtime)
 }

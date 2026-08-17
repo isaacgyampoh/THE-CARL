@@ -68,6 +68,22 @@ class KeystoreCredentialStore(
         preferences.contains(KEY_CREDENTIAL_BLOB)
     }
 
+    // The marker is not a secret and is deliberately not encrypted: it carries no token, no
+    // identity and no permission. It is stored here rather than in a second component so
+    // there remains exactly one place that knows whether this installation has a session.
+
+    override suspend fun markDeviceRevoked(): Unit = withContext(ioDispatcher) {
+        preferences.edit().putBoolean(KEY_DEVICE_REVOKED, true).commit()
+    }
+
+    override suspend fun wasDeviceRevoked(): Boolean = withContext(ioDispatcher) {
+        preferences.getBoolean(KEY_DEVICE_REVOKED, false)
+    }
+
+    override suspend fun clearDeviceRevokedMark(): Unit = withContext(ioDispatcher) {
+        preferences.edit().remove(KEY_DEVICE_REVOKED).commit()
+    }
+
     /**
      * On-disk shape, kept separate from the domain type so a domain refactor cannot silently
      * change the persisted format and orphan every installed device's credentials.
@@ -99,6 +115,7 @@ class KeystoreCredentialStore(
         const val PREFERENCES_NAME = "thecarl.credentials"
 
         private const val KEY_CREDENTIAL_BLOB = "credentials.v1"
+        private const val KEY_DEVICE_REVOKED = "device.revoked.v1"
 
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     }

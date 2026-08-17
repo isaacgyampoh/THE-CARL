@@ -56,7 +56,10 @@ class SessionRepository(
         }
 
         if (credentials == null) {
-            return update(SessionState.SignedOut)
+            // Revocation clears credentials, so "nothing stored" is ambiguous: it means
+            // either never signed in, or cut off. Only the second deserves an explanation
+            // and a queued-work count.
+            return if (credentialStore.wasDeviceRevoked()) revoked() else update(SessionState.SignedOut)
         }
 
         val user = credentials.toUser()
@@ -143,6 +146,10 @@ class SessionRepository(
             )
         )
 
+        // A fresh sign-in supersedes any earlier revocation notice. Whether this device is
+        // still permitted is then decided by the server, not by the absence of this marker.
+        credentialStore.clearDeviceRevokedMark()
+
         return LoginResult.Success(restore())
     }
 
@@ -207,16 +214,28 @@ class SessionRepository(
      */
     suspend fun logout() {
         credentialStore.clear()
+        // A deliberate sign-out is not a revocation. Leaving the marker set would greet the
+        // next start with "device access revoked" after an ordinary logout.
+        credentialStore.clearDeviceRevokedMark()
         update(SessionState.SignedOut)
     }
 
     /** Called when refresh fails terminally. Preserves queued work and reports how much. */
-    suspend fun onSessionRevoked() {
-        credentialStore.clear()
-        revoked()
-    }
+    suspend fun onSessionRevoked() = revoked().let { }
 
+    /**
+     * The single revoked path, whichever way revocation was discovered — a terminal refresh
+     * failure or <c>/devices/me</c> reporting it.
+     *
+     * <p>Tokens are discarded rather than kept alongside a "revoked" flag, so there is no
+     * usable credential left for a retry loop to pick up. The durable marker that replaces
+     * them carries no authority: it only lets the next start explain what happened instead
+     * of showing a bare sign-in form. Queued work is never touched.</p>
+     */
     private suspend fun revoked(): SessionState {
+        credentialStore.clear()
+        credentialStore.markDeviceRevoked()
+
         val queued = outbox.countByState(OutboxState.PENDING) +
             outbox.countByState(OutboxState.RETRYABLE_FAILURE) +
             outbox.countByState(OutboxState.SYNCING)

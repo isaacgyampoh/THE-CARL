@@ -281,6 +281,62 @@ class SessionRepositoryTest {
     }
 
     @Test
+    fun `revocation survives process death instead of degrading to a sign-in screen`() = runTest {
+        server.enqueue(loginResponse())
+        server.enqueue(deviceSelfResponse())
+        session.login("agent@carl.test", "Str0ng-Passphrase!")
+
+        capture.captureManual(cashIn("100.00"))
+        capture.captureManual(cashIn("200.00"))
+        session.onSessionRevoked()
+
+        // A restart. Revocation cleared the credentials, so without a durable marker this
+        // resolves to SignedOut and the agent is shown an ordinary login form with no
+        // explanation and no word about their two stranded transactions.
+        val afterRestart = session.restore()
+
+        assertThat(afterRestart).isInstanceOf(SessionState.DeviceRevoked::class.java)
+        assertThat((afterRestart as SessionState.DeviceRevoked).queuedWorkCount).isEqualTo(2)
+
+        // Still no credentials: the marker explains, it does not authenticate.
+        assertThat(credentialStore.read()).isNull()
+
+        // And the work is still there to be told about.
+        assertThat(database.outboxDao().count()).isEqualTo(2)
+        assertThat(database.localTransactionDao().count()).isEqualTo(2)
+        assertThat(database.evidenceDao().count()).isEqualTo(2)
+    }
+
+    @Test
+    fun `an ordinary sign-out does not later masquerade as a revocation`() = runTest {
+        server.enqueue(loginResponse())
+        server.enqueue(deviceSelfResponse())
+        session.login("agent@carl.test", "Str0ng-Passphrase!")
+
+        session.logout()
+
+        assertThat(session.restore()).isEqualTo(SessionState.SignedOut)
+    }
+
+    @Test
+    fun `signing in again clears the revocation notice`() = runTest {
+        server.enqueue(loginResponse())
+        server.enqueue(deviceSelfResponse())
+        session.login("agent@carl.test", "Str0ng-Passphrase!")
+        session.onSessionRevoked()
+
+        assertThat(session.restore()).isInstanceOf(SessionState.DeviceRevoked::class.java)
+
+        server.enqueue(loginResponse())
+        server.enqueue(deviceSelfResponse())
+        session.login("agent@carl.test", "Str0ng-Passphrase!")
+
+        // Whether this device may act is the server's decision, expressed through
+        // /devices/me — never the mere absence of a local marker.
+        assertThat(session.state.value).isInstanceOf(SessionState.Active::class.java)
+    }
+
+    @Test
     fun `a revoked device is detected at startup and stops normal syncing`() = runTest {
         server.enqueue(loginResponse())
         server.enqueue(deviceSelfResponse())
@@ -289,6 +345,11 @@ class SessionRepositoryTest {
         server.enqueue(deviceSelfResponse(isRevoked = true))
 
         assertThat(session.restore()).isInstanceOf(SessionState.DeviceRevoked::class.java)
+
+        // However revocation is discovered, no usable token is left behind for a retry loop
+        // to pick up. Authorization stays with the server; the client simply has nothing to
+        // present.
+        assertThat(credentialStore.read()).isNull()
     }
 
     // ─── Startup resilience ──────────────────────────────────────────────────

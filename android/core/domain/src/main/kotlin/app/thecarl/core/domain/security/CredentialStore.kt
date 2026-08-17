@@ -52,6 +52,25 @@ interface CredentialStore {
 
     /** Cheap presence check that avoids decrypting. */
     suspend fun hasCredentials(): Boolean
+
+    /**
+     * Records that the server revoked this device, so the next start can say so.
+     *
+     * <p>Revocation clears credentials, which means a restart would otherwise find nothing
+     * and show an ordinary sign-in screen — dropping the explanation at the moment the agent
+     * most needs it, along with the assurance that their queued transactions still exist.</p>
+     *
+     * <p><b>This is a display marker, not an authorization decision.</b> It grants nothing.
+     * The server remains the sole authority on what a device may do, and a device whose
+     * marker were tampered with would still be refused by the backend on every call.</p>
+     */
+    suspend fun markDeviceRevoked()
+
+    /** True when [markDeviceRevoked] was recorded and no successful sign-in has followed. */
+    suspend fun wasDeviceRevoked(): Boolean
+
+    /** Clears the marker. Called on sign-out and on a successful sign-in. */
+    suspend fun clearDeviceRevokedMark()
 }
 
 /**
