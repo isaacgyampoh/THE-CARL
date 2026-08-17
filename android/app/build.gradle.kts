@@ -19,7 +19,9 @@ android {
         // Base URL is configuration, not a constant. 10.0.2.2 is the host loopback as seen
         // from an emulator; release builds override it. No credential or secret is ever a
         // build-config value.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5000/\"")
+        // 10.0.2.2 is the emulator's alias for the host loopback. Port 5055 avoids
+        // macOS AirPlay Receiver, which occupies 5000 and answers 403.
+        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5055/\"")
     }
 
     buildTypes {

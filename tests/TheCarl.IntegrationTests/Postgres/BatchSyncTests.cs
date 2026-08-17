@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TheCarl.Application.Security;
 using TheCarl.Application.Sync;
@@ -641,6 +642,51 @@ public class BatchSyncTests : IDisposable
             // on the evidence fingerprint, which is scoped to the organization.
             TransactionReference = reference ?? Guid.NewGuid().ToString("N")[..12]
         };
+
+    // ─── Wire format ─────────────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task StatusAndCategoryAreSerialisedByNameAsTheContractDocuments()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+
+        var raw = await RawPostAsync(tenant, [Item(tenant)]);
+        raw.EnsureSuccessStatusCode();
+
+        var body = await raw.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(body);
+        var result = document.RootElement.GetProperty("results")[0];
+
+        // docs/BATCH_SYNC.md publishes `"status": "Accepted"`. Asserted on the raw payload
+        // rather than a deserialised record on purpose: every other test in this file reads
+        // into SyncTransactionsResponse, which accepts both the numeric and the named form,
+        // so they all stayed green while the wire format silently broke the Android client.
+        Assert.Equal(JsonValueKind.String, result.GetProperty("status").ValueKind);
+        Assert.Equal(nameof(SyncItemStatus.Accepted), result.GetProperty("status").GetString());
+
+        Assert.Equal(JsonValueKind.String, result.GetProperty("category").ValueKind);
+        Assert.Equal(nameof(SyncErrorCategory.None), result.GetProperty("category").GetString());
+    }
+
+    [SkippableFact]
+    public async Task ADuplicateReportsTheNamedStatusSoAClientCanStopRetrying()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+
+        var item = Item(tenant);
+        await PostAsync(tenant, [item]);
+
+        var raw = await RawPostAsync(tenant, [item]);
+        raw.EnsureSuccessStatusCode();
+
+        using var document = JsonDocument.Parse(await raw.Content.ReadAsStringAsync());
+        var result = document.RootElement.GetProperty("results")[0];
+
+        // A client that cannot read this value retries an already-posted transaction forever.
+        Assert.Equal(nameof(SyncItemStatus.Duplicate), result.GetProperty("status").GetString());
+    }
 
     private async Task<SyncTransactionsResponse> PostAsync(
         TenantSeed tenant,

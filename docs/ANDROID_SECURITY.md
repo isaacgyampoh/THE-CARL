@@ -99,12 +99,13 @@ Never logged: tokens, the database key, raw SMS bodies, full customer phone numb
 | No plaintext token on disk | `CredentialStoreTest` | ✅ RUN |
 | Corrupt ciphertext → null, no crash | `CredentialStoreTest` | ✅ RUN |
 | Survives store recreation | `CredentialStoreTest` | ✅ RUN |
-| **Real Keystore round-trip** | `EncryptedDatabaseInstrumentedTest` | ⚠️ NOT RUN — no device |
-| **Tampered ciphertext rejected** | same | ⚠️ NOT RUN |
-| **Nonce differs per encryption** | same | ⚠️ NOT RUN |
-| **Database file is not plaintext SQLite** | same | ⚠️ NOT RUN |
-| **Data survives close/reopen encrypted** | same | ⚠️ NOT RUN |
-| **Database key stable across instances** | same | ⚠️ NOT RUN |
+| **Real Keystore round-trip** | `EncryptedDatabaseInstrumentedTest` | ✅ RUN |
+| **Tampered ciphertext rejected** | same | ✅ RUN |
+| **Nonce differs per encryption** | same | ✅ RUN |
+| **Database file is not plaintext SQLite** | same | ✅ RUN |
+| **Data survives close/reopen encrypted** | same | ✅ RUN |
+| **Database key stable across instances** | same | ✅ RUN |
+| **Credentials survive a Keystore-backed store** | same | ✅ RUN |
 
 Robolectric does not implement the `AndroidKeyStore` provider, and SQLCipher ships native
 libraries for Android ABIs that cannot load under a JVM runner. The crypto boundary is
@@ -122,5 +123,11 @@ adb wait-for-device
 cd android && ./gradlew :core:data:connectedDebugAndroidTest
 ```
 
-Until that runs, **SQLCipher encryption is configured and compiles but is unverified.** It
-must not be described as proven.
+All seven executed on a `carl-test` AVD (Android 35, `google_apis`, `arm64-v8a`) and passed.
+**SQLCipher encryption and the Keystore key handling are verified on a real Android runtime**,
+not merely configured.
+
+Note the dependency this needs: `androidx.test.ext:junit` does not bring `androidx.test:runner`
+transitively, so `androidTestImplementation(libs.androidx.test.runner)` must stay. Without it
+the test APK builds and installs, then dies at startup with `ClassNotFoundException` before a
+single assertion runs — which reads as "no tests" rather than as a failure.

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG ONLY. This file lives in src/debug and is never merged into a release build.
+
+  Android blocks cleartext HTTP by default from API 28, which is correct: THE CARL moves
+  financial evidence and must use TLS in production. Local development targets a backend on
+  the host machine over plain HTTP, so exactly one destination is permitted — 10.0.2.2, the
+  emulator's alias for the host loopback.
+
+  cleartextTrafficPermitted is scoped to that single domain rather than set application-wide,
+  so a debug build still refuses cleartext to anywhere else.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

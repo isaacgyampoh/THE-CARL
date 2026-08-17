@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace TheCarl.Application.Sync;
 
 /// <summary>
@@ -7,7 +9,12 @@ namespace TheCarl.Application.Sync;
 /// <remarks>
 /// Messages are for people and change freely; categories and reason codes are API surface
 /// and do not. An Android client branches on these, never on <c>Message</c>.
+/// <para>
+/// Serialized by name for the same reason as <see cref="SyncItemStatus"/>: the client reads
+/// this field as a string, and a numeric form made every sync response undecodable.
+/// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter<SyncErrorCategory>))]
 public enum SyncErrorCategory
 {
     /// <summary>Succeeded. No error.</summary>

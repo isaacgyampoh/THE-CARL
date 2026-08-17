@@ -3,8 +3,10 @@ package app.thecarl
 import android.content.Context
 import android.os.Build
 import app.thecarl.core.data.database.CarlDatabase
+import app.thecarl.core.data.network.AndroidConnectivityObserver
 import app.thecarl.core.data.network.ApiTokenRefresher
 import app.thecarl.core.data.network.AuthInterceptor
+import app.thecarl.core.data.network.ConnectivityObserver
 import app.thecarl.core.data.network.CarlApi
 import app.thecarl.core.data.network.CarlAuthApi
 import app.thecarl.core.data.repository.CaptureRepository
@@ -111,6 +113,16 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
             .build()
 
         retrofit(client).create(CarlApi::class.java)
+    }
+
+    // ─── Connectivity ────────────────────────────────────────────────────────
+
+    /**
+     * Drives the connectivity indicator only. Sync scheduling stays with WorkManager's own
+     * network constraint, which is the authority on when work actually runs.
+     */
+    val connectivityObserver: ConnectivityObserver by lazy {
+        AndroidConnectivityObserver(context)
     }
 
     // ─── Session ─────────────────────────────────────────────────────────────

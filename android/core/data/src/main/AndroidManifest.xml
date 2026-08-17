@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        ConnectivityObserver reads the active network to drive the connectivity indicator.
+        Declared here rather than only in :app so the module carries its own requirement:
+        any consumer of this library needs the permission, and relying on the application to
+        remember would surface as a runtime SecurityException instead of a build-time error.
+        The application declares the same permission, so the merged manifest is unchanged and
+        no new permission is requested from the user.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

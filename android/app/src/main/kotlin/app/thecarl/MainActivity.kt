@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -126,7 +127,12 @@ private fun CarlApp(container: AppContainer, application: CarlApplication) {
         )
 
         is SessionState.Active -> {
-            LaunchedEffect(screen) { dashboardViewModel.refresh() }
+            // Starts optimistic so the first frame does not flash "Offline" before the
+            // platform answers; the observer corrects it immediately.
+            val isOnline by container.connectivityObserver.isOnline
+                .collectAsState(initial = true)
+
+            LaunchedEffect(screen, isOnline) { dashboardViewModel.refresh(isOnline) }
 
             when (screen) {
                 AuthenticatedScreen.DASHBOARD -> {
@@ -145,6 +151,14 @@ private fun CarlApp(container: AppContainer, application: CarlApplication) {
                 AuthenticatedScreen.CAPTURE -> {
                     val captureState by captureViewModel.state.collectAsState()
 
+                    // Without this, back from capture leaves the application entirely rather
+                    // than returning to the dashboard — an agent reaching for "go back" after
+                    // recording a transaction would be dropped onto the home screen.
+                    BackHandler {
+                        captureViewModel.dismissConfirmation()
+                        screen = AuthenticatedScreen.DASHBOARD
+                    }
+
                     CaptureScreen(
                         state = captureState,
                         onTypeChanged = captureViewModel::onTypeChanged,
@@ -154,11 +168,11 @@ private fun CarlApp(container: AppContainer, application: CarlApplication) {
                         onReferenceChanged = captureViewModel::onReferenceChanged,
                         onSubmit = {
                             scope.launch {
-                                if (captureViewModel.submit()) {
+                                if (captureViewModel.submit(isOnline)) {
                                     // Best-effort. The transaction is already committed to
                                     // the outbox, so a failed enqueue cannot lose it.
                                     application.scheduleSync()
-                                    dashboardViewModel.refresh()
+                                    dashboardViewModel.refresh(isOnline)
                                 }
                             }
                         },

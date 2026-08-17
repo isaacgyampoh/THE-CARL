@@ -1,8 +1,18 @@
+using System.Text.Json.Serialization;
 using TheCarl.Domain;
 
 namespace TheCarl.Application.Sync;
 
 /// <summary>Outcome of one transaction inside a batch.</summary>
+/// <remarks>
+/// Serialized by name, because <c>docs/BATCH_SYNC.md</c> defines the wire contract as
+/// <c>"status": "Accepted"</c> and clients branch on that string. Left to its default numeric
+/// form this silently violated the published contract: the Android client could not decode a
+/// single response, so every transaction retried forever and no outbox row ever reached
+/// SYNCED. Serialising by name also means reordering the members cannot change the wire
+/// meaning of an existing value.
+/// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter<SyncItemStatus>))]
 public enum SyncItemStatus
 {
     /// <summary>Posted to the ledger for the first time.</summary>
