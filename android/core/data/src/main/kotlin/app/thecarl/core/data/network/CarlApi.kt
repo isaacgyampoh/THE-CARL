@@ -41,14 +41,74 @@ interface CarlApi {
     suspend fun deviceSelf(
         @Header("X-Device-Identifier") deviceIdentifier: String
     ): Response<DeviceSelfResponse>
+
+    /**
+     * Redeems an enrolment code, creating this device.
+     *
+     * <p>Authenticated but not gated on <c>device.manage</c> — enrolment is precisely the
+     * case where an agent does not hold that capability.</p>
+     */
+    @POST("api/v1/devices/enrol")
+    suspend fun enrolDevice(@Body request: EnrolDeviceRequest): Response<DeviceEnrolledResponse>
 }
 
-/** Authentication endpoints, kept separate so refresh can bypass the auth interceptor. */
+/**
+ * Authentication endpoints.
+ *
+ * <p>Kept on a separate interface, served by a client <b>without</b> the auth interceptor:
+ * login is anonymous, and a 401 on refresh must not recurse back into refresh.</p>
+ */
 interface CarlAuthApi {
+
+    @POST("api/v1/auth/login")
+    suspend fun login(@Body request: LoginRequest): Response<AuthTokenResponse>
 
     @POST("api/v1/auth/refresh")
     suspend fun refresh(@Body request: RefreshTokenRequest): Response<AuthTokenResponse>
 }
+
+/**
+ * Login credentials.
+ *
+ * <p>[deviceIdentifier] binds the resulting session to a registered device, so revoking the
+ * device immediately stops both refresh and sync. Omitted before enrolment, when no device
+ * identity exists yet.</p>
+ */
+@Serializable
+data class LoginRequest(
+    val email: String,
+    val password: String,
+    val deviceIdentifier: String? = null
+)
+
+/**
+ * Redeems an enrolment code.
+ *
+ * <p>Note what is absent: no organization, branch, role or device type. All of those come
+ * from the code the administrator issued. A handset that could name its own scope could
+ * enrol itself into another branch or grant itself SMS capture.</p>
+ */
+@Serializable
+data class EnrolDeviceRequest(
+    val code: String,
+    val deviceIdentifier: String,
+    val name: String,
+    val platform: String,
+    val network: String,
+    val appVersion: String,
+    val osVersion: String
+)
+
+@Serializable
+data class DeviceEnrolledResponse(
+    val deviceId: String,
+    val organizationId: String,
+    val branchId: String,
+    val name: String,
+    val role: Int,
+    val status: Int,
+    val enrolledAtUtc: String
+)
 
 @Serializable
 data class RefreshTokenRequest(val refreshToken: String)

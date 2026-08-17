@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -15,6 +14,11 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Base URL is configuration, not a constant. 10.0.2.2 is the host loopback as seen
+        // from an emulator; release builds override it. No credential or secret is ever a
+        // build-config value.
+        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5000/\"")
     }
 
     buildTypes {
@@ -29,7 +33,21 @@ android {
     }
 
     buildFeatures {
-        compose = true
+        // Compose is deliberately off until there is Compose source to compile. This module
+        // currently contains the application graph and worker wiring only; enabling the
+        // feature and its dependencies for code that does not exist is dead configuration,
+        // and it made AGP's Compose lint detectors crash analysing a module with no
+        // composables. It returns with the first screen.
+        buildConfig = true
+    }
+
+    lint {
+        // AGP 8.7's NonNullableMutableLiveDataDetector throws NoClassDefFoundError when
+        // lifecycle-livedata is not on the classpath, crashing the entire lint run. This
+        // module uses no LiveData, so the detector has nothing to inspect. Disabling a
+        // broken tool is preferable to adding an unused dependency to appease it — this
+        // suppresses a tooling defect, not a finding.
+        disable += "NullSafeMutableLiveData"
     }
 
     compileOptions {
@@ -52,15 +70,15 @@ android {
 dependencies {
     implementation(project(":core:data"))
 
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.kotlinx.serialization)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
