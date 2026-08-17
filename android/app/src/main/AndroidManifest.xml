@@ -14,6 +14,16 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!--
           WorkManager's default initialiser is removed so the application can supply
           CarlWorkerFactory. Without this, SyncWorker would be constructed reflectively with

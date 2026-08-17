@@ -17,6 +17,17 @@ import app.thecarl.core.domain.sync.OutboxState
 import java.util.UUID
 
 /**
+ * Records a captured transaction locally.
+ *
+ * <p>An interface so presentation code depends on the capability rather than the concrete
+ * repository, which keeps view-model tests free of a database. The implementation remains
+ * the single capture pipeline — this is dependency inversion, not a second path.</p>
+ */
+interface TransactionCapture {
+    suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome
+}
+
+/**
  * Records captured transactions locally and queues them for synchronisation.
  *
  * <p><b>One pipeline.</b> Manual capture and (later) SMS capture both arrive here and follow
@@ -35,9 +46,9 @@ class CaptureRepository(
     private val branchId: String?,
     private val deviceId: String?,
     private val now: () -> Long = System::currentTimeMillis
-) {
+) : TransactionCapture {
 
-    suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome {
+    override suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome {
         val timestamp = now()
 
         val amountMinor = try {

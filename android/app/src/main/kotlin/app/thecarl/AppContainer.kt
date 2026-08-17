@@ -8,6 +8,7 @@ import app.thecarl.core.data.network.AuthInterceptor
 import app.thecarl.core.data.network.CarlApi
 import app.thecarl.core.data.network.CarlAuthApi
 import app.thecarl.core.data.repository.CaptureRepository
+import app.thecarl.core.data.repository.DashboardRepository
 import app.thecarl.core.data.repository.OutboxRepository
 import app.thecarl.core.data.security.AndroidKeystoreCryptoBox
 import app.thecarl.core.data.security.KeystoreCredentialStore
@@ -80,6 +81,8 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     val database: CarlDatabase by lazy { CarlDatabase.encrypted(context, databaseKeyProvider) }
 
     val outboxRepository: OutboxRepository by lazy { OutboxRepository(database) }
+
+    val dashboardRepository: DashboardRepository by lazy { DashboardRepository(database) }
 
     // ─── Network ─────────────────────────────────────────────────────────────
 
