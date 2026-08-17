@@ -6,6 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,7 +48,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
-                Surface { CarlApp(container, application as CarlApplication) }
+                // targetSdk 35 draws edge to edge, so without this every screen's header
+                // sits underneath the status bar clock. Applied once at the root rather
+                // than per screen, so a new screen cannot forget it.
+                Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                    CarlApp(container, application as CarlApplication)
+                }
             }
         }
     }

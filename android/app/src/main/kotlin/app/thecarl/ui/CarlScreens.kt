@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -307,12 +308,18 @@ fun CaptureScreen(
         Text("Record transaction", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // The four type chips are wider than the screen, which broke "Commission" across two
+        // lines inside its own chip. Scrolling keeps every option reachable and each label on
+        // one line, without dropping or abbreviating any transaction type.
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             CaptureTransactionType.entries.forEach { type ->
                 FilterChip(
                     selected = state.transactionType == type,
                     onClick = { onTypeChanged(type) },
-                    label = { Text(type.label) }
+                    label = { Text(type.label, maxLines = 1) }
                 )
             }
         }

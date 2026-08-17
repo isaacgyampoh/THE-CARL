@@ -147,6 +147,56 @@ class EncryptedDatabaseInstrumentedTest {
         assertThat(first).hasLength(32)
     }
 
+    @Test
+    fun theWrongKeyCannotOpenTheDatabaseAndCannotSilentlyReplaceIt() = runBlocking {
+        context.deleteDatabase(CarlDatabase.DATABASE_NAME)
+
+        val correctKey = ByteArray(32) { 7 }
+        val wrongKey = ByteArray(32) { 9 }
+
+        val created = CarlDatabase.encrypted(context, FixedKeyProvider(correctKey))
+        created.evidenceDao().insert(sampleEvidence())
+        created.close()
+
+        val file = context.getDatabasePath(CarlDatabase.DATABASE_NAME)
+        val sizeBefore = file.length()
+
+        // The wrong key must fail loudly. The failure that matters is not "throws" but the
+        // two silent alternatives: SQLCipher falling back to reading the file as plaintext,
+        // or Room deciding the file is unreadable and destructively recreating it. Either
+        // would present an agent with an empty, apparently healthy outbox.
+        var failed = false
+        try {
+            val wrong = CarlDatabase.encrypted(context, FixedKeyProvider(wrongKey))
+            wrong.evidenceDao().count()
+            wrong.close()
+        } catch (_: Exception) {
+            failed = true
+        }
+
+        assertThat(failed).isTrue()
+
+        // Not truncated and not recreated: the encrypted bytes are still on disk.
+        assertThat(file.length()).isEqualTo(sizeBefore)
+
+        val header = ByteArray(16)
+        File(file.absolutePath).inputStream().use { it.read(header) }
+        assertThat(String(header)).doesNotContain("SQLite format 3")
+
+        // The correct key still opens it, and the row is intact — proving the failed attempt
+        // neither destroyed nor rewrote the data.
+        val reopened = CarlDatabase.encrypted(context, FixedKeyProvider(correctKey))
+        assertThat(reopened.evidenceDao().count()).isEqualTo(1)
+        reopened.close()
+    }
+
+    /** Supplies a caller-chosen key so a deliberately wrong one can be tested. */
+    private class FixedKeyProvider(
+        private val key: ByteArray
+    ) : app.thecarl.core.domain.security.DatabaseKeyProvider {
+        override fun databaseKey(): ByteArray = key.copyOf()
+    }
+
     private fun sampleEvidence() = EvidenceEntity(
         evidenceId = "evidence-1",
         localTransactionId = null,
