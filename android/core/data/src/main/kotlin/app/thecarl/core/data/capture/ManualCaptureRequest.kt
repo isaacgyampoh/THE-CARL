@@ -61,4 +61,14 @@ sealed interface CaptureOutcome {
 
     /** Rejected outright. Nothing was recorded. */
     data class Rejected(val reason: String) : CaptureOutcome
+
+    /**
+     * Not a transaction message, so nothing was stored at all.
+     *
+     * <p>Distinct from [Rejected], which reports a genuine problem with something that was
+     * meant to be a transaction. An [Ignored] message is an ordinary text — a one-time code,
+     * a personal message — and keeping its contents would put unrelated private text in the
+     * evidence table for no financial purpose.</p>
+     */
+    data class Ignored(val reason: String) : CaptureOutcome
 }

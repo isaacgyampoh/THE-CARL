@@ -273,6 +273,10 @@ class CaptureViewModel(
 
             is CaptureOutcome.DuplicateOnThisDevice -> fail(current, CaptureError.DUPLICATE_ON_DEVICE)
             is CaptureOutcome.Rejected -> fail(current, CaptureError.AMOUNT_TOO_SMALL)
+
+            // Only an SMS can be ignored — a manual entry always describes a transaction.
+            // Reported as a rejection rather than silently succeeding.
+            is CaptureOutcome.Ignored -> fail(current, CaptureError.AMOUNT_TOO_SMALL)
         }
     }
 

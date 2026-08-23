@@ -2,6 +2,7 @@ package app.thecarl.ui
 
 import app.thecarl.core.data.capture.CaptureOutcome
 import app.thecarl.core.data.capture.ManualCaptureRequest
+import app.thecarl.core.data.capture.SmsCaptureRequest
 import app.thecarl.core.data.repository.TransactionCapture
 import app.thecarl.core.data.session.EnrolmentResult
 import app.thecarl.core.data.session.LoginResult
@@ -210,6 +211,10 @@ class CaptureViewModelTest {
             requests += request
             return nextOutcome
         }
+
+        // The capture screen never records an SMS — the receiver does, without a view model.
+        override suspend fun captureSms(request: SmsCaptureRequest): CaptureOutcome =
+            throw UnsupportedOperationException("The capture form does not submit SMS.")
     }
 }
 

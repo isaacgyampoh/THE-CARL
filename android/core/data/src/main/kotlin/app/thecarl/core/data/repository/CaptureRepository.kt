@@ -3,6 +3,7 @@ package app.thecarl.core.data.repository
 import app.thecarl.core.data.capture.CaptureOutcome
 import app.thecarl.core.data.capture.ManualCaptureRequest
 import app.thecarl.core.data.capture.MinorUnits
+import app.thecarl.core.data.capture.SmsCaptureRequest
 import app.thecarl.core.data.database.CarlDatabase
 import app.thecarl.core.data.database.EvidenceEntity
 import app.thecarl.core.data.database.LocalTransactionEntity
@@ -12,8 +13,11 @@ import app.thecarl.core.domain.identity.EvidenceFingerprint
 import app.thecarl.core.domain.ledger.LedgerProjection
 import app.thecarl.core.domain.model.EvidenceSourceType
 import app.thecarl.core.domain.model.EvidenceState
+import app.thecarl.core.domain.model.Provider
 import app.thecarl.core.domain.model.TransactionType
+import app.thecarl.core.domain.parser.SmsParserRegistry
 import app.thecarl.core.domain.sync.OutboxState
+import java.math.BigDecimal
 import java.util.UUID
 
 /**
@@ -25,6 +29,12 @@ import java.util.UUID
  */
 interface TransactionCapture {
     suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome
+
+    /**
+     * Records an observed SMS. The parser decides what it says; this decides nothing
+     * financial that manual capture does not also decide.
+     */
+    suspend fun captureSms(request: SmsCaptureRequest): CaptureOutcome
 }
 
 /**
@@ -45,32 +55,131 @@ class CaptureRepository(
     private val organizationId: String,
     private val branchId: String?,
     private val deviceId: String?,
-    private val now: () -> Long = System::currentTimeMillis
+    private val now: () -> Long = System::currentTimeMillis,
+    // The same registry the shared fixture corpus pins against the server. Injectable so a
+    // test can supply a narrower set, never so a caller can substitute different rules.
+    private val parsers: SmsParserRegistry = SmsParserRegistry()
 ) : TransactionCapture {
 
-    override suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome {
-        val timestamp = now()
+    override suspend fun captureManual(request: ManualCaptureRequest): CaptureOutcome = record(
+        sourceType = EvidenceSourceType.MANUAL_ENTRY,
+        provider = request.provider,
+        senderIdentity = null,
+        transactionType = request.transactionType,
+        amount = request.amount,
+        currency = request.currency,
+        reference = request.reference,
+        customerPhoneNumber = request.customerPhoneNumber,
+        occurredAtUtcMillis = request.occurredAtUtcMillis,
+        parserName = "ManualEntry",
+        parserVersion = MANUAL_PARSER_VERSION,
+        // A person deliberately entered these figures. Not uncertain the way a parse is,
+        // but still not provider-verified — which the source type records.
+        confidence = 1.0,
+        evidenceQualityAllowsPosting = true,
+        rawMessage = null,
+        sessionId = request.sessionId,
+        notes = request.notes
+    )
 
-        val amountMinor = try {
-            MinorUnits.fromDecimal(request.amount)
-        } catch (exception: IllegalArgumentException) {
-            return CaptureOutcome.Rejected(exception.message ?: "Amount is not a valid money value.")
+    /**
+     * Records an observed SMS.
+     *
+     * <p>The message is interpreted by the existing parser registry — the same one the
+     * contract fixture corpus pins against the server — and then follows exactly the path a
+     * manual capture follows. Nothing here decides direction, amount or provider.</p>
+     *
+     * <p><b>Messages that are not transactions are not stored.</b> An unrecognised template
+     * with no type and no amount is somebody's one-time code or a personal message; keeping
+     * it would put unrelated private text in the evidence table for no financial purpose.
+     * Anything a parser could make sense of is kept, including the ones it refuses to
+     * post.</p>
+     */
+    override suspend fun captureSms(request: SmsCaptureRequest): CaptureOutcome {
+        val parsed = parsers.parse(request.senderIdentity, request.body)
+
+        // Keyed on what the parser could make of the message, not on which parser ran. A
+        // provider's own shortcode also sends one-time codes and marketing, so selecting the
+        // MTN parser says nothing about whether this particular text is financial.
+        if (parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null) {
+            return CaptureOutcome.Ignored("Not a recognisable transaction message.")
         }
 
-        if (amountMinor < MINIMUM_AMOUNT_MINOR) {
-            return CaptureOutcome.Rejected("Amount must be at least GHS 0.01.")
+        // Two independent gates, both already owned elsewhere: evidence quality is the
+        // parser's verdict, and whether the *type* may post without review is
+        // LedgerProjection's. A reversal with perfect confidence still must not post.
+        val qualityAllowsPosting = parsed.isUsable
+
+        return record(
+            sourceType = EvidenceSourceType.ANDROID_SMS,
+            provider = parsed.provider,
+            senderIdentity = request.senderIdentity,
+            transactionType = parsed.transactionType,
+            amount = parsed.amount,
+            currency = DEFAULT_CURRENCY,
+            reference = parsed.reference,
+            customerPhoneNumber = parsed.customerPhoneNumber,
+            // An SMS carries no trustworthy send time, so the moment the handset saw it is
+            // the honest answer. It is also what the fingerprint uses, so a redelivery of
+            // the same message must reuse it — see the duplicate check below.
+            occurredAtUtcMillis = request.receivedAtUtcMillis,
+            parserName = parsed.parserName,
+            parserVersion = parsed.parserVersion,
+            confidence = parsed.confidence,
+            evidenceQualityAllowsPosting = qualityAllowsPosting,
+            rawMessage = request.body,
+            sessionId = request.sessionId,
+            notes = null
+        )
+    }
+
+    @Suppress("LongParameterList")
+    private suspend fun record(
+        sourceType: EvidenceSourceType,
+        provider: Provider,
+        senderIdentity: String?,
+        transactionType: TransactionType,
+        amount: BigDecimal?,
+        currency: String,
+        reference: String?,
+        customerPhoneNumber: String?,
+        occurredAtUtcMillis: Long,
+        parserName: String,
+        parserVersion: String,
+        confidence: Double,
+        evidenceQualityAllowsPosting: Boolean,
+        rawMessage: String?,
+        sessionId: String?,
+        notes: String?
+    ): CaptureOutcome {
+        val timestamp = now()
+
+        val amountMinor = amount?.let {
+            try {
+                MinorUnits.fromDecimal(it)
+            } catch (exception: IllegalArgumentException) {
+                return CaptureOutcome.Rejected(exception.message ?: "Amount is not a valid money value.")
+            }
+        }
+
+        // A manual entry with no usable amount is a mistake worth reporting. A parsed message
+        // with none is ordinary — it becomes evidence and waits for a person.
+        if (amountMinor == null || amountMinor < MINIMUM_AMOUNT_MINOR) {
+            if (sourceType == EvidenceSourceType.MANUAL_ENTRY) {
+                return CaptureOutcome.Rejected("Amount must be at least GHS 0.01.")
+            }
         }
 
         // The shared algorithm, byte-identical to the server's. A manual entry describing the
         // same event as a later SMS must collide with it, or the agent gets two ledger rows.
         val fingerprint = EvidenceFingerprint.compute(
             organizationId = organizationId,
-            provider = request.provider.code,
-            transactionType = request.transactionType,
-            amount = request.amount,
-            providerReference = request.reference,
-            customerPhone = request.customerPhoneNumber,
-            occurredAtUtcMillis = request.occurredAtUtcMillis
+            provider = provider.code,
+            transactionType = transactionType,
+            amount = amount ?: BigDecimal.ZERO,
+            providerReference = reference,
+            customerPhone = customerPhoneNumber,
+            occurredAtUtcMillis = occurredAtUtcMillis
         )
 
         // Courtesy check only — it saves a round trip. The server's organization-scoped
@@ -80,38 +189,37 @@ class CaptureRepository(
             return CaptureOutcome.DuplicateOnThisDevice(existing.clientTransactionId, fingerprint)
         }
 
-        val postable = LedgerProjection.canPostAutomatically(request.transactionType) &&
-            request.transactionType != TransactionType.UNKNOWN
+        val typeAllowsPosting = LedgerProjection.canPostAutomatically(transactionType) &&
+            transactionType != TransactionType.UNKNOWN
+
+        val postable = typeAllowsPosting &&
+            evidenceQualityAllowsPosting &&
+            amountMinor != null &&
+            amountMinor >= MINIMUM_AMOUNT_MINOR
 
         val evidenceId = UUID.randomUUID().toString()
 
         val evidence = EvidenceEntity(
             evidenceId = evidenceId,
             localTransactionId = null,
-            sourceType = EvidenceSourceType.MANUAL_ENTRY.name,
-            provider = request.provider.code,
-            senderIdentity = null,
-            transactionType = request.transactionType.name,
+            sourceType = sourceType.name,
+            provider = provider.code,
+            senderIdentity = senderIdentity,
+            transactionType = transactionType.name,
             amountMinor = amountMinor,
-            currency = request.currency,
-            reference = request.reference,
-            customerPhoneNumber = request.customerPhoneNumber,
-            occurredAtUtcMillis = request.occurredAtUtcMillis,
+            currency = currency,
+            reference = reference,
+            customerPhoneNumber = customerPhoneNumber,
+            occurredAtUtcMillis = occurredAtUtcMillis,
             observedAtUtcMillis = timestamp,
             fingerprint = fingerprint,
             fingerprintVersion = EvidenceFingerprint.VERSION,
-            parserName = "ManualEntry",
-            parserVersion = MANUAL_PARSER_VERSION,
-            // A person deliberately entered these figures. Not uncertain the way a parse is,
-            // but still not provider-verified — which the source type records.
-            confidence = 1.0,
+            parserName = parserName,
+            parserVersion = parserVersion,
+            confidence = confidence,
             state = if (postable) EvidenceState.ACCEPTED.name else EvidenceState.PENDING_REVIEW.name,
-            outcomeReason = if (postable) {
-                null
-            } else {
-                "'${request.transactionType.name}' requires review before it can be posted."
-            },
-            rawMessage = null,
+            outcomeReason = if (postable) null else heldReason(transactionType, amountMinor, typeAllowsPosting),
+            rawMessage = rawMessage,
             rawMessagePurgedAtUtcMillis = null,
             deviceId = deviceId,
             createdAtUtcMillis = timestamp
@@ -133,7 +241,7 @@ class CaptureRepository(
         // exactly how one transaction becomes two.
         val clientTransactionId = ClientTransactionId.create(deviceInstallationId, timestamp)
 
-        val movement = LedgerProjection.movementFor(request.transactionType, request.amount)
+        val movement = LedgerProjection.movementFor(transactionType, amount!!)
 
         val localTransaction = LocalTransactionEntity(
             clientTransactionId = clientTransactionId,
@@ -141,22 +249,22 @@ class CaptureRepository(
             evidenceId = evidenceId,
             branchId = branchId,
             deviceId = deviceId,
-            sessionId = request.sessionId,
-            provider = request.provider.code,
-            transactionType = request.transactionType.name,
+            sessionId = sessionId,
+            provider = provider.code,
+            transactionType = transactionType.name,
             amountMinor = amountMinor,
-            currency = request.currency,
-            customerPhoneNumber = request.customerPhoneNumber,
-            reference = request.reference,
-            transactionAtUtcMillis = request.occurredAtUtcMillis,
+            currency = currency,
+            customerPhoneNumber = customerPhoneNumber,
+            reference = reference,
+            transactionAtUtcMillis = occurredAtUtcMillis,
             deviceRecordedAtUtcMillis = timestamp,
-            sourceType = EvidenceSourceType.MANUAL_ENTRY.name,
-            parserVersion = MANUAL_PARSER_VERSION,
+            sourceType = sourceType.name,
+            parserVersion = parserVersion,
             fingerprint = fingerprint,
             // Direction comes from LedgerProjection, never from the caller.
             cashDeltaMinor = MinorUnits.fromDecimal(movement.cashDelta),
             floatDeltaMinor = MinorUnits.fromDecimal(movement.floatDelta),
-            notes = request.notes,
+            notes = notes,
             createdAtUtcMillis = timestamp
         )
 
@@ -185,8 +293,24 @@ class CaptureRepository(
         return CaptureOutcome.Queued(clientTransactionId, evidenceId, fingerprint)
     }
 
+    /** Names the specific deficiency, so a reviewer sees why this was not posted. */
+    private fun heldReason(
+        transactionType: TransactionType,
+        amountMinor: Long?,
+        typeAllowsPosting: Boolean
+    ): String = when {
+        !typeAllowsPosting -> "'${transactionType.name}' requires review before it can be posted."
+        amountMinor == null -> "No usable amount was recovered from the message."
+        amountMinor < MINIMUM_AMOUNT_MINOR -> "Amount is below GHS 0.01."
+        // The truncation case: a recognised provider and a plausible amount, but nothing
+        // identifying the transaction. Posting this is how "Cash In of GHS 500.00 ... Ref:
+        // MP240815..." truncated to "Cash In of GHS 5" silently understates a till.
+        else -> "Evidence is incomplete — a provider reference is required before posting."
+    }
+
     companion object {
         private const val MINIMUM_AMOUNT_MINOR = 1L
         private const val MANUAL_PARSER_VERSION = "manual-v1"
+        private const val DEFAULT_CURRENCY = "GHS"
     }
 }

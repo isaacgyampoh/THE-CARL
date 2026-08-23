@@ -5,6 +5,22 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      RECEIVE_SMS only. READ_SMS would grant access to the entire message history, which
+      THE CARL has no reason to read: it observes transaction alerts as they arrive and
+      never trawls the inbox. SEND_SMS is deliberately absent — the product observes and
+      reconciles, it does not transact.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
+    <!--
+      Telephony is not required. On a device without it, automatic capture is simply
+      unavailable and manual capture continues to work.
+    -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
     <application
         android:name=".CarlApplication"
         android:allowBackup="false"
@@ -23,6 +39,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Exported because the platform itself delivers the broadcast. The android:permission
+          attribute is the control that matters: it requires the sender to hold
+          BROADCAST_SMS, which only the system has, so another application cannot inject a
+          forged transaction message.
+        -->
+        <receiver
+            android:name=".sms.SmsBroadcastReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="500">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
 
         <!--
           WorkManager's default initialiser is removed so the application can supply

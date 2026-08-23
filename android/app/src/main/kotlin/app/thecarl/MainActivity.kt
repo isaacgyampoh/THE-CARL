@@ -1,5 +1,12 @@
 package app.thecarl
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -145,6 +152,19 @@ private fun CarlApp(container: AppContainer, application: CarlApplication) {
             when (screen) {
                 AuthenticatedScreen.DASHBOARD -> {
                     val dashboardState by dashboardViewModel.state.collectAsState()
+                    val context = LocalContext.current
+
+                    var smsPermissionGranted by remember {
+                        mutableStateOf(context.hasSmsPermission())
+                    }
+
+                    val permissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestPermission()
+                    ) { granted ->
+                        // A refusal is a legitimate answer, not a failure. Manual capture
+                        // continues to work and nothing queued is affected.
+                        smsPermissionGranted = granted
+                    }
 
                     DashboardScreen(
                         state = dashboardState,
@@ -152,7 +172,13 @@ private fun CarlApp(container: AppContainer, application: CarlApplication) {
                         // A trigger only. The outbox remains the source of truth and the UI
                         // never calls the sync API directly.
                         onSyncNow = { SyncWorker.enqueue(application) },
-                        onLogout = { scope.launch { container.sessionRepository.logout() } }
+                        onLogout = { scope.launch { container.sessionRepository.logout() } },
+                        smsPermissionGranted = smsPermissionGranted,
+                        // Asked for only when the agent taps, never on launch: a permission
+                        // prompt before any explanation is how people learn to decline.
+                        onRequestSmsPermission = {
+                            permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                        }
                     )
                 }
 
@@ -200,3 +226,14 @@ private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
 /** Start of the current day in UTC. Ghana observes UTC+0, so this is the business day. */
 private fun startOfDayUtcMillis(): Long =
     System.currentTimeMillis() / DAY_MILLIS * DAY_MILLIS
+
+/**
+ * Whether this installation may currently receive SMS.
+ *
+ * <p>Runtime state only. It says nothing about whether the server permits this device to
+ * capture SMS — that remains {@code DeviceContext.canAttemptSmsCapture}, and both must hold
+ * before a message can become evidence.</p>
+ */
+private fun Context.hasSmsPermission(): Boolean =
+    ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) ==
+        PackageManager.PERMISSION_GRANTED

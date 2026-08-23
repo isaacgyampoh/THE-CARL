@@ -185,7 +185,10 @@ fun DashboardScreen(
     state: DashboardUiState,
     onCapture: () -> Unit,
     onSyncNow: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    /** Android runtime state, deliberately separate from the server's device capability. */
+    smsPermissionGranted: Boolean = false,
+    onRequestSmsPermission: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)
@@ -264,15 +267,42 @@ fun DashboardScreen(
 
         state.device?.let { device ->
             Text("Branch ${device.branchId}", style = MaterialTheme.typography.bodySmall)
-            Text(
-                if (device.canAttemptSmsCapture) {
-                    // Capability, not a granted permission — the runtime prompt is separate.
-                    "Automatic SMS capture available on this device"
-                } else {
-                    "Manual transaction capture"
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
+
+            // Two different facts, deliberately not collapsed into one line. The server says
+            // whether this kind of device may capture SMS at all; Android says whether this
+            // installation has been allowed to. Showing only the first would tell an agent
+            // capture is running when no message can reach the app.
+            when {
+                !device.canAttemptSmsCapture -> Text(
+                    "Manual transaction capture",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                smsPermissionGranted -> Text(
+                    "Automatic SMS capture is on",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                else -> {
+                    Text(
+                        "Automatic SMS capture is supported but not yet allowed",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "THE CARL reads incoming mobile-money alerts so transactions are " +
+                            "recorded without typing them. It never reads your other " +
+                            "messages and never sends any.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = onRequestSmsPermission) { Text("Allow SMS access") }
+                    Text(
+                        "You can decline — recording transactions by hand keeps working.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(16.dp))
