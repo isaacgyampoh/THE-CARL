@@ -119,7 +119,17 @@ Notes:
 - The distribution ships `initdb`, `pg_ctl` and `postgres` only — no `psql`. The tests
   connect through Npgsql, so no client binary is needed.
 - The x86_64 build runs under Rosetta on Apple silicon. That is fine for testing.
-- Port 55432 avoids clashing with any real local PostgreSQL on 5432.
+- Port 55432 avoids clashing with any real local PostgreSQL on 5432. It is **not**
+  guaranteed free: another project on the same machine may already hold it, and a foreign
+  cluster accepts the TCP connection and then rejects the `carl` role, which reads like a
+  broken client rather than the wrong server. Check first, and pick another port if taken:
+
+  ```bash
+  lsof -nP -iTCP:55432 -sTCP:LISTEN     # empty means free
+  ```
+
+  Every port below is overridable — `pg_ctl -o "-p <port>"` and the matching
+  `Port=<port>` in `THECARL_TEST_POSTGRES`.
 - `max_connections=400` is a test-harness requirement, not a product one. Each test class
   holds its own API factory with a bounded pool (15), and the concurrency tests open many at
   once.
@@ -205,3 +215,67 @@ consistent with the extra unique index added for the reversal invariant costing 
 index maintenance per insert — a deliberate trade for a database-enforced financial
 guarantee. Treat this as a regression tripwire, not a benchmark: investigate if a run drops
 below ~150 tx/s.
+
+## Android SMS capture
+
+Automatic capture is exercised end to end by injecting real messages into the emulator, so
+the manifest registration, the broadcast, PDU reassembly and the capture pipeline are all
+covered rather than assumed.
+
+```bash
+adb shell pm grant app.thecarl android.permission.RECEIVE_SMS
+
+# Establish a session and record a baseline
+adb shell am instrument -w \
+  -e class 'app.thecarl.SmsReceiverInstrumentedTest#signsInAndRecordsTheBaseline' \
+  -e carlEmail '<agent>' -e carlPassword '<password>' \
+  app.thecarl.test/androidx.test.runner.AndroidJUnitRunner
+
+adb shell am kill app.thecarl          # see the warning below
+
+REF="MP240817.$(date +%H%M%S).X$RANDOM"
+MSG="Cash In of GHS 750.00 from 0241000099 TEST SYNTHETIC. Ref: $REF"
+adb emu sms send MTN "$MSG"; sleep 14
+adb emu sms send MTN "$MSG"; sleep 14   # the same message twice, on purpose
+
+adb shell am instrument -w \
+  -e class 'app.thecarl.SmsReceiverInstrumentedTest#theInjectedMessageBecameExactlyOneTransaction' \
+  -e carlEmail '<agent>' -e carlPassword '<password>' \
+  app.thecarl.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Three things will waste an afternoon if they are not known in advance:
+
+- **Use `am kill`, never `am force-stop`.** `force-stop` puts the package into Android's
+  stopped state, and the system does not deliver broadcasts to a stopped package until the
+  user launches it again. The SMS arrives, appears in the inbox, and the receiver never runs
+  — which looks exactly like a broken receiver. `am kill` ends the process without setting
+  that flag, which is the real cold-start case anyway.
+- **Use a fresh reference each run.** The evidence fingerprint is doing its job: a message
+  replayed from an earlier run is recognised as a duplicate and creates nothing, so the test
+  sees no new transaction and appears to fail.
+- **The item may already be synced.** A successful capture wakes the sync worker, so asserting
+  the outbox is still `PENDING` is a race. Assert `PENDING + SYNCED` instead.
+- **`OK (1 test)` does not always mean the test ran.** These tests use `assumeTrue`, and JUnit
+  reports an unmet assumption as a pass. A device that needs re-enrolment skips the baseline
+  step and reports success while writing nothing, after which the second half fails on a
+  missing file. Pass `-e carlEnrolmentCode` whenever the emulator has been recreated, and
+  confirm the baseline exists before trusting a green first half:
+
+  ```bash
+  adb shell run-as app.thecarl cat files/sms-receiver-baseline.txt
+  ```
+
+`adb emu sms send` delivers a single-part message. Multipart joining is covered separately by
+`SmsReassemblyTest`, which tests the ordering rule directly; PDU decoding itself is the
+platform's responsibility.
+
+Before any end-to-end run, confirm the environment is what you think it is:
+
+```bash
+scripts/verify-e2e-env.sh
+```
+
+It checks that the API is backed by PostgreSQL rather than the in-memory store, and that the
+cluster answering the port belongs to this project. Both have previously produced convincing
+false diagnoses.

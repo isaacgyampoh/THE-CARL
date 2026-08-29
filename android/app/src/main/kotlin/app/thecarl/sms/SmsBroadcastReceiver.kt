@@ -97,31 +97,52 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
      * is the order the sender's handset split them.</p>
      */
     private fun readMessage(intent: Intent): ReceivedSms? {
-        val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-        if (parts.isNullOrEmpty()) {
-            return null
-        }
+        val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return null
 
-        val body = parts.joinToString("") { it.displayMessageBody ?: it.messageBody ?: "" }
-        if (body.isBlank()) {
-            return null
-        }
-
-        val first = parts.first()
-
-        return ReceivedSms(
-            sender = first.displayOriginatingAddress ?: first.originatingAddress,
-            body = body,
+        return reassemble(
+            bodies = parts.map { it.displayMessageBody ?: it.messageBody },
+            sender = parts.firstOrNull()
+                ?.let { it.displayOriginatingAddress ?: it.originatingAddress },
             // The service centre timestamp, not the clock. It is identical when the network
             // redelivers the same message, which is what lets the existing evidence
             // fingerprint recognise a redelivery instead of creating a second transaction.
-            receivedAtUtcMillis = first.timestampMillis
+            receivedAtUtcMillis = parts.firstOrNull()?.timestampMillis ?: return null
         )
     }
 
-    private data class ReceivedSms(
+    internal data class ReceivedSms(
         val sender: String?,
         val body: String,
         val receivedAtUtcMillis: Long
     )
+
+    internal companion object {
+        /**
+         * Joins the fragments of one message.
+         *
+         * <p>Separated from PDU decoding so the ordering rule can be tested directly. Decoding
+         * is the platform's job; getting the join wrong is ours, and the consequence is a
+         * truncated amount that still parses — "GHS 1,500.00" arriving as "GHS 1,5".</p>
+         *
+         * <p>A missing fragment contributes nothing rather than aborting: a partial message
+         * still becomes evidence, and the evidence rules hold it for review because a
+         * truncated body loses its provider reference.</p>
+         */
+        internal fun reassemble(
+            bodies: List<String?>,
+            sender: String?,
+            receivedAtUtcMillis: Long
+        ): ReceivedSms? {
+            if (bodies.isEmpty()) {
+                return null
+            }
+
+            val body = bodies.joinToString("") { it.orEmpty() }
+            if (body.isBlank()) {
+                return null
+            }
+
+            return ReceivedSms(sender = sender, body = body, receivedAtUtcMillis = receivedAtUtcMillis)
+        }
+    }
 }
