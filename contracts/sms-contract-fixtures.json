@@ -17,10 +17,8 @@
     "autoPostAllowed is the safety-critical field. When false, the platform must preserve the",
     "evidence for review and must NOT create a financial transaction or move any balance."
   ],
-
   "organizationId": "11111111-1111-1111-1111-111111111111",
   "occurredAtUtc": "2026-08-15T09:30:00Z",
-
   "fixtures": [
     {
       "id": "mtn-cash-in-complete",
@@ -86,7 +84,6 @@
         "autoPostAllowed": true
       }
     },
-
     {
       "id": "truncated-loses-reference",
       "note": "THE REGRESSION THIS CORPUS EXISTS FOR. Truncated from 'GHS 500.00 ... Ref: ...'. Looks like a valid GHS 5 cash-in. Must never post.",
@@ -126,7 +123,6 @@
         "autoPostAllowed": false
       }
     },
-
     {
       "id": "thousands-separator",
       "note": "Server previously parsed this as 1.25 — a 1000x understatement.",
@@ -152,7 +148,6 @@
         "autoPostAllowed": true
       }
     },
-
     {
       "id": "telecel-cash-in",
       "sender": "TelecelCash",
@@ -179,7 +174,6 @@
         "autoPostAllowed": true
       }
     },
-
     {
       "id": "unrecognised-wording",
       "note": "Recognised provider, wording that is not a transaction.",
@@ -220,9 +214,78 @@
         "transactionType": "UNKNOWN",
         "autoPostAllowed": false
       }
+    },
+    {
+      "id": "mtn-amount-split-by-space",
+      "note": "Space-separated thousands are ambiguous: the regex matches only the leading digit. Reading 'GHS 1 250.00' as one cedi understates the transaction by three orders of magnitude, and a valid reference means nothing else would stop it posting. No amount is recovered, so it is held.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 1 250.00 from 0241000001 JOHN SYNTHETIC. Ref: MP240815.1301.S00021",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": null,
+        "reference": "MP240815.1301.S00021",
+        "customerPhone": "0241000001",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "mtn-balance-stated-before-amount",
+      "note": "The closing balance is not the transaction amount. Taking the first currency figure would post GHS 12,340.00 instead of GHS 500.00 — twenty-four times the real money.",
+      "sender": "MTN",
+      "body": "Your MoMo agent balance is GHS 12,340.00 after Cash In of GHS 500.00 from 0241000001. Ref: MP240815.1302.B00022",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "500.00",
+        "reference": "MP240815.1302.B00022",
+        "customerPhone": "0241000001",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "mtn-reversal-word-in-footer",
+      "note": "A cash-in whose footer offers a reversal helpline is a cash-in. Matching the bare word sent every such message to review, so the transaction verb is what counts.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 500.00 from 0241000001. Ref: MP240815.1303.F00023. Call 100 to report a reversal",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "500.00",
+        "reference": "MP240815.1303.F00023",
+        "customerPhone": "0241000001",
+        "autoPostAllowed": true
+      }
+    },
+    {
+      "id": "mtn-currency-marker-after-amount",
+      "note": "Currency stated after the figure. No amount is recovered, so it is held rather than posted on a guess. Documents current behaviour: a template like this needs a parser change, not a silent reinterpretation.",
+      "sender": "MTN",
+      "body": "Cash In of 500.00 GHS from 0241000001. Ref: MP240815.1304.C00024",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": null,
+        "reference": "MP240815.1304.C00024",
+        "customerPhone": "0241000001",
+        "autoPostAllowed": false
+      }
+    },
+    {
+      "id": "mtn-unlabelled-receipt-number",
+      "note": "'Receipt No' is not one of the accepted reference labels, so no reference is found and the evidence cannot clear the auto-post bar. Held, not guessed.",
+      "sender": "MTN",
+      "body": "Cash In of GHS 500.00 from 0241000001. Receipt No: MP240815.1305.R00025",
+      "expect": {
+        "provider": "MTN",
+        "transactionType": "CASH_IN",
+        "amount": "500.00",
+        "reference": null,
+        "customerPhone": "0241000001",
+        "autoPostAllowed": false
+      }
     }
   ],
-
   "fingerprintCases": [
     {
       "id": "canonical",

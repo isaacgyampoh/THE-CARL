@@ -40,7 +40,7 @@ class MtnSmsParser : BaseSmsParser() {
     }
 
     private fun classify(body: String): TransactionType = when {
-        body.contains("REVERSAL") || body.contains("REVERSED") -> TransactionType.REVERSAL
+        mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("CASH IN") || body.contains("CASH-IN") -> TransactionType.CASH_IN
         body.contains("CASH OUT") || body.contains("CASH-OUT") -> TransactionType.CASH_OUT
@@ -83,7 +83,7 @@ class TelecelSmsParser : BaseSmsParser() {
     }
 
     private fun classify(body: String): TransactionType = when {
-        body.contains("REVERSAL") || body.contains("REVERSED") -> TransactionType.REVERSAL
+        mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("DEPOSIT") || body.contains("CASH IN") -> TransactionType.CASH_IN
         body.contains("WITHDRAW") || body.contains("CASH OUT") -> TransactionType.CASH_OUT
@@ -123,7 +123,7 @@ class AirtelTigoSmsParser : BaseSmsParser() {
     }
 
     private fun classify(body: String): TransactionType = when {
-        body.contains("REVERSAL") || body.contains("REVERSED") -> TransactionType.REVERSAL
+        mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("CASH IN") || body.contains("DEPOSIT") -> TransactionType.CASH_IN
         body.contains("CASH OUT") || body.contains("WITHDRAW") -> TransactionType.CASH_OUT

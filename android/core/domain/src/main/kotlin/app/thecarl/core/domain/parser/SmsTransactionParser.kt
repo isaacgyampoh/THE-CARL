@@ -81,10 +81,38 @@ abstract class BaseSmsParser : SmsTransactionParser {
     protected fun extractAmount(body: String): BigDecimal? {
         // Currency markers vary: GHS, GH¢, GHC, or nothing at all. Thousands separators are
         // stripped before parsing so "1,250.00" does not become 1.
-        val match = AMOUNT_PATTERN.find(body) ?: return null
-        val raw = match.groupValues[1].replace(",", "")
-        return raw.toBigDecimalOrNull()
+        for (match in AMOUNT_PATTERN.findAll(body)) {
+            val start = match.range.first
+            val preceding = body.substring(maxOf(0, start - BALANCE_LOOKBEHIND), start)
+
+            // A closing balance is not the transaction amount. Taking the first currency
+            // figure in the message posts the balance instead — "balance is GHS 12,340.00
+            // after Cash In of GHS 500.00" would move twenty-four times the real money.
+            if (preceding.contains("BALANCE")) {
+                continue
+            }
+
+            val captured = match.groupValues[1]
+
+            // "GHS 1 250.00" matches only "1". Reading that as one cedi understates the
+            // transaction by three orders of magnitude, and it carries a real reference so
+            // nothing else would stop it posting. The grouping is genuinely ambiguous —
+            // a space-separated thousands group and two adjacent numbers look identical —
+            // so this refuses to choose and lets the evidence rules hold it for review.
+            val tail = body.substring(match.range.last + 1)
+            if (!captured.contains('.') && SPLIT_NUMBER_TAIL.containsMatchIn(tail)) {
+                return null
+            }
+
+            return captured.replace(",", "").toBigDecimalOrNull()
+        }
+
+        return null
     }
+
+    /** Whether the message reports a reversal, rather than merely mentioning the word. */
+    protected fun mentionsReversal(body: String): Boolean =
+        body.contains("REVERSAL OF") || body.contains("REVERSED")
 
     protected fun extractReference(body: String): String? {
         // References legitimately contain dots (MP240815.1201.A00001), so the pattern admits
@@ -118,5 +146,11 @@ abstract class BaseSmsParser : SmsTransactionParser {
 
         private val PHONE_PATTERN =
             Regex("""(?:\+?233|0)\d{9}""")
+
+        /** How far back to look for a balance label before a currency figure. */
+        private const val BALANCE_LOOKBEHIND = 24
+
+        /** A further number immediately after the match, i.e. the grouping is ambiguous. */
+        private val SPLIT_NUMBER_TAIL = Regex("""^\s+[0-9]""")
     }
 }

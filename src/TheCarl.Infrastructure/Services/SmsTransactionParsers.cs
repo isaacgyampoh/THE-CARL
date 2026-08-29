@@ -94,17 +94,50 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
     /// </remarks>
     protected static decimal TryParseAmount(string message)
     {
-        var match = AmountPattern.Match(message);
-        if (!match.Success)
+        for (var match = AmountPattern.Match(message); match.Success; match = match.NextMatch())
         {
-            return 0m;
+            var start = match.Index;
+            var lookbehind = Math.Min(BalanceLookbehind, start);
+            var preceding = message.Substring(start - lookbehind, lookbehind);
+
+            // A closing balance is not the transaction amount. Taking the first currency
+            // figure in the message posts the balance instead — "balance is GHS 12,340.00
+            // after Cash In of GHS 500.00" would move twenty-four times the real money.
+            if (preceding.Contains("BALANCE", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var captured = match.Groups[1].Value;
+
+            // "GHS 1 250.00" matches only "1". Reading that as one cedi understates the
+            // transaction by three orders of magnitude, and it carries a real reference so
+            // nothing else would stop it posting. The grouping is genuinely ambiguous —
+            // a space-separated thousands group and two adjacent numbers look identical —
+            // so this refuses to choose and lets SmsEvidencePolicy hold it for review.
+            var tail = message[(match.Index + match.Length)..];
+            if (!captured.Contains('.') && SplitNumberTail.IsMatch(tail))
+            {
+                return 0m;
+            }
+
+            var raw = captured.Replace(",", string.Empty);
+            return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+                ? value
+                : 0m;
         }
 
-        var raw = match.Groups[1].Value.Replace(",", string.Empty);
-        return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
-            ? value
-            : 0m;
+        return 0m;
     }
+
+    /// <summary>Whether the message reports a reversal, rather than merely mentioning one.</summary>
+    /// <remarks>
+    /// A cash-in whose footer reads "call 100 to report a reversal" is a cash-in. Matching the
+    /// bare word sent every such message to review.
+    /// </remarks>
+    protected static bool MentionsReversal(string text) =>
+        text.Contains("REVERSAL OF", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("REVERSED", StringComparison.OrdinalIgnoreCase);
 
     protected static string? TryExtractPhone(string message)
     {
@@ -138,6 +171,12 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
         var captured = match.Groups[1].Value.TrimEnd('.', '-', ',').ToUpperInvariant();
         return string.IsNullOrWhiteSpace(captured) ? null : captured;
     }
+
+    /// <summary>How far back to look for a balance label before a currency figure.</summary>
+    private const int BalanceLookbehind = 24;
+
+    /// <summary>A further number immediately after the match, i.e. the grouping is ambiguous.</summary>
+    private static readonly Regex SplitNumberTail = new(@"^\s+[0-9]", RegexOptions.Compiled);
 
     /// <summary>Currency marker is required; thousands separators permitted.</summary>
     private static readonly Regex AmountPattern = new(
@@ -176,7 +215,7 @@ public sealed class MtnSmsParser : BaseSmsTransactionParser
         // words the movement patterns also match: "You have received Commission of GHS 12.75"
         // matches RECEIVED and would otherwise post as a cash-in, moving cash up and float
         // down when a commission only credits float.
-        if (text.Contains("REVERSAL") || text.Contains("REVERSED")) return "REVERSAL";
+        if (MentionsReversal(text)) return "REVERSAL";
         if (text.Contains("COMMISSION")) return "COMMISSION";
         if (text.Contains("CASH IN") || text.Contains("CASH-IN")) return "CASH_IN";
         if (text.Contains("CASH OUT") || text.Contains("CASH-OUT")) return "CASH_OUT";
@@ -201,7 +240,7 @@ public sealed class AirtelTigoSmsParser : BaseSmsTransactionParser
     protected override string DetermineTransactionType(string normalizedText)
     {
         var text = normalizedText.ToUpperInvariant();
-        if (text.Contains("REVERSAL") || text.Contains("REVERSED")) return "REVERSAL";
+        if (MentionsReversal(text)) return "REVERSAL";
         if (text.Contains("COMMISSION")) return "COMMISSION";
         if (text.Contains("CASH IN") || text.Contains("CASH-IN") || text.Contains("DEPOSIT")) return "CASH_IN";
         if (text.Contains("CASH OUT") || text.Contains("CASH-OUT") || text.Contains("WITHDRAW")) return "CASH_OUT";
@@ -224,7 +263,7 @@ public sealed class TelecelSmsParser : BaseSmsTransactionParser
     protected override string DetermineTransactionType(string normalizedText)
     {
         var text = normalizedText.ToUpperInvariant();
-        if (text.Contains("REVERSAL") || text.Contains("REVERSED")) return "REVERSAL";
+        if (MentionsReversal(text)) return "REVERSAL";
         if (text.Contains("COMMISSION")) return "COMMISSION";
         if (text.Contains("DEPOSIT") || text.Contains("CASH IN") || text.Contains("TOP UP")) return "CASH_IN";
         if (text.Contains("WITHDRAW") || text.Contains("CASH OUT")) return "CASH_OUT";
@@ -255,7 +294,7 @@ public sealed class GenericSmsParser : BaseSmsTransactionParser
         // The generic parser classifies for review only; its confidence is capped below the
         // auto-post bar regardless of what it decides here.
         var text = normalizedText.ToUpperInvariant();
-        if (text.Contains("REVERSAL")) return "REVERSAL";
+        if (MentionsReversal(text)) return "REVERSAL";
         if (text.Contains("COMMISSION")) return "COMMISSION";
         if (text.Contains("DEPOSIT") || text.Contains("CASH IN")) return "CASH_IN";
         if (text.Contains("WITHDRAW") || text.Contains("CASH OUT")) return "CASH_OUT";

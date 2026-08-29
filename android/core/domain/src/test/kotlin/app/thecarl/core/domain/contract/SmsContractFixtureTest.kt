@@ -31,6 +31,22 @@ class SmsContractFixtureTest {
     private val corpus = Corpus.load()
 
     @Test
+    fun `the corpus this platform loads is the whole corpus`() {
+        // Guards against a vacuous pass. Every assertion below iterates the fixtures, so a
+        // corpus that silently failed to load, or that quietly lost entries, would leave
+        // this suite green while testing nothing.
+        assertThat(corpus.fixtures).hasSize(21)
+
+        // The cases that exist because they once moved the wrong money.
+        assertThat(corpus.fixtures.map { it.id }).containsAtLeast(
+            "mtn-amount-split-by-space",
+            "mtn-balance-stated-before-amount",
+            "mtn-reversal-word-in-footer",
+            "truncated-loses-reference"
+        )
+    }
+
+    @Test
     fun `android parser matches the shared contract`() {
         corpus.fixtures.forEach { fixture ->
             val parsed = registry.parse(fixture.sender, fixture.body)
