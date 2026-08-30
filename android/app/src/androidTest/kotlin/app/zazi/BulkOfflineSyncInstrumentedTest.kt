@@ -69,6 +69,15 @@ class BulkOfflineSyncInstrumentedTest {
         val login = container.sessionRepository.login(email!!, password!!)
         assertThat(login).isInstanceOf(LoginResult.Success::class.java)
 
+        // A fresh install has no enrolled device, and a changed applicationId makes this a
+        // fresh install. Enrolment is part of the real flow, so it is performed rather than
+        // assumed.
+        if (container.sessionRepository.state.value is SessionState.NeedsEnrolment) {
+            val code = arguments.getString("carlEnrolmentCode")
+            assumeTrue("carlEnrolmentCode not supplied for an unenrolled device", code != null)
+            container.sessionRepository.enrolDevice(code!!)
+        }
+
         val state = container.sessionRepository.restore()
         assertThat(state).isInstanceOf(SessionState.Active::class.java)
 

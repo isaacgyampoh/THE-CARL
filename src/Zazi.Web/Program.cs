@@ -83,7 +83,25 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
 // ─── Application services ────────────────────────────────────────────────────
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+// Bound and validated at startup rather than discovered on the first sign-in. IAuthService
+// issues tokens as part of verifying a password, so a missing key does not surface as a
+// configuration error — it surfaces as every login failing for no visible reason.
+var jwtOptions = new JwtOptions();
+builder.Configuration.GetSection(JwtOptions.SectionName).Bind(jwtOptions);
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Key))
+{
+    jwtOptions.Key = Environment.GetEnvironmentVariable("ZAZI_JWT_KEY") ?? string.Empty;
+}
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Key) && builder.Environment.IsDevelopment())
+{
+    jwtOptions.Key = Convert.ToBase64String(
+        System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+}
+
+jwtOptions.Validate();
+builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(jwtOptions));
 builder.Services.AddScoped<ICurrentUserContext, WebCurrentUserContext>();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -111,6 +129,24 @@ app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+
+// Same split, and the same paths, as the API: /health is liveness, /ready proves this
+// instance can actually serve.
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
+
+app.MapGet("/ready", async (ApplicationDbContext db, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        return await db.Database.CanConnectAsync(cancellationToken)
+            ? Results.Ok(new { status = "ready" })
+            : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception)
+    {
+        return Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
 
 app.MapAuthEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

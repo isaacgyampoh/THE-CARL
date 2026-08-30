@@ -28,7 +28,7 @@ builder.Configuration.GetSection(JwtOptions.SectionName).Bind(jwtOptions);
 // can inject the secret without baking it into appsettings.
 if (string.IsNullOrWhiteSpace(jwtOptions.Key))
 {
-    jwtOptions.Key = Environment.GetEnvironmentVariable("THECARL_JWT_KEY") ?? string.Empty;
+    jwtOptions.Key = Environment.GetEnvironmentVariable("ZAZI_JWT_KEY") ?? string.Empty;
 }
 
 // There is no fallback signing key. A shipped default means every deployment that forgets
@@ -40,7 +40,7 @@ if (string.IsNullOrWhiteSpace(jwtOptions.Key) && builder.Environment.IsDevelopme
     jwtOptions.Key = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
     Console.WriteLine(
         "[Zazi] No Jwt:Key configured. Generated an ephemeral development signing key. " +
-        "Tokens will be invalidated on restart. Set Jwt:Key or THECARL_JWT_KEY for stable sessions.");
+        "Tokens will be invalidated on restart. Set Jwt:Key or ZAZI_JWT_KEY for stable sessions.");
 }
 
 jwtOptions.Validate();
@@ -176,19 +176,40 @@ builder.Services.AddHealthChecks();
 var app = builder.Build();
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
+// Migrating on startup is convenient locally and hazardous in production: several instances
+// rolling out together race each other through the same migration, and a deployment that
+// only meant to ship code silently alters the schema with no separate step to review, gate
+// or roll back. It therefore defaults on in Development and off everywhere else, and a
+// deployment runs migrations deliberately.
+var migrateOnStartup = builder.Configuration.GetValue<bool?>("Database:MigrateOnStartup")
+    ?? app.Environment.IsDevelopment();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-    // Relational databases go through migrations so schema history stays auditable.
-    // EnsureCreated bypasses migrations entirely and leaves the database unmigratable.
-    if (db.Database.IsRelational())
+    if (!db.Database.IsRelational())
     {
+        await db.Database.EnsureCreatedAsync();
+    }
+    else if (migrateOnStartup)
+    {
+        // Relational databases go through migrations so schema history stays auditable.
+        // EnsureCreated bypasses migrations entirely and leaves the database unmigratable.
         await db.Database.MigrateAsync();
     }
     else
     {
-        await db.Database.EnsureCreatedAsync();
+        // Refusing to start beats serving traffic against a schema the code does not match,
+        // which surfaces as scattered column-not-found errors rather than one clear failure.
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (pending.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"The database is missing {pending.Count} migration(s), starting with " +
+                $"'{pending[0]}'. Apply them as a deployment step, or set " +
+                "Database:MigrateOnStartup=true to migrate automatically.");
+        }
     }
 }
 
@@ -223,13 +244,29 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Liveness: the process is up. Deliberately cheap and dependency-free, so a database blip
+// does not cause an orchestrator to kill an otherwise healthy instance.
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
+
+// Readiness, as distinct from the liveness probe above: an instance whose database is
+// unreachable can answer nothing, and a load balancer needs to stop sending it traffic.
 app.MapGet("/ready", async (ApplicationDbContext db, CancellationToken ct) =>
 {
-    var reachable = await db.Database.CanConnectAsync(ct);
-    return reachable
-        ? Results.Ok(new { status = "ready" })
-        : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    try
+    {
+        return await db.Database.CanConnectAsync(ct)
+            ? Results.Ok(new { status = "ready" })
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception)
+    {
+        // CanConnectAsync reports an unreachable server by returning false, but a bad host
+        // name or a refused socket throws. Both mean the same thing to a probe, and an
+        // unhandled 500 here reads as "the application is broken" rather than "not ready".
+        // The reason is logged; it is never returned, because connection strings and host
+        // names have no business on an unauthenticated surface.
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
 }).AllowAnonymous();
 
 // Deliberately reports no version or backing-store detail: that is reconnaissance material

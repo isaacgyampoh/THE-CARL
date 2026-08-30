@@ -114,3 +114,36 @@ dotnet ef database update --project src/Zazi.Infrastructure
 
 `DesignTimeDbContextFactory` supplies the Npgsql provider to the CLI, so scaffolding does not
 need a live database and does not accidentally target the in-memory provider.
+
+## Migrating on startup is a development convenience
+
+The API applies migrations at startup only when `Database:MigrateOnStartup` is true, which it
+defaults to in Development and nowhere else.
+
+Automatic migration is convenient on one machine and hazardous on several. A rollout starts
+every replica at once, so they race through the same migration; and a deployment that only
+meant to ship code silently alters the schema, with no separate step anyone can review, gate
+or roll back. Production therefore runs migrations as a deliberate deployment step:
+
+```bash
+dotnet ef database update --project src/Zazi.Infrastructure --startup-project src/Zazi.Api
+```
+
+If the schema is behind, the API refuses to start and names the first missing migration.
+That is deliberate. Serving traffic against a schema the code does not match produces
+scattered column-not-found errors at random moments, which is far harder to diagnose than one
+clear refusal at boot.
+
+## Probes
+
+`/health` is liveness: the process is running. It touches nothing, so a database blip cannot
+cause an orchestrator to kill an otherwise healthy instance.
+
+`/ready` is readiness: this instance can actually serve, which it proves by reaching the
+database. Point the load balancer at this one. A health endpoint that returns 200 while the
+database is unreachable keeps traffic flowing to an instance that can answer nothing — and
+during development, an API running against an in-memory store looked perfectly healthy while
+every login failed.
+
+Neither probe reports a version or any backing-store detail: both are unauthenticated
+surfaces, and the failure reason is logged rather than returned.

@@ -28,7 +28,7 @@ public sealed class JwtOptions
         {
             throw new InvalidOperationException(
                 "Jwt:Key is not configured. Set the 'Jwt:Key' configuration value or the " +
-                "THECARL_JWT_KEY environment variable to a random secret of at least " +
+                "ZAZI_JWT_KEY environment variable to a random secret of at least " +
                 $"{MinimumKeyBytes} bytes. Zazi will not start without one.");
         }
 
