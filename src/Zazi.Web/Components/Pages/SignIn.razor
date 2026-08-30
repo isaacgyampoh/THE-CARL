@@ -1,0 +1,41 @@
+@page "/sign-in"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Sign in · Zazi</PageTitle>
+
+<div class="signin">
+    <h1>Zazi</h1>
+    <p class="subtitle">Sign in to your account</p>
+
+    @* A plain form post, not an interactive submit: the sign-in response is what writes the
+       authentication cookie, and a Blazor circuit has already sent its headers. *@
+    <form method="post" action="/auth/sign-in">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+        @if (Error is not null)
+        {
+            <p class="error" role="alert">@Error</p>
+        }
+
+        <button type="submit">Sign in</button>
+    </form>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorCode { get; set; }
+
+    // Both failures read the same, deliberately. Distinguishing "no such account" from
+    // "wrong password" would let anyone test which addresses are registered.
+    private string? Error => ErrorCode switch
+    {
+        "invalid" => "Email or password is incorrect.",
+        "missing" => "Enter your email and password.",
+        _ => null
+    };
+}

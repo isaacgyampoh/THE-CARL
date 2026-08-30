@@ -1,0 +1,49 @@
+:root {
+    --ink: #1a1523;
+    --muted: #6b6478;
+    --line: #e6e1ec;
+    --accent: #5b3fa8;
+    --bad: #b3261e;
+    --surface: #faf8fd;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: var(--surface);
+}
+
+h1 { font-size: 1.6rem; margin: 0 0 1rem; }
+h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 2rem 0 .5rem; }
+
+.nav {
+    display: flex; align-items: center; gap: 1rem;
+    padding: .75rem 1.5rem; border-bottom: 1px solid var(--line); background: #fff;
+}
+.nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--ink); text-decoration: none; }
+.nav .who { margin-left: auto; color: var(--muted); font-size: .9rem; }
+.nav form { margin: 0; }
+button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
+.tile { background: #fff; border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; }
+.tile .label { display: block; color: var(--muted); font-size: .85rem; }
+.tile .value { display: block; font-size: 1.5rem; font-weight: 600; margin-top: .25rem; font-variant-numeric: tabular-nums; }
+
+.attention ul, .estate ul { list-style: none; margin: 0; padding: 0; background: #fff; border: 1px solid var(--line); border-radius: .75rem; }
+.attention li, .estate li { display: flex; justify-content: space-between; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
+.attention li:last-child, .estate li:last-child { border-bottom: 0; }
+.attention strong, .estate strong { font-variant-numeric: tabular-nums; }
+
+.signin { max-width: 22rem; margin: 4rem auto; padding: 0 1.5rem; }
+.signin .subtitle { color: var(--muted); margin-top: -.5rem; }
+.signin label { display: block; margin-top: 1rem; font-size: .9rem; color: var(--muted); }
+.signin input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: .5rem; font: inherit; }
+.signin button { width: 100%; margin-top: 1.5rem; padding: .7rem; border: 0; border-radius: 999px;
+                 background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+
+.error { color: var(--bad); font-size: .9rem; }
+.muted { color: var(--muted); }

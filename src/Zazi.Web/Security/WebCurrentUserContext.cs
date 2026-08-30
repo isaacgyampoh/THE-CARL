@@ -1,28 +1,35 @@
 using System.Security.Claims;
 using Zazi.Application.Security;
 
-namespace Zazi.Api.Security;
+namespace Zazi.Web.Security;
 
 /// <summary>
-/// Resolves the caller's tenant identity from validated access-token claims on the
-/// current <see cref="HttpContext"/>. Every value here originates from a signature-checked
-/// token, never from route, query, header or body input.
+/// Tenant identity for the browser session, read from the authentication cookie.
 /// </summary>
-public sealed class HttpCurrentUserContext : ICurrentUserContext
+/// <remarks>
+/// <para>
+/// A thin transport adapter only. Every interpretation of the claims — which organization,
+/// which branch, which roles, and whether a branch may be touched — comes from
+/// <see cref="ClaimsTenantIdentity"/>, the same code the API's bearer-token path uses. The
+/// web application therefore cannot drift into a more permissive view of a tenant boundary
+/// than the API has.
+/// </para>
+/// <para>
+/// The cookie is issued only after <c>IAuthService</c> has verified the password, so this
+/// introduces no second credential check and no second user store.
+/// </para>
+/// </remarks>
+public sealed class WebCurrentUserContext : ICurrentUserContext
 {
-    public const string CorrelationHeader = "X-Correlation-Id";
-
     private readonly IHttpContextAccessor _accessor;
 
-    public HttpCurrentUserContext(IHttpContextAccessor accessor)
+    public WebCurrentUserContext(IHttpContextAccessor accessor)
     {
         _accessor = accessor;
     }
 
     private ClaimsPrincipal? Principal => _accessor.HttpContext?.User;
 
-    // Claim interpretation lives in ClaimsTenantIdentity so the cookie-authenticated web
-    // application reads identity exactly the same way this bearer-token path does.
     public bool IsAuthenticated => ClaimsTenantIdentity.IsAuthenticated(Principal);
 
     public Guid UserId => ClaimsTenantIdentity.UserId(Principal);
@@ -35,21 +42,7 @@ public sealed class HttpCurrentUserContext : ICurrentUserContext
 
     public string? SecurityStamp => ClaimsTenantIdentity.SecurityStamp(Principal);
 
-    public string CorrelationId
-    {
-        get
-        {
-            var context = _accessor.HttpContext;
-            if (context is null)
-            {
-                return string.Empty;
-            }
-
-            return context.Response.Headers.TryGetValue(CorrelationHeader, out var value) && value.Count > 0
-                ? value[0] ?? context.TraceIdentifier
-                : context.TraceIdentifier;
-        }
-    }
+    public string CorrelationId => _accessor.HttpContext?.TraceIdentifier ?? string.Empty;
 
     public bool IsInRole(string canonicalRole) => Roles.Contains(canonicalRole, StringComparer.Ordinal);
 
@@ -74,5 +67,4 @@ public sealed class HttpCurrentUserContext : ICurrentUserContext
             throw new TenantAccessDeniedException(OrganizationId, organizationId);
         }
     }
-
 }

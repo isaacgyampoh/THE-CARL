@@ -279,3 +279,42 @@ scripts/verify-e2e-env.sh
 It checks that the API is backed by PostgreSQL rather than the in-memory store, and that the
 cluster answering the port belongs to this project. Both have previously produced convincing
 false diagnoses.
+
+## Web dashboard
+
+`Zazi.Web` is a Blazor Server application that reads the same PostgreSQL database through the
+same application services as the API. It is a second caller of the existing domain, not a
+second system: `IAuthService` verifies credentials, `IDashboardService` produces the figures,
+and `ClaimsTenantIdentity` decides which organization the caller belongs to — the same code
+the bearer-token path uses.
+
+```bash
+cd src/Zazi.Web
+export ConnectionStrings__DefaultConnection="Host=127.0.0.1;Port=55433;Database=zazi;Username=…;Password=…"
+export Jwt__Key="<the same key the API uses>"
+dotnet run --no-launch-profile          # http://127.0.0.1:5080
+```
+
+`Jwt__Key` is required because credential verification runs through `IAuthService`, which
+issues tokens as part of a successful login even though the browser session is carried by a
+cookie rather than by those tokens.
+
+The application refuses to start without a connection string rather than falling back to an
+in-memory store. A dashboard that quietly reports an empty branch is worse than one that will
+not start.
+
+Two properties worth re-checking after any change to routing or authentication:
+
+```bash
+# Deny by default: an anonymous request for any page must redirect to sign-in
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' http://127.0.0.1:5080/
+
+# A signed-in session reaches its own organization's figures
+curl -s -c jar.txt -X POST http://127.0.0.1:5080/auth/sign-in \
+  --data-urlencode 'email=…' --data-urlencode 'password=…'
+curl -s -b jar.txt http://127.0.0.1:5080/ | grep -o '<span class="value">[^<]*</span>'
+```
+
+The sign-in and sign-out endpoints live under `/auth/` rather than on the page routes. A Razor
+page and a minimal endpoint sharing a path match ambiguously and fail the request at runtime,
+because component endpoints are not distinguished by HTTP method.

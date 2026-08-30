@@ -1,0 +1,90 @@
+@page "/"
+@using Zazi.Application
+@using Zazi.Application.Security
+@inject IDashboardService Dashboard
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Today · Zazi</PageTitle>
+
+<h1>Today</h1>
+
+@if (_failed)
+{
+    <p class="error" role="alert">
+        The dashboard could not be loaded. Nothing has been changed.
+    </p>
+}
+else if (_summary is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <section class="tiles">
+        @* Balances are read from the server's ledger. This page never computes a balance of
+           its own, so it cannot disagree with what the ledger says moved. *@
+        <div class="tile">
+            <span class="label">Cash position</span>
+            <span class="value">@Money(_summary.CashPosition)</span>
+        </div>
+        <div class="tile">
+            <span class="label">Network float</span>
+            <span class="value">@Money(_summary.TotalNetworkFloat)</span>
+        </div>
+        <div class="tile">
+            <span class="label">Transactions today</span>
+            <span class="value">@_summary.TodayTransactions</span>
+        </div>
+        <div class="tile">
+            <span class="label">Volume today</span>
+            <span class="value">@Money(_summary.TodayVolume)</span>
+        </div>
+    </section>
+
+    <section class="attention">
+        <h2>Needs attention</h2>
+        <ul>
+            <li><span>Discrepancies</span><strong>@_summary.Discrepancies</strong></li>
+            <li><span>Low float alerts</span><strong>@_summary.LowFloatAlerts</strong></li>
+            <li>
+                <span>Balance variance</span>
+                @* Surfaced even when zero. A reconciliation figure that only appears when it
+                   is bad teaches people that a blank screen means "not checked". *@
+                <strong>@Money(_summary.BalanceVariance)</strong>
+            </li>
+        </ul>
+    </section>
+
+    <section class="estate">
+        <h2>Estate</h2>
+        <ul>
+            <li><span>Branches</span><strong>@_summary.TotalBranches</strong></li>
+            <li><span>Active devices</span><strong>@_summary.ActiveDevices</strong></li>
+            <li><span>Active sessions</span><strong>@_summary.ActiveSessions</strong></li>
+        </ul>
+    </section>
+}
+
+@code {
+    private DashboardSummaryDto? _summary;
+    private bool _failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // The organization comes from the signed-in principal, never from the URL or a
+            // form field, so a caller cannot ask for another tenant's figures.
+            _summary = await Dashboard.GetOrganizationDashboardAsync(CurrentUser.OrganizationId);
+        }
+        catch (Exception)
+        {
+            // Reported as unavailable rather than rendered as zeroes. A dashboard showing a
+            // confident ₵0.00 for a branch that traded all day is worse than one that admits
+            // it could not read.
+            _failed = true;
+        }
+    }
+
+    private static string Money(decimal value) => $"₵{value:N2}";
+}
