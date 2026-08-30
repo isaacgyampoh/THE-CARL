@@ -106,6 +106,7 @@ Never logged: tokens, the database key, raw SMS bodies, full customer phone numb
 | **Data survives close/reopen encrypted** | same | ✅ RUN |
 | **Database key stable across instances** | same | ✅ RUN |
 | **Credentials survive a Keystore-backed store** | same | ✅ RUN |
+| **Wrong key cannot open the database** | same | ✅ RUN |
 
 Robolectric does not implement the `AndroidKeyStore` provider, and SQLCipher ships native
 libraries for Android ABIs that cannot load under a JVM runner. The crypto boundary is
@@ -123,7 +124,7 @@ adb wait-for-device
 cd android && ./gradlew :core:data:connectedDebugAndroidTest
 ```
 
-All seven executed on a `carl-test` AVD (Android 35, `google_apis`, `arm64-v8a`) and passed.
+All eight executed on a `carl-test` AVD (Android 35, `google_apis`, `arm64-v8a`) and passed.
 **SQLCipher encryption and the Keystore key handling are verified on a real Android runtime**,
 not merely configured.
 
