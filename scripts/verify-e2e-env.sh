@@ -50,7 +50,7 @@ owner="$(lsof -nP -iTCP:"$PG_PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print 
 if [ -n "$owner" ]; then
     datadir="$(ps -o command= -p "$owner" 2>/dev/null | tr ' ' '\n' | grep -A0 'pgdata' | head -1)"
     case "$datadir" in
-        *thecarl*) pass "port $PG_PORT is served by THE CARL's cluster" ;;
+        *thecarl*|*zazi*) pass "port $PG_PORT is served by Zazi's cluster" ;;
         "")        printf '  note  could not determine the data directory for pid %s\n' "$owner" ;;
         *)         fail "port $PG_PORT is served by another project's cluster: $datadir" ;;
     esac

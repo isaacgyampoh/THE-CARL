@@ -1,6 +1,6 @@
 # Scalability
 
-THE CARL is built to grow without unnecessary early infrastructure complexity.
+Zazi is built to grow without unnecessary early infrastructure complexity.
 
 ## Current approach
 

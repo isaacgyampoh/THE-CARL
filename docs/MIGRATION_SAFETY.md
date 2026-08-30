@@ -103,13 +103,13 @@ Before any migration reaches an environment holding real records:
 
 ```bash
 export PATH="$HOME/.dotnet:$PATH"
-export ConnectionStrings__DefaultConnection="Host=…;Database=thecarl;Username=…;Password=…"
+export ConnectionStrings__DefaultConnection="Host=…;Database=zazi;Username=…;Password=…"
 
 # Review as SQL first — always.
 dotnet ef migrations script --idempotent \
-  --project src/TheCarl.Infrastructure -o migration.sql
+  --project src/Zazi.Infrastructure -o migration.sql
 
-dotnet ef database update --project src/TheCarl.Infrastructure
+dotnet ef database update --project src/Zazi.Infrastructure
 ```
 
 `DesignTimeDbContextFactory` supplies the Npgsql provider to the CLI, so scaffolding does not

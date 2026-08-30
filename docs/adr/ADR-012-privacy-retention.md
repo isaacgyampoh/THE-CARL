@@ -5,7 +5,7 @@
 
 ## Context
 
-THE CARL handles business financial events and may process event metadata and SMS-derived evidence. Privacy obligations and data minimization must be explicit.
+Zazi handles business financial events and may process event metadata and SMS-derived evidence. Privacy obligations and data minimization must be explicit.
 
 ## Decision
 

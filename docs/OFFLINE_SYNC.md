@@ -1,10 +1,10 @@
 # Offline Sync
 
-THE CARL is built around realistic device connectivity instead of assuming all transaction devices are always online.
+Zazi is built around realistic device connectivity instead of assuming all transaction devices are always online.
 
 ## Supported scenarios
 
-- MODE 1: Android transaction phone running THE CARL and receiving SMS locally
+- MODE 1: Android transaction phone running Zazi and receiving SMS locally
 - MODE 2: dedicated approved companion Android device linked to a branch device
 - MODE 3: manual transaction entry for feature phones or unsupported devices
 

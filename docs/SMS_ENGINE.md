@@ -1,6 +1,6 @@
 # SMS Engine
 
-THE CARL accepts transaction evidence only from supported, explicitly permitted sources. The system does not claim to read arbitrary personal SMS from feature phones without a valid communication path.
+Zazi accepts transaction evidence only from supported, explicitly permitted sources. The system does not claim to read arbitrary personal SMS from feature phones without a valid communication path.
 
 ## Supported model
 

@@ -16,9 +16,9 @@ the colour.
 
 | Project | Provider | Proves |
 |---|---|---|
-| `TheCarl.UnitTests` | EF InMemory | Domain policy, auth, revocation, fingerprints |
-| `TheCarl.IntegrationTests` (HTTP) | EF InMemory | Authorization and tenancy through the real pipeline |
-| `TheCarl.IntegrationTests/Postgres` | **PostgreSQL** | Idempotency, concurrency, constraints, atomicity |
+| `Zazi.UnitTests` | EF InMemory | Domain policy, auth, revocation, fingerprints |
+| `Zazi.IntegrationTests` (HTTP) | EF InMemory | Authorization and tenancy through the real pipeline |
+| `Zazi.IntegrationTests/Postgres` | **PostgreSQL** | Idempotency, concurrency, constraints, atomicity |
 
 The InMemory provider enforces neither unique indexes nor check constraints and has no
 transactions. Anything that depends on the database actually saying "no" must run on
@@ -28,10 +28,10 @@ PostgreSQL — which is why that layer exists separately.
 
 The fixture tries two sources, in order.
 
-### 1. An existing server — `THECARL_TEST_POSTGRES`
+### 1. An existing server — `ZAZI_TEST_POSTGRES`
 
 ```bash
-export THECARL_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=carl;Password=…"
+export ZAZI_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=carl;Password=…"
 dotnet test
 ```
 
@@ -84,7 +84,7 @@ administrator access. The binaries come from Maven Central (the distribution the
 > reverts to skipping every PostgreSQL test. Use a durable path.
 
 ```bash
-WORK="$HOME/.thecarl-testdb" && mkdir -p "$WORK" && cd "$WORK"
+WORK="$HOME/.zazi-testdb" && mkdir -p "$WORK" && cd "$WORK"
 
 # 1. Fetch and unpack (arm64; use ...-darwin-amd64 on Intel)
 curl -fsSLO https://repo1.maven.org/maven2/io/zonky/test/postgres/embedded-postgres-binaries-darwin-arm64v8/16.2.0/embedded-postgres-binaries-darwin-arm64v8-16.2.0.jar
@@ -107,7 +107,7 @@ mkdir -p /tmp/carlpg
   -l "$WORK/pg.log" start
 
 # 4. Point the tests at it
-export THECARL_TEST_POSTGRES="Host=127.0.0.1;Port=55432;Database=postgres;Username=carl;Password=carl-test-password"
+export ZAZI_TEST_POSTGRES="Host=127.0.0.1;Port=55432;Database=postgres;Username=carl;Password=carl-test-password"
 dotnet test
 
 # 5. Stop when finished
@@ -129,7 +129,7 @@ Notes:
   ```
 
   Every port below is overridable — `pg_ctl -o "-p <port>"` and the matching
-  `Port=<port>` in `THECARL_TEST_POSTGRES`.
+  `Port=<port>` in `ZAZI_TEST_POSTGRES`.
 - `max_connections=400` is a test-harness requirement, not a product one. Each test class
   holds its own API factory with a bounded pool (15), and the concurrency tests open many at
   once.
@@ -223,15 +223,15 @@ the manifest registration, the broadcast, PDU reassembly and the capture pipelin
 covered rather than assumed.
 
 ```bash
-adb shell pm grant app.thecarl android.permission.RECEIVE_SMS
+adb shell pm grant app.zazi android.permission.RECEIVE_SMS
 
 # Establish a session and record a baseline
 adb shell am instrument -w \
-  -e class 'app.thecarl.SmsReceiverInstrumentedTest#signsInAndRecordsTheBaseline' \
+  -e class 'app.zazi.SmsReceiverInstrumentedTest#signsInAndRecordsTheBaseline' \
   -e carlEmail '<agent>' -e carlPassword '<password>' \
-  app.thecarl.test/androidx.test.runner.AndroidJUnitRunner
+  app.zazi.test/androidx.test.runner.AndroidJUnitRunner
 
-adb shell am kill app.thecarl          # see the warning below
+adb shell am kill app.zazi          # see the warning below
 
 REF="MP240817.$(date +%H%M%S).X$RANDOM"
 MSG="Cash In of GHS 750.00 from 0241000099 TEST SYNTHETIC. Ref: $REF"
@@ -239,9 +239,9 @@ adb emu sms send MTN "$MSG"; sleep 14
 adb emu sms send MTN "$MSG"; sleep 14   # the same message twice, on purpose
 
 adb shell am instrument -w \
-  -e class 'app.thecarl.SmsReceiverInstrumentedTest#theInjectedMessageBecameExactlyOneTransaction' \
+  -e class 'app.zazi.SmsReceiverInstrumentedTest#theInjectedMessageBecameExactlyOneTransaction' \
   -e carlEmail '<agent>' -e carlPassword '<password>' \
-  app.thecarl.test/androidx.test.runner.AndroidJUnitRunner
+  app.zazi.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 Three things will waste an afternoon if they are not known in advance:
@@ -263,7 +263,7 @@ Three things will waste an afternoon if they are not known in advance:
   confirm the baseline exists before trusting a green first half:
 
   ```bash
-  adb shell run-as app.thecarl cat files/sms-receiver-baseline.txt
+  adb shell run-as app.zazi cat files/sms-receiver-baseline.txt
   ```
 
 `adb emu sms send` delivers a single-part message. Multipart joining is covered separately by

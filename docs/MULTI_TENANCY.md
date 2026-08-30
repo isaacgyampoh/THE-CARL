@@ -1,6 +1,6 @@
 # Multi-tenancy
 
-THE CARL is a multi-tenant SaaS platform. Isolation is enforced server-side, on every
+Zazi is a multi-tenant SaaS platform. Isolation is enforced server-side, on every
 request, from the access token.
 
 ## Structure
@@ -30,7 +30,7 @@ No branch limit is hardcoded anywhere. An organization may have 1 or 500 branche
 > header, or request body.
 
 This is enforced structurally rather than by convention: the client-facing request models
-in `src/TheCarl.Api/Models/ApiRequests.cs` have **no `OrganizationId` field at all**, so
+in `src/Zazi.Api/Models/ApiRequests.cs` have **no `OrganizationId` field at all**, so
 there is no value for a client to tamper with. Controllers construct the internal
 application request using `ICurrentUserContext.OrganizationId`.
 
@@ -82,7 +82,7 @@ guarded most tightly. An `OWNER` cannot enumerate other organizations.
 
 ## Verification
 
-`tests/TheCarl.IntegrationTests/TenantIsolationTests.cs` exercises these over real HTTP
+`tests/Zazi.IntegrationTests/TenantIsolationTests.cs` exercises these over real HTTP
 through the full pipeline: cross-tenant list reads, cross-tenant session reads,
 cross-tenant writes, cross-branch writes inside one organization, tokens signed with a
 foreign key, and identical SMS text captured by two tenants.

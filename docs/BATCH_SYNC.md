@@ -5,7 +5,7 @@
 Accepts transactions a device captured while offline. Implements
 [OFFLINE_TRANSACTION_CONTRACT.md](OFFLINE_TRANSACTION_CONTRACT.md).
 
-THE CARL never initiates, authorises or moves money. This endpoint records evidence of
+Zazi never initiates, authorises or moves money. This endpoint records evidence of
 transactions that already happened on a provider's network.
 
 ---

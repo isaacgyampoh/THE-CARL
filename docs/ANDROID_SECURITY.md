@@ -1,6 +1,6 @@
 # Android Security Model
 
-What THE CARL protects on an Android device, how, and what it deliberately does not claim.
+What Zazi protects on an Android device, how, and what it deliberately does not claim.
 
 ---
 
@@ -8,11 +8,11 @@ What THE CARL protects on an Android device, how, and what it deliberately does 
 
 | Data | Location | Protection |
 |---|---|---|
-| Access token | `thecarl.credentials` preferences | AES-256/GCM, key in Android Keystore |
+| Access token | `zazi.credentials` preferences | AES-256/GCM, key in Android Keystore |
 | Refresh token | same | same |
 | Device installation id | same | same |
-| Database passphrase | `thecarl.database` preferences | 32 random bytes, wrapped by the same Keystore key |
-| Evidence, transactions, outbox | `thecarl.db` (Room) | SQLCipher, key from above |
+| Database passphrase | `zazi.database` preferences | 32 random bytes, wrapped by the same Keystore key |
+| Evidence, transactions, outbox | `zazi.db` (Room) | SQLCipher, key from above |
 | Raw SMS bodies | `transaction_evidence.rawMessage` | Encrypted with the database; purgeable |
 
 **Credentials are never in Room.** The database is for operational data; a database

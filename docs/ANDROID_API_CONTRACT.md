@@ -1,7 +1,7 @@
 # Android ↔ API Contract
 
 Derived by reading the .NET controllers, not designed independently. Every endpoint below
-exists in `src/TheCarl.Api/Controllers/`. Where Android needs something the server does not
+exists in `src/Zazi.Api/Controllers/`. Where Android needs something the server does not
 provide, it is listed under [Gaps](#gaps) rather than invented client-side.
 
 Base path: `/api/v1`. Bearer token on everything except login, refresh and health.
@@ -11,7 +11,7 @@ Base path: `/api/v1`. Bearer token on everything except login, refresh and healt
 ## The one rule that shapes everything
 
 **The client never sends an organization id.** Tenancy is derived server-side from the
-access token. No request model in `src/TheCarl.Api/Models/` carries an `organizationId`
+access token. No request model in `src/Zazi.Api/Models/` carries an `organizationId`
 field, and the Android DTOs mirror that — `SyncWireContractTest` asserts the serialised
 request contains no such key.
 
@@ -127,7 +127,7 @@ RFC 7807 problem+json for request-level failures, always carrying `correlationId
 
 ```json
 { "status": 413, "title": "The synchronisation batch is too large.",
-  "type": "https://thecarl.app/problems/413",
+  "type": "https://zazi.app/problems/413",
   "correlationId": "…", "maxBatchSize": 100, "submitted": 250 }
 ```
 

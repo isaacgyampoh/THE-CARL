@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "app.thecarl"
+    namespace = "app.zazi"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.thecarl"
+        applicationId = "app.zazi"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

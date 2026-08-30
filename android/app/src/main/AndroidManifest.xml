@@ -7,7 +7,7 @@
 
     <!--
       RECEIVE_SMS only. READ_SMS would grant access to the entire message history, which
-      THE CARL has no reason to read: it observes transaction alerts as they arrive and
+      Zazi has no reason to read: it observes transaction alerts as they arrive and
       never trawls the inbox. SEND_SMS is deliberately absent — the product observes and
       reconciles, it does not transact.
     -->
@@ -22,7 +22,7 @@
         android:required="false" />
 
     <application
-        android:name=".CarlApplication"
+        android:name=".ZaziApplication"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -57,7 +57,7 @@
 
         <!--
           WorkManager's default initialiser is removed so the application can supply
-          CarlWorkerFactory. Without this, SyncWorker would be constructed reflectively with
+          ZaziWorkerFactory. Without this, SyncWorker would be constructed reflectively with
           no dependencies and could not reach the sync engine.
         -->
         <provider

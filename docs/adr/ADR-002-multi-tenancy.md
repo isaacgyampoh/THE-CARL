@@ -5,7 +5,7 @@
 
 ## Context
 
-THE CARL serves multiple businesses and branches. Each device, transaction, and user must remain within the correct tenant boundary.
+Zazi serves multiple businesses and branches. Each device, transaction, and user must remain within the correct tenant boundary.
 
 ## Decision
 

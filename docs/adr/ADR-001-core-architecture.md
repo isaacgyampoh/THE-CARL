@@ -5,7 +5,7 @@
 
 ## Context
 
-THE CARL must support offline-first mobile workflows, local transport, and cloud reconciliation without starting with a large infrastructure footprint. The repository is greenfield and no prior implementation exists.
+Zazi must support offline-first mobile workflows, local transport, and cloud reconciliation without starting with a large infrastructure footprint. The repository is greenfield and no prior implementation exists.
 
 ## Decision
 

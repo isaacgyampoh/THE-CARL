@@ -4,7 +4,7 @@ The wire and storage contract between an offline Android device and the API. Thi
 is the specification the Android client is built against; it is deliberately written before
 any UI exists.
 
-THE CARL never initiates, authorises or moves money. Everything below concerns recording
+Zazi never initiates, authorises or moves money. Everything below concerns recording
 evidence of transactions that already happened elsewhere.
 
 ---

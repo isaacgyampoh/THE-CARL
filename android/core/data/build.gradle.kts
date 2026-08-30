@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "app.thecarl.core.data"
+    namespace = "app.zazi.core.data"
     compileSdk = 35
 
     defaultConfig {

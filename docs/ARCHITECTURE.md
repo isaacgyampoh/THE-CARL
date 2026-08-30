@@ -1,8 +1,8 @@
-# THE CARL Architecture
+# Zazi Architecture
 
 ## Overview
 
-THE CARL is a production-grade mobile money business operations platform. It manages organization onboarding, branch operations, session tracking, transaction capture, reconciliation, and multi-device coordination under a multi-tenant SaaS model.
+Zazi is a production-grade mobile money business operations platform. It manages organization onboarding, branch operations, session tracking, transaction capture, reconciliation, and multi-device coordination under a multi-tenant SaaS model.
 
 ## System boundaries
 
@@ -36,11 +36,11 @@ The data layer is configured as PostgreSQL-ready via Npgsql and EF Core migratio
 
 ## PostgreSQL and migration baseline
 
-The runtime configuration now reads a connection string from the API configuration and sets up the application DbContext with Npgsql when a production connection string is present. The initial migration is stored under `src/TheCarl.Infrastructure/Migrations` and includes the current production domain model for organizations, branches, users, sessions, transactions, audit entries, floats, reconciliation records, and the sync-queue model used for offline-first processing.
+The runtime configuration now reads a connection string from the API configuration and sets up the application DbContext with Npgsql when a production connection string is present. The initial migration is stored under `src/Zazi.Infrastructure/Migrations` and includes the current production domain model for organizations, branches, users, sessions, transactions, audit entries, floats, reconciliation records, and the sync-queue model used for offline-first processing.
 
 ## Android offline architecture
 
-The platform now includes a real offline-first queue model for local device event persistence. Pending events are captured in durable application storage and can be processed when connectivity returns. This supports the mobile-money operating model required by THE CARL: capture locally, queue, synchronize, validate, and then reconcile without losing a transaction because the internet disappears.
+The platform now includes a real offline-first queue model for local device event persistence. Pending events are captured in durable application storage and can be processed when connectivity returns. This supports the mobile-money operating model required by Zazi: capture locally, queue, synchronize, validate, and then reconcile without losing a transaction because the internet disappears.
 
 ## SMS capture and parser architecture
 
@@ -71,7 +71,7 @@ The platform now includes organization-level float alert thresholds and dashboar
 
 # Core rule: four separate concepts
 
-THE CARL keeps four things apart that are easy to conflate. Folding any two together creates
+Zazi keeps four things apart that are easy to conflate. Folding any two together creates
 two sources of truth that drift, and in a financial system drift means wrong money.
 
 | Concept | Answers | Type | Authority |

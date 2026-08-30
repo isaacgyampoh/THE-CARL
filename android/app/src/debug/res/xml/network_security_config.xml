@@ -2,7 +2,7 @@
 <!--
   DEBUG ONLY. This file lives in src/debug and is never merged into a release build.
 
-  Android blocks cleartext HTTP by default from API 28, which is correct: THE CARL moves
+  Android blocks cleartext HTTP by default from API 28, which is correct: Zazi moves
   financial evidence and must use TLS in production. Local development targets a backend on
   the host machine over plain HTTP, so exactly one destination is permitted — 10.0.2.2, the
   emulator's alias for the host loopback.

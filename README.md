@@ -1,6 +1,6 @@
-# THE CARL
+# Zazi
 
-THE CARL is a production-grade SaaS platform for Mobile Money businesses. It captures evidence of business movements, records expected position, and reconciles operational reality without executing Mobile Money transactions itself.
+Zazi is a production-grade SaaS platform for Mobile Money businesses. It captures evidence of business movements, records expected position, and reconciles operational reality without executing Mobile Money transactions itself.
 
 ## Status
 
@@ -9,7 +9,7 @@ This repository is currently greenfield. No application code, infrastructure, or
 ## Core architectural truth
 
 - A phone with internet cannot directly read SMS stored on a different offline phone.
-- Therefore THE CARL must support multiple capture architectures:
+- Therefore Zazi must support multiple capture architectures:
   - Mode A: Smart transaction phone with internet
   - Mode B: Smart transaction phone + Hub over local transport
   - Mode C: Feature/YAM fallback or manual capture path
@@ -17,9 +17,9 @@ This repository is currently greenfield. No application code, infrastructure, or
 
 ## Non-goals
 
-- THE CARL does not move money
-- THE CARL does not replace the MoMo transaction itself
-- THE CARL does not claim remote SMS access where no communication path exists
+- Zazi does not move money
+- Zazi does not replace the MoMo transaction itself
+- Zazi does not claim remote SMS access where no communication path exists
 
 ## Target architecture
 

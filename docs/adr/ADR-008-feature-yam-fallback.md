@@ -13,7 +13,7 @@ Use the fallback priority order:
 1. Manual transaction entry
 2. Supported carrier/provider integration
 3. Approved external SMS gateway/hardware capture
-4. Future THE CARL hardware gateway
+4. Future Zazi hardware gateway
 
 Every external capture option requires an ADR and feasibility review before being treated as viable.
 

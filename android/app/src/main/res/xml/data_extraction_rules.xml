@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Nothing belonging to THE CARL is eligible for cloud backup or device-to-device transfer.
+  Nothing belonging to Zazi is eligible for cloud backup or device-to-device transfer.
   The local database holds financial evidence and the encrypted credential store holds
   Keystore-wrapped secrets; a backup would move both somewhere the Keystore key cannot
   follow, producing either a leak or an unopenable database.

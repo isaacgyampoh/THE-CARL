@@ -1,9 +1,9 @@
 # Security
 
-THE CARL treats mobile money operations as sensitive operational data subject to tenant
+Zazi treats mobile money operations as sensitive operational data subject to tenant
 isolation, auditable actions, and data minimisation.
 
-THE CARL never initiates, authorises, executes, or moves money. Every financial row is
+Zazi never initiates, authorises, executes, or moves money. Every financial row is
 evidence-based accounting data.
 
 ---
@@ -100,13 +100,13 @@ These are **not** implemented and must not be described as production-ready:
 
 Authorization and isolation are covered by executable tests, not assertion in prose:
 
-- `tests/TheCarl.IntegrationTests/AnonymousAccessTests.cs` — every protected endpoint
+- `tests/Zazi.IntegrationTests/AnonymousAccessTests.cs` — every protected endpoint
   rejects anonymous callers; operational endpoints stay open; `/api/v1/status` discloses no
   version or backing-store detail.
-- `tests/TheCarl.IntegrationTests/TenantIsolationTests.cs` — cross-tenant reads and writes.
-- `tests/TheCarl.IntegrationTests/RoleAuthorizationTests.cs` — role/capability matrix and
+- `tests/Zazi.IntegrationTests/TenantIsolationTests.cs` — cross-tenant reads and writes.
+- `tests/Zazi.IntegrationTests/RoleAuthorizationTests.cs` — role/capability matrix and
   privilege-escalation attempts.
-- `tests/TheCarl.UnitTests/AuthenticationTests.cs` — hashing, rotation, reuse detection,
+- `tests/Zazi.UnitTests/AuthenticationTests.cs` — hashing, rotation, reuse detection,
   lockout, password strength, role normalisation.
 
 Run with `dotnet test`.
