@@ -11,6 +11,7 @@
     @* A plain form post, not an interactive submit: the sign-in response is what writes the
        authentication cookie, and a Blazor circuit has already sent its headers. *@
     <form method="post" action="/auth/sign-in">
+        <AntiforgeryToken />
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="username" required />
 
@@ -36,6 +37,7 @@
     {
         "invalid" => "Email or password is incorrect.",
         "missing" => "Enter your email and password.",
+        "expired" => "That form expired. Please try again.",
         _ => null
     };
 }

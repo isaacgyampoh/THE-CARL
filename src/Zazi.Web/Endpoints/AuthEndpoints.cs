@@ -1,6 +1,10 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.EntityFrameworkCore;
+using Zazi.Infrastructure;
+using Zazi.Web.Security;
 using Zazi.Application;
 using Zazi.Application.Security;
 
@@ -28,8 +32,22 @@ public static class AuthEndpoints
         routes.MapPost("/auth/sign-in", async (
             HttpContext context,
             IAuthService auth,
+            IAntiforgery antiforgery,
+            ApplicationDbContext database,
             CancellationToken cancellationToken) =>
         {
+            // Without this, any site could post a login form to this endpoint and silently
+            // sign a manager into an account the attacker controls — after which the manager
+            // reviews the attacker's figures believing they are their own branch's.
+            try
+            {
+                await antiforgery.ValidateRequestAsync(context);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.Redirect("/sign-in?error=expired");
+            }
+
             var form = await context.Request.ReadFormAsync(cancellationToken);
             var email = form["email"].ToString();
             var password = form["password"].ToString();
@@ -52,12 +70,20 @@ public static class AuthEndpoints
                 return Results.Redirect("/sign-in?error=invalid");
             }
 
+            // Captured so every later request can check it is still current. Without it a
+            // revoked account keeps a working browser session until the cookie expires.
+            var securityStamp = await database.Users
+                .Where(u => u.Id == result.User.Id)
+                .Select(u => u.SecurityStamp)
+                .SingleOrDefaultAsync(cancellationToken);
+
             var claims = new List<Claim>
             {
                 new(ClaimTypes.NameIdentifier, result.User.Id.ToString()),
                 new(ClaimTypes.Name, result.User.FullName),
                 new(ClaimTypes.Email, result.User.Email),
-                new(ZaziClaimTypes.OrganizationId, result.User.OrganizationId.ToString())
+                new(ZaziClaimTypes.OrganizationId, result.User.OrganizationId.ToString()),
+                new(ZaziClaimTypes.SecurityStamp, securityStamp ?? string.Empty)
             };
 
             if (result.User.BranchId is { } branchId)
@@ -76,10 +102,25 @@ public static class AuthEndpoints
                 new ClaimsPrincipal(identity));
 
             return Results.Redirect("/");
-        }).AllowAnonymous().DisableAntiforgery();
+        }).AllowAnonymous()
+          // Antiforgery is validated explicitly above rather than by the filter, because the
+          // failure must render a readable message instead of a bare 400.
+          .DisableAntiforgery()
+          .RequireRateLimiting(WebRateLimitPolicies.Authentication);
 
-        routes.MapPost("/auth/sign-out", async (HttpContext context) =>
+        routes.MapPost("/auth/sign-out", async (HttpContext context, IAntiforgery antiforgery) =>
         {
+            // Also token-checked: a forced sign-out is a nuisance an attacker should not be
+            // able to trigger from another site.
+            try
+            {
+                await antiforgery.ValidateRequestAsync(context);
+            }
+            catch (AntiforgeryValidationException)
+            {
+                return Results.Redirect("/");
+            }
+
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.Redirect("/sign-in");
         }).DisableAntiforgery();

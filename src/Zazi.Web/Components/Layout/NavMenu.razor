@@ -8,6 +8,7 @@
             <span class="who">@context.User.Identity?.Name</span>
             @* A form post, because signing out must clear the cookie on a real response. *@
             <form method="post" action="/auth/sign-out">
+                <AntiforgeryToken />
                 <button type="submit" class="link">Sign out</button>
             </form>
         </Authorized>

@@ -110,3 +110,28 @@ Authorization and isolation are covered by executable tests, not assertion in pr
   lockout, password strength, role normalisation.
 
 Run with `dotnet test`.
+
+## Web session security
+
+The browser session is a cookie, and a cookie has no natural expiry the way a short-lived
+access token does. Three controls close that gap.
+
+**Revocation reaches an open session.** `OnValidatePrincipal` re-reads the account on every
+request and rejects the cookie when the account is gone, deactivated, or its security stamp
+has been rotated. Without it, revoking a user would leave their browser working for the
+remaining eight hours of the cookie — a weaker guarantee than the API gives for the same act,
+where a refused refresh ends the session within one token lifetime. It reads the stamp the
+existing revocation service already rotates; there is no second revocation mechanism.
+
+**Sign-in and sign-out are antiforgery-checked.** Login CSRF is the one that matters: without
+a token check, any site could post a login form and silently sign a manager into an account
+the attacker controls, after which the manager reviews the attacker's figures believing they
+are their own branch's. Signing someone *in* is as dangerous here as signing them out.
+
+**Sign-in is rate limited per IP**, matching the API's credential policy of ten attempts per
+minute. Account lockout already blunts a targeted guess against one account; the limiter
+blunts a spray across many accounts from one source, which lockout alone does not see.
+
+Passwords are verified only by `IAuthService`, against the same user store, the same PBKDF2
+parameters and the same lockout counters as the API. The cookie records who was verified. It
+never becomes a second way to prove identity, and no password is written to it.

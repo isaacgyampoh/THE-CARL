@@ -1,5 +1,7 @@
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zazi.Application;
 using Zazi.Application.Security;
@@ -47,7 +49,27 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
+
+        // Revocation must reach an open browser session, not wait for the cookie to expire.
+        options.Events.OnValidatePrincipal = RevokedSessionValidator.ValidateAsync;
     });
+
+// Mirrors the API's credential policy. Account lockout already blunts a targeted guess; this
+// blunts a spray across many accounts from one source, which lockout alone does not.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(WebRateLimitPolicies.Authentication, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 
 builder.Services.AddAuthorization(options =>
 {
@@ -77,6 +99,10 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/error", createScopeForErrors: true);
     app.UseHsts();
+
+    // A password posted over plain HTTP is a password disclosed. Development is exempt so
+    // the app remains reachable on a loopback address without a certificate.
+    app.UseHttpsRedirection();
 }
 
 app.UseStaticFiles();
@@ -84,6 +110,7 @@ app.UseAntiforgery();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapAuthEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
