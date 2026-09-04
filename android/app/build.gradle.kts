@@ -60,29 +60,6 @@ android {
         debug {
             isMinifyEnabled = false
         }
-        // Minified and signed exactly like release, but permitted to reach a backend on the
-        // local network over plain HTTP. It exists so a trial can run on someone's office
-        // wifi, and so the instrumentation suite can be run against R8-minified code — a
-        // missing keep rule shows up nowhere else. Never ship it.
-        create("pilot") {
-            initWith(getByName("release"))
-            matchingFallbacks += "release"
-            signingConfig = signingConfigs.findByName("release")
-
-            // Minification is OFF, unlike release, and that is a stopgap rather than a
-            // preference. A minified build currently aborts during application startup,
-            // inside the container's lazy initialisation — see docs/ANDROID_SECURITY.md.
-            // Until that is root-caused with a retrace, a pilot needs a build that runs, and
-            // shipping an unminified pilot is preferable to shipping one that crashes.
-            isMinifyEnabled = false
-            isShrinkResources = false
-
-            // Cleartext is permitted by src/pilot's network security config. It is scoped
-            // to this build type rather than to a host list, because a pilot's server
-            // address is whichever laptop is running it and pinning that would mean either
-            // generating the file per build or committing someone's IP.
-        }
-
         release {
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
@@ -92,6 +69,30 @@ android {
             // above, so running tests against release needs its own.
             testProguardFiles("test-proguard-rules.pro")
         }
+
+        // Minified and signed exactly like release, but permitted to reach a backend on the
+        // local network over plain HTTP. It exists so a trial can run on someone's office
+        // wifi, and so the instrumentation suite can be run against R8-minified code — a
+        // missing keep rule shows up nowhere else. Never ship it.
+        create("pilot") {
+            // Declared after release, and that ordering is load-bearing: initWith copies a
+            // build type as it stands at that moment. Declared first, it copied release
+            // before proguardFiles had been added, producing a build that was minified with
+            // no keep rules at all — which stripped the field SQLCipher's native library
+            // resolves by name, and the app aborted on startup.
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            signingConfig = signingConfigs.findByName("release")
+
+            isMinifyEnabled = true
+            isShrinkResources = true
+
+            // Cleartext is permitted by src/pilot's network security config. It is scoped
+            // to this build type rather than to a host list, because a pilot's server
+            // address is whichever laptop is running it and pinning that would mean either
+            // generating the file per build or committing someone's IP.
+        }
+
     }
 
     buildFeatures {

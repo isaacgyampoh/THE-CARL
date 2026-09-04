@@ -133,29 +133,30 @@ transitively, so `androidTestImplementation(libs.androidx.test.runner)` must sta
 the test APK builds and installs, then dies at startup with `ClassNotFoundException` before a
 single assertion runs — which reads as "no tests" rather than as a failure.
 
-## Known defect: the minified build aborts at startup
 
-`isMinifyEnabled = true` produces an APK that installs and then aborts during
-`ZaziApplication.onCreate`, inside the container's lazy initialisation. The abort is an ART
-runtime abort rather than a Java exception, with the main thread deep in
-`CopyOnWriteArraySet.iterator`, which is the shape of runaway recursion rather than a missing
-class.
+## Minification and the SQLCipher JNI field
 
-It was found by running the build rather than by reading it. A debug build, the unit suites,
-the instrumentation suites and a successful `assembleRelease` are all green — none of them
-execute R8 output. `app/proguard-rules.pro` carries keep rules for kotlinx.serialization,
-Retrofit, Room, SQLCipher and WorkManager, so the obvious stripping causes are already
-covered and this is something subtler.
+SQLCipher's native library resolves `long mNativeHandle` on
+`net.sqlcipher.database.SQLiteDatabase` **by name** from `JNI_OnLoad`. If R8 removes or
+renames that field, `System.loadLibrary` throws `NoSuchFieldError` from inside `nativeLoad`,
+and the process aborts before any application code can report it. `app/proguard-rules.pro`
+keeps the SQLCipher packages for exactly this reason.
 
-Until it is root-caused, the `pilot` build type is signed but not minified, so a trial has a
-build that runs. **The release build must not be shipped in this state.**
+A build type that is minified without those rules will therefore abort on startup. That is
+not hypothetical: the `pilot` build type did precisely this, because it was declared *before*
+`release` and `initWith(release)` copies a build type as it stands at that moment — so it
+inherited a release that had no `proguardFiles` yet. The build succeeded, the APK installed,
+and it died opening the database.
 
-Root-causing it starts with retracing the obfuscated frames against the mapping file:
+Two things follow. Declaration order in `buildTypes` is load-bearing whenever `initWith` is
+used, and a minified build must be launched before it is trusted: a successful
+`assembleRelease` proves nothing about R8 output, because no unit or instrumentation test
+executes it.
 
+To confirm a variant actually received the rules:
+
+```bash
+grep -c "proguard-rules.pro" app/build/outputs/mapping/<variant>/configuration.txt
 ```
-android/app/build/outputs/mapping/release/mapping.txt
-retrace mapping.txt <saved-logcat>
-```
 
-The frames to resolve are `u1.h.c`, `N1.x.getValue` and `u1.p.K` beneath
-`app.zazi.ZaziApplication$a.s`.
+Zero means the variant is being minified with no keep rules at all.
