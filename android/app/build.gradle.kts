@@ -16,22 +16,81 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Base URL is configuration, not a constant. 10.0.2.2 is the host loopback as seen
-        // from an emulator; release builds override it. No credential or secret is ever a
-        // build-config value.
-        // 10.0.2.2 is the emulator's alias for the host loopback. Port 5055 avoids
-        // macOS AirPlay Receiver, which occupies 5000 and answers 403.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:5055/\"")
+        // Base URL is configuration, not a constant, and a pilot on a real handset needs a
+        // different one from an emulator: 10.0.2.2 is the emulator's alias for the host
+        // loopback and means nothing on a phone. Override without editing this file:
+        //
+        //   ./gradlew assembleDebug -PapiBaseUrl=http://192.168.1.20:5055/
+        //
+        // Port 5055 avoids macOS AirPlay Receiver, which occupies 5000 and answers 403.
+        // No credential or secret is ever a build-config value.
+        val apiBaseUrl = (project.findProperty("apiBaseUrl") as String?)
+            ?: "http://10.0.2.2:5055/"
+
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
+
+    // Signing material never lives in the repository. A release build is signed when the
+    // four properties are supplied — by CI, or by a local gradle.properties that is not
+    // committed — and is left unsigned otherwise rather than failing the build, so an
+    // unsigned release can still be produced for inspection.
+    val releaseStore = (project.findProperty("zaziKeystore") as String?)?.let(::file)
+
+    signingConfigs {
+        if (releaseStore != null && releaseStore.exists()) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = project.findProperty("zaziKeystorePassword") as String?
+                keyAlias = project.findProperty("zaziKeyAlias") as String?
+                keyPassword = project.findProperty("zaziKeyPassword") as String?
+            }
+        }
+    }
+
+    // Instrumentation normally runs against the debug build. Pointing it at release runs the
+    // same suite against R8-minified code, which is the only way to catch a keep rule that is
+    // missing: the failure never appears in a debug build, a unit test, or a successful
+    // release build — only at runtime, when a serializer or a Retrofit interface has been
+    // stripped and an agent's queued work cannot be submitted.
+    //
+    //   ./gradlew :app:connectedAndroidTest -PtestBuildType=release -PzaziKeystore=…
+    testBuildType = (project.findProperty("testBuildType") as String?) ?: "debug"
 
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
+        // Minified and signed exactly like release, but permitted to reach a backend on the
+        // local network over plain HTTP. It exists so a trial can run on someone's office
+        // wifi, and so the instrumentation suite can be run against R8-minified code — a
+        // missing keep rule shows up nowhere else. Never ship it.
+        create("pilot") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            signingConfig = signingConfigs.findByName("release")
+
+            // Minification is OFF, unlike release, and that is a stopgap rather than a
+            // preference. A minified build currently aborts during application startup,
+            // inside the container's lazy initialisation — see docs/ANDROID_SECURITY.md.
+            // Until that is root-caused with a retrace, a pilot needs a build that runs, and
+            // shipping an unminified pilot is preferable to shipping one that crashes.
+            isMinifyEnabled = false
+            isShrinkResources = false
+
+            // Cleartext is permitted by src/pilot's network security config. It is scoped
+            // to this build type rather than to a host list, because a pilot's server
+            // address is whichever laptop is running it and pinning that would mean either
+            // generating the file per build or committing someone's IP.
+        }
+
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // The instrumentation APK is shrunk separately and does not inherit the rules
+            // above, so running tests against release needs its own.
+            testProguardFiles("test-proguard-rules.pro")
         }
     }
 

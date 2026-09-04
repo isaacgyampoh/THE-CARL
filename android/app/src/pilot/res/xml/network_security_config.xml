@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PILOT ONLY. Lives in src/pilot and is never merged into a release build.
+
+  A trial runs the backend on a laptop on the same network as the agent's handset, which in
+  practice means plain HTTP: a trusted certificate for a machine reachable only on someone's
+  office wifi is not realistic for a short trial. The server address is whichever laptop is
+  running it, so naming permitted hosts here would mean committing somebody's IP address or
+  generating this file on every build.
+
+  Cleartext is therefore permitted for this build type as a whole. That is a real relaxation,
+  and it is why this build type exists separately and is named the way it is: the release
+  build carries no cleartext exception at all, so a production deployment must use TLS and
+  nothing about this file can weaken it.
+
+  Do not ship a pilot build.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

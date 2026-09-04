@@ -132,3 +132,30 @@ Note the dependency this needs: `androidx.test.ext:junit` does not bring `androi
 transitively, so `androidTestImplementation(libs.androidx.test.runner)` must stay. Without it
 the test APK builds and installs, then dies at startup with `ClassNotFoundException` before a
 single assertion runs — which reads as "no tests" rather than as a failure.
+
+## Known defect: the minified build aborts at startup
+
+`isMinifyEnabled = true` produces an APK that installs and then aborts during
+`ZaziApplication.onCreate`, inside the container's lazy initialisation. The abort is an ART
+runtime abort rather than a Java exception, with the main thread deep in
+`CopyOnWriteArraySet.iterator`, which is the shape of runaway recursion rather than a missing
+class.
+
+It was found by running the build rather than by reading it. A debug build, the unit suites,
+the instrumentation suites and a successful `assembleRelease` are all green — none of them
+execute R8 output. `app/proguard-rules.pro` carries keep rules for kotlinx.serialization,
+Retrofit, Room, SQLCipher and WorkManager, so the obvious stripping causes are already
+covered and this is something subtler.
+
+Until it is root-caused, the `pilot` build type is signed but not minified, so a trial has a
+build that runs. **The release build must not be shipped in this state.**
+
+Root-causing it starts with retracing the obfuscated frames against the mapping file:
+
+```
+android/app/build/outputs/mapping/release/mapping.txt
+retrace mapping.txt <saved-logcat>
+```
+
+The frames to resolve are `u1.h.c`, `N1.x.getValue` and `u1.p.K` beneath
+`app.zazi.ZaziApplication$a.s`.
