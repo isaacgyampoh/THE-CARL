@@ -160,3 +160,42 @@ grep -c "proguard-rules.pro" app/build/outputs/mapping/<variant>/configuration.t
 ```
 
 Zero means the variant is being minified with no keep rules at all.
+
+## Client telemetry
+
+The handset reports what it observed so a failure can be diagnosed from the dashboard rather
+than from someone's logcat. It is the client half of the server's existing audit model: each
+report becomes an `AuditLogEntry` with `Source = "Android"`, alongside the entries the server
+writes for itself.
+
+**What is sent.** An event type from a closed set, a severity, a status, a classification
+code, a short summary built from fixed vocabulary, a duration, and the correlation id of the
+request it describes.
+
+**What is never sent.** There is deliberately no field for any of it: no password or PIN, no
+access or refresh token, no `Authorization` header, no cookie, no request or response body, no
+database key, no raw SMS, no customer phone number, and no exception message. Failures travel
+as an `errorCode` from a fixed enum, so telemetry cannot become a way to move message contents
+off the device. HTTP events record the method and a normalised route — `/api/v1/transactions/{id}`,
+never the URL, because a query string can carry an email address and a path with an id in it
+would also split one failing endpoint into one error group per transaction.
+
+**Correlation.** The interceptor generates a correlation id when the caller has none and sends
+it as `X-Correlation-Id`, the header the backend already reads. The server echoes it and stamps
+its own audit entry with it, so one trace shows the handset's attempt and the server's answer.
+Client events that describe a specific request carry that request's id rather than the id of the
+batch that later delivered them.
+
+**Delivery is best effort.** Recording happens off the caller's thread and every failure is
+swallowed: an operation has already happened by the time it is described, and telemetry that
+could fail a capture, a login or a sync would be worse than none. Uploads ride along with the
+existing sync pass rather than scheduling work of their own, so diagnostics never wake a handset
+by themselves. Events are deleted only after the server accepts them.
+
+**The queue is bounded**: 500 events and seven days, whichever comes first, with the newest
+kept. A handset out of signal for a week discards old diagnostics rather than filling its own
+storage.
+
+**Investigating an incident.** Find the failure on `/operations`, follow its correlation id to
+`/operations/trace/{id}`, and read the handset's events and the server's on one timeline. Device
+health shows app version, last seen and recent failures per device.

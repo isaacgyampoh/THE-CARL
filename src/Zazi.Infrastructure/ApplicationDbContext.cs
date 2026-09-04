@@ -59,6 +59,15 @@ public class ApplicationDbContext : DbContext
                 continue;
             }
 
+            // An entry that arrived from a client describes a different moment than the
+            // request carrying it. Stamping the upload's correlation onto it would file a
+            // login under the trace of the telemetry batch that happened to deliver it, and
+            // the resulting timeline would be fiction.
+            if (entry.Entity.Source is not null)
+            {
+                continue;
+            }
+
             // Resolved once, and only when there is something to stamp.
             correlationId ??= _currentUser.CorrelationId;
 
@@ -68,7 +77,7 @@ public class ApplicationDbContext : DbContext
                 entry.Entity.CorrelationId = correlationId;
             }
 
-            entry.Entity.Source ??= entry.Entity.ActorType;
+            entry.Entity.Source = entry.Entity.ActorType;
         }
     }
 

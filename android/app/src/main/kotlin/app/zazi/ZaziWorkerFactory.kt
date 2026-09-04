@@ -6,6 +6,7 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import app.zazi.core.data.sync.SyncEngine
 import app.zazi.core.data.sync.SyncWorker
+import app.zazi.core.data.telemetry.TelemetryUploader
 
 /**
  * Supplies workers their dependencies.
@@ -15,14 +16,17 @@ import app.zazi.core.data.sync.SyncWorker
  * [SyncWorker] would have to reach for a global singleton — exactly the shortcut that makes
  * a sync engine untestable.</p>
  */
-class ZaziWorkerFactory(private val syncEngine: SyncEngine) : WorkerFactory() {
+class ZaziWorkerFactory(
+    private val syncEngine: SyncEngine,
+    private val telemetryUploader: TelemetryUploader? = null
+) : WorkerFactory() {
 
     override fun createWorker(
         appContext: Context,
         workerClassName: String,
         workerParameters: WorkerParameters
     ): ListenableWorker? = when (workerClassName) {
-        SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, syncEngine)
+        SyncWorker::class.java.name -> SyncWorker(appContext, workerParameters, syncEngine, telemetryUploader)
 
         // Returning null delegates to the default factory rather than failing, so a worker
         // added later without a factory entry still runs.

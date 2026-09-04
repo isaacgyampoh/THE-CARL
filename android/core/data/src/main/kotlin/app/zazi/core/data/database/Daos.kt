@@ -259,3 +259,37 @@ interface CaptureDao {
         outboxItem?.let { insertOutboxItem(it) }
     }
 }
+
+@Dao
+interface TelemetryDao {
+
+    @Insert
+    suspend fun insert(event: TelemetryEventEntity)
+
+    @Query("SELECT * FROM telemetry_events ORDER BY occurredAtUtcMillis ASC LIMIT :limit")
+    suspend fun oldest(limit: Int): List<TelemetryEventEntity>
+
+    @Query("DELETE FROM telemetry_events WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
+
+    @Query("SELECT COUNT(*) FROM telemetry_events")
+    suspend fun count(): Int
+
+    /**
+     * Drops the oldest rows beyond [keep].
+     *
+     * <p>Telemetry is bounded so a handset that cannot reach the server for a week does not
+     * fill its own storage with diagnostics. The newest events are kept because they describe
+     * whatever is wrong now.</p>
+     */
+    @Query("""
+        DELETE FROM telemetry_events WHERE id NOT IN (
+            SELECT id FROM telemetry_events ORDER BY occurredAtUtcMillis DESC LIMIT :keep
+        )
+    """)
+    suspend fun trimTo(keep: Int)
+
+    /** Discards events too old to be worth reporting. */
+    @Query("DELETE FROM telemetry_events WHERE occurredAtUtcMillis < :cutoffUtcMillis")
+    suspend fun deleteOlderThan(cutoffUtcMillis: Long)
+}

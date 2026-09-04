@@ -5,6 +5,11 @@ import androidx.work.Configuration
 import androidx.work.WorkManager
 import app.zazi.core.data.session.SessionState
 import app.zazi.core.data.sync.SyncWorker
+import app.zazi.core.domain.telemetry.TelemetryErrorCode
+import app.zazi.core.domain.telemetry.TelemetryEvent
+import app.zazi.core.domain.telemetry.TelemetryEventType
+import app.zazi.core.domain.telemetry.TelemetrySeverity
+import app.zazi.core.domain.telemetry.TelemetryStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,7 +55,7 @@ class ZaziApplication : Application(), Configuration.Provider {
      */
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
-            .setWorkerFactory(ZaziWorkerFactory(container.syncEngine))
+            .setWorkerFactory(ZaziWorkerFactory(container.syncEngine, container.telemetryUploader))
             .build()
 }
 

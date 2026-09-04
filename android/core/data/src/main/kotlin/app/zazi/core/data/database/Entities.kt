@@ -220,3 +220,26 @@ data class SyncAttemptEntity(
 
     val durationMillis: Long?
 )
+
+/**
+ * One observed event waiting to be reported.
+ *
+ * <p>Separate from the outbox on purpose. The outbox holds financial work that must never be
+ * dropped; this holds telemetry, which must be dropped rather than allowed to grow without
+ * limit. Mixing them would put a retention policy on money, or remove one from diagnostics.</p>
+ *
+ * <p>Carries no token, no payload and no message content — see
+ * [app.zazi.core.domain.telemetry.TelemetryEvent].</p>
+ */
+@Entity(tableName = "telemetry_events")
+data class TelemetryEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val eventType: String,
+    val severity: String,
+    val status: String?,
+    val errorCode: String?,
+    val details: String?,
+    val durationMillis: Long?,
+    val correlationId: String?,
+    val occurredAtUtcMillis: Long
+)

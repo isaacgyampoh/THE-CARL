@@ -6,6 +6,10 @@ import app.zazi.core.data.database.ZaziDatabase
 import app.zazi.core.data.network.AndroidConnectivityObserver
 import app.zazi.core.data.network.ApiTokenRefresher
 import app.zazi.core.data.network.AuthInterceptor
+import app.zazi.core.data.telemetry.LocalTelemetryRecorder
+import app.zazi.core.data.telemetry.TelemetryInterceptor
+import app.zazi.core.data.telemetry.TelemetryRecorder
+import app.zazi.core.data.telemetry.TelemetryUploader
 import app.zazi.core.data.network.ConnectivityObserver
 import app.zazi.core.data.network.ZaziApi
 import app.zazi.core.data.network.ZaziAuthApi
@@ -19,6 +23,9 @@ import app.zazi.core.data.session.SessionRepository
 import app.zazi.core.data.session.SessionState
 import app.zazi.core.data.sync.SyncEngine
 import app.zazi.core.domain.security.CredentialStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
@@ -84,6 +91,20 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
 
     val outboxRepository: OutboxRepository by lazy { OutboxRepository(database) }
 
+    /**
+     * Records what this handset observed. Best-effort throughout: nothing here can fail a
+     * capture, a login or a sync.
+     */
+    val telemetryRecorder: TelemetryRecorder by lazy { LocalTelemetryRecorder(database) }
+
+    val telemetryUploader: TelemetryUploader by lazy { TelemetryUploader(database, api) }
+
+    /**
+     * Scope for reporting. Separate from any business scope so a cancelled operation still
+     * records why it was cancelled, and so a slow report never delays one.
+     */
+    private val telemetryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     val dashboardRepository: DashboardRepository by lazy { DashboardRepository(database) }
 
     // ─── Network ─────────────────────────────────────────────────────────────
@@ -96,6 +117,9 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     val api: ZaziApi by lazy {
         val client = OkHttpClient.Builder()
             .timeouts()
+            // Outermost, so it measures the whole exchange including authentication retries
+            // and sees the correlation id every inner interceptor will send.
+            .addInterceptor(TelemetryInterceptor(telemetryRecorder, telemetryScope))
             .addInterceptor(
                 AuthInterceptor(
                     credentialStore = credentialStore,
@@ -136,7 +160,8 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
             deviceInstallationId = deviceInstallationId,
             appVersion = BuildConfigCompat.versionName,
             osVersion = "Android ${Build.VERSION.RELEASE}",
-            deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+            deviceName = "${Build.MANUFACTURER} ${Build.MODEL}",
+            telemetry = telemetryRecorder
         )
     }
 

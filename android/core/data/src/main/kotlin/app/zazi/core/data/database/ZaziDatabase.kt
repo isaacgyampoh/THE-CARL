@@ -23,7 +23,8 @@ import net.sqlcipher.database.SupportFactory
         EvidenceEntity::class,
         LocalTransactionEntity::class,
         OutboxItemEntity::class,
-        SyncAttemptEntity::class
+        SyncAttemptEntity::class,
+        TelemetryEventEntity::class
     ],
     version = ZaziDatabase.VERSION,
     exportSchema = true
@@ -35,9 +36,10 @@ abstract class ZaziDatabase : RoomDatabase() {
     abstract fun outboxDao(): OutboxDao
     abstract fun syncAttemptDao(): SyncAttemptDao
     abstract fun captureDao(): CaptureDao
+    abstract fun telemetryDao(): TelemetryDao
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val DATABASE_NAME = "thecarl.db"
 
         /**
@@ -91,5 +93,34 @@ abstract class ZaziDatabase : RoomDatabase() {
  * survived with correct values.</p>
  */
 object ZaziDatabaseMigrations {
-    val ALL: Array<androidx.room.migration.Migration> = emptyArray()
+
+    /**
+     * Adds the telemetry queue.
+     *
+     * <p>Purely additive: no existing table is touched, so an upgrade cannot disturb evidence,
+     * transactions or the outbox. A destructive fallback is deliberately not configured — a
+     * migration that "fixes" itself by deleting the database would delete an agent's unsynced
+     * work.</p>
+     */
+    private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS telemetry_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    eventType TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    status TEXT,
+                    errorCode TEXT,
+                    details TEXT,
+                    durationMillis INTEGER,
+                    correlationId TEXT,
+                    occurredAtUtcMillis INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
+    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2)
 }

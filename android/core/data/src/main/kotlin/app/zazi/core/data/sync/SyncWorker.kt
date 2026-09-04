@@ -10,6 +10,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import app.zazi.core.data.telemetry.TelemetryUploader
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,10 +34,19 @@ import java.util.concurrent.TimeUnit
 class SyncWorker(
     context: Context,
     parameters: WorkerParameters,
-    private val syncEngine: SyncEngine
+    private val syncEngine: SyncEngine,
+    /**
+     * Optional. Telemetry rides along with the sync pass rather than scheduling work of its
+     * own, so diagnostics never wake a handset or spend an agent's battery by themselves.
+     */
+    private val telemetryUploader: TelemetryUploader? = null
 ) : CoroutineWorker(context, parameters) {
 
     override suspend fun doWork(): Result {
+        // Before the sync attempt, so a pass that ends in retry still reports what the
+        // previous one saw. Wrapped because telemetry must never change a sync outcome.
+        runCatching { telemetryUploader?.uploadOnce() }
+
         val result = try {
             syncEngine.runOnce()
         } catch (_: Exception) {

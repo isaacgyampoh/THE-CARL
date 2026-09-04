@@ -37,6 +37,13 @@ interface ZaziApi {
      * Reports this device's own live state, including the capabilities and sync limits the
      * client must honour rather than hardcode.
      */
+    /**
+     * Reports what the handset observed. Accepted-and-forgotten by design: the client never
+     * waits on it and never retries it as though it mattered.
+     */
+    @POST("api/v1/telemetry/events")
+    suspend fun recordTelemetry(@Body request: TelemetryBatchRequest): Response<Unit>
+
     @GET("api/v1/devices/me")
     suspend fun deviceSelf(
         @Header("X-Device-Identifier") deviceIdentifier: String
@@ -168,4 +175,36 @@ data class ProblemDetails(
     val type: String? = null,
     val correlationId: String? = null,
     val maxBatchSize: Int? = null
+)
+
+/**
+ * One upload of client-observed events.
+ *
+ * <p>Carries no tenant, user or device: the server establishes those from the authenticated
+ * request, so a handset cannot attribute its events to anyone else.</p>
+ */
+@Serializable
+data class TelemetryBatchRequest(
+    val events: List<ClientTelemetryEvent>
+)
+
+/**
+ * One observed event.
+ *
+ * <p>There is deliberately no field for a token, a password, a request or response body, or
+ * an exception message. Failures travel as [errorCode], a value from a closed vocabulary, so
+ * this cannot become a way to move message contents off the device.</p>
+ */
+@Serializable
+data class ClientTelemetryEvent(
+    val eventType: String,
+    val severity: String? = null,
+    val status: String? = null,
+    val errorCode: String? = null,
+    val details: String? = null,
+    val durationMs: Int? = null,
+    val correlationId: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+    val occurredAtUtc: String? = null
 )

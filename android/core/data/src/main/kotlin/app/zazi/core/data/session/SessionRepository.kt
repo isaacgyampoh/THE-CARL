@@ -6,6 +6,13 @@ import app.zazi.core.data.network.DeviceSelfResponse
 import app.zazi.core.data.network.EnrolDeviceRequest
 import app.zazi.core.data.network.LoginRequest
 import app.zazi.core.data.repository.OutboxRepository
+import app.zazi.core.domain.telemetry.TelemetryStatus
+import app.zazi.core.domain.telemetry.TelemetrySeverity
+import app.zazi.core.domain.telemetry.TelemetryEventType
+import app.zazi.core.domain.telemetry.TelemetryEvent
+import app.zazi.core.domain.telemetry.TelemetryErrorCode
+import app.zazi.core.data.telemetry.TelemetryRecorder
+import app.zazi.core.data.telemetry.NoOpTelemetryRecorder
 import app.zazi.core.domain.model.DeviceType
 import app.zazi.core.domain.model.PlatformCapability
 import app.zazi.core.domain.security.CredentialStore
@@ -36,8 +43,42 @@ class SessionRepository(
     private val deviceInstallationId: String,
     private val appVersion: String,
     private val osVersion: String,
-    private val deviceName: String
+    private val deviceName: String,
+    /**
+     * Best-effort reporting. Defaults to discarding, so existing callers and tests are
+     * unaffected and no code path can fail for want of telemetry.
+     */
+    private val telemetry: TelemetryRecorder = NoOpTelemetryRecorder
 ) {
+    /**
+     * Reports an outcome without letting it matter.
+     *
+     * <p>Wrapped so a reporting failure cannot turn a successful sign-in into a failed one,
+     * and deliberately carries no credential, token or server response text.</p>
+     */
+    /** The correlation id the server echoed, when it sent one. */
+    private fun retrofit2.Response<*>.correlationId(): String? =
+        headers()["X-Correlation-Id"]?.takeIf { it.isNotBlank() }
+
+    private suspend fun report(
+        eventType: TelemetryEventType,
+        errorCode: TelemetryErrorCode? = null,
+        status: TelemetryStatus? = null,
+        correlationId: String? = null
+    ) {
+        runCatching {
+            telemetry.record(
+                TelemetryEvent(
+                    eventType = eventType,
+                    severity = if (errorCode == null) TelemetrySeverity.INFORMATION else TelemetrySeverity.WARNING,
+                    status = status ?: if (errorCode == null) null else TelemetryStatus.FAILED,
+                    errorCode = errorCode,
+                    correlationId = correlationId
+                )
+            )
+        }
+    }
+
     private val _state = MutableStateFlow<SessionState>(SessionState.Initialising)
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
@@ -111,6 +152,7 @@ class SessionRepository(
                 )
             )
         } catch (_: IOException) {
+            report(TelemetryEventType.LOGIN_FAILURE, TelemetryErrorCode.ANDROID_NO_NETWORK)
             return LoginResult.NetworkUnavailable
         } catch (_: Exception) {
             return LoginResult.ServerError(0)
@@ -120,7 +162,16 @@ class SessionRepository(
 
         if (!response.isSuccessful || body == null) {
             return when (response.code()) {
-                401 -> LoginResult.InvalidCredentials
+                // Classified, never the response body: a rejection can echo the submitted
+                // address, and the password is never anywhere near this.
+                401 -> {
+                    report(
+                        TelemetryEventType.LOGIN_FAILURE,
+                        TelemetryErrorCode.ANDROID_INVALID_CREDENTIALS,
+                        correlationId = response.correlationId()
+                    )
+                    LoginResult.InvalidCredentials
+                }
                 429 -> LoginResult.RateLimited(
                     response.headers()["Retry-After"]?.trim()?.toLongOrNull()
                 )
@@ -150,6 +201,15 @@ class SessionRepository(
         // still permitted is then decided by the server, not by the absence of this marker.
         credentialStore.clearDeviceRevokedMark()
 
+        // The server's own correlation id, taken from the response it just sent. This is what
+        // puts the handset's LOGIN_SUCCESS and the server's LOGIN entry on one timeline
+        // instead of two unrelated ones.
+        report(
+            TelemetryEventType.LOGIN_SUCCESS,
+            errorCode = null,
+            status = TelemetryStatus.SUCCEEDED,
+            correlationId = response.correlationId()
+        )
         return LoginResult.Success(restore())
     }
 
@@ -160,6 +220,9 @@ class SessionRepository(
      * client sends only its own hardware details.</p>
      */
     suspend fun enrolDevice(code: String): EnrolmentResult {
+        // The code itself is never reported: it is a single-use credential.
+        report(TelemetryEventType.ENROLMENT_STARTED)
+
         val credentials = credentialStore.read() ?: return EnrolmentResult.ServerError(401)
 
         val response = try {
