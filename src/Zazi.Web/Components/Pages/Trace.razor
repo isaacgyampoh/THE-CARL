@@ -1,0 +1,63 @@
+@page "/operations/trace/{CorrelationId}"
+@using Zazi.Application
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.OrganizationRead)]
+@inject IObservabilityService Observability
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Timeline · Zazi</PageTitle>
+
+<h1>Timeline</h1>
+<p class="muted lead">Everything recorded under <code>@CorrelationId</code>, oldest first.</p>
+
+@if (_events is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_events.Count == 0)
+{
+    <p class="muted">Nothing was recorded under this trace, or it belongs to another organization.</p>
+}
+else
+{
+    @* A vertical timeline rather than a table: the question being asked here is "what
+       happened, in what order", not "how do these rows compare". *@
+    <ol class="timeline">
+        @foreach (var item in _events)
+        {
+            <li class="@SeverityClass(item.Severity)">
+                <span class="when">@item.OccurredAt.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                <span class="what">
+                    <strong>@item.Action</strong>
+                    <span class="sub">@item.Details</span>
+                    <span class="meta">
+                        @item.Source
+                        @if (item.DurationMs is { } ms) { <text> · @ms ms</text> }
+                        @if (!string.IsNullOrWhiteSpace(item.ErrorCode)) { <text> · </text><code>@item.ErrorCode</code> }
+                        @if (item.DeviceId is { } device) { <text> · device @device.ToString()[..8]</text> }
+                    </span>
+                </span>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter] public string CorrelationId { get; set; } = string.Empty;
+
+    private IReadOnlyList<ObservabilityEventDto>? _events;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Scoped to the caller's organization inside the service, so a guessed correlation id
+        // from another tenant returns nothing rather than someone else's incident.
+        _events = await Observability.GetTimelineAsync(CurrentUser.OrganizationId, CorrelationId);
+    }
+
+    private static string SeverityClass(string severity) => severity switch
+    {
+        "Error" => "bad",
+        "Warning" => "warn",
+        _ => "ok"
+    };
+}

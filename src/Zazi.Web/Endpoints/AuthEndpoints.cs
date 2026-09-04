@@ -96,7 +96,15 @@ public static class AuthEndpoints
                 claims.Add(new Claim(ZaziClaimTypes.Role, role));
             }
 
-            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            // The role claim type is stated explicitly. Roles are written as ZaziClaimTypes.Role
+            // to match the bearer path's vocabulary, and without naming it here RequireRole
+            // would look for ClaimTypes.Role, find nothing, and refuse every policy-protected
+            // page to a user who genuinely holds the role.
+            var identity = new ClaimsIdentity(
+                claims,
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                ClaimTypes.Name,
+                ZaziClaimTypes.Role);
             await context.SignInAsync(
                 CookieAuthenticationDefaults.AuthenticationScheme,
                 new ClaimsPrincipal(identity));

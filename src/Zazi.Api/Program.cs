@@ -163,6 +163,7 @@ builder.Services.AddScoped<ISmsTransactionParser, GenericSmsParser>();
 builder.Services.AddScoped<ISmsProcessingService, SmsProcessingService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService>();
 builder.Services.AddScoped<ISyncTransactionService, SyncTransactionService>();

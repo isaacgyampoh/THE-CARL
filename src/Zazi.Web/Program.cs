@@ -77,6 +77,17 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
+
+    // The same role-to-policy map the API enforces, from the same source. Restating the
+    // roles here would let the dashboard drift into showing a page the API would refuse to
+    // serve the data for.
+    foreach (var (policyName, roles) in ZaziPolicies.RolesByPolicy)
+    {
+        options.AddPolicy(policyName, policy => policy
+            .RequireAuthenticatedUser()
+            .RequireClaim(ZaziClaimTypes.OrganizationId)
+            .RequireRole(roles));
+    }
 });
 
 builder.Services.AddCascadingAuthenticationState();
@@ -106,6 +117,7 @@ builder.Services.AddScoped<ICurrentUserContext, WebCurrentUserContext>();
 builder.Services.AddScoped<ITenantGuard, TenantGuard>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();

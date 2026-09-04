@@ -1,0 +1,189 @@
+@page "/operations"
+@using Zazi.Application
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.OrganizationRead)]
+@inject IObservabilityService Observability
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Operations · Zazi</PageTitle>
+
+<h1>Operations</h1>
+
+@if (_failed)
+{
+    <p class="error" role="alert">Operations data could not be loaded.</p>
+}
+else if (_health is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <section class="tiles">
+        <div class="tile @(_health.ErrorsLastHour > 0 ? "bad" : "")">
+            <span class="label">Errors, last hour</span>
+            <span class="value">@_health.ErrorsLastHour</span>
+        </div>
+        <div class="tile">
+            <span class="label">Errors, last day</span>
+            <span class="value">@_health.ErrorsLastDay</span>
+        </div>
+        <div class="tile @(_health.HeldEvidenceCount > 0 ? "warn" : "")">
+            <span class="label">Held for review</span>
+            <span class="value">@_health.HeldEvidenceCount</span>
+        </div>
+        <div class="tile @(_health.StaleDevices > 0 ? "warn" : "")">
+            <span class="label">Devices not reporting</span>
+            <span class="value">@_health.StaleDevices</span>
+        </div>
+        <div class="tile">
+            <span class="label">Active devices</span>
+            <span class="value">@_health.ActiveDevices / @_health.TotalDevices</span>
+        </div>
+    </section>
+
+    <h2>Recurring failures (last 7 days)</h2>
+    @if (_errorGroups.Count == 0)
+    {
+        <p class="muted">No failures recorded.</p>
+    }
+    else
+    {
+        @* Grouped rather than listed: fifty copies of one broken endpoint is one problem. *@
+        <div class="scroll">
+            <table>
+                <thead>
+                <tr><th>Error</th><th>Where</th><th class="n">Count</th><th class="n">Devices</th><th>Last seen</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var group in _errorGroups)
+                {
+                    <tr>
+                        <td><code>@group.ErrorCode</code><span class="sub">@group.SampleDetails</span></td>
+                        <td>@group.Action<span class="sub">@group.Source</span></td>
+                        <td class="n"><strong>@group.Occurrences</strong></td>
+                        <td class="n">@group.AffectedDevices</td>
+                        <td>@Ago(group.LastSeen)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h2>Devices</h2>
+    <div class="scroll">
+        <table>
+            <thead>
+            <tr><th>Device</th><th>Version</th><th>Last seen</th><th class="n">Failures (24h)</th><th>State</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var device in _devices)
+            {
+                <tr class="@(device.IsRevoked ? "muted-row" : device.IsStale ? "warn-row" : "")">
+                    <td>@device.Name<span class="sub">@device.DeviceType</span></td>
+                    <td>@device.AppVersion<span class="sub">@device.OsVersion</span></td>
+                    <td>@Ago(device.LastSeenAtUtc)</td>
+                    <td class="n">@device.RecentFailureCount</td>
+                    <td>
+                        @if (device.IsRevoked)
+                        {
+                            <span class="pill bad">Revoked</span>
+                        }
+                        else if (device.IsStale)
+                        {
+                            <span class="pill warn">Not reporting</span>
+                        }
+                        else
+                        {
+                            <span class="pill ok">@device.Status</span>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Recent events</h2>
+    @if (_events.Count == 0)
+    {
+        <p class="muted">Nothing recorded yet.</p>
+    }
+    else
+    {
+        <div class="scroll">
+            <table>
+                <thead>
+                <tr><th>Time</th><th>Severity</th><th>Event</th><th>Source</th><th>Trace</th></tr>
+                </thead>
+                <tbody>
+                @foreach (var item in _events)
+                {
+                    <tr>
+                        <td>@item.OccurredAt.ToLocalTime().ToString("HH:mm:ss")<span class="sub">@item.OccurredAt.ToLocalTime().ToString("dd MMM")</span></td>
+                        <td><span class="pill @SeverityClass(item.Severity)">@item.Severity</span></td>
+                        <td>@item.Action<span class="sub">@item.Details</span></td>
+                        <td>@item.Source</td>
+                        <td>
+                            @* The correlation id is the thread through the whole incident. *@
+                            @if (!string.IsNullOrWhiteSpace(item.CorrelationId))
+                            {
+                                <a href="/operations/trace/@item.CorrelationId">timeline</a>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private SystemHealthDto? _health;
+    private IReadOnlyList<ErrorGroupDto> _errorGroups = Array.Empty<ErrorGroupDto>();
+    private IReadOnlyList<DeviceHealthDto> _devices = Array.Empty<DeviceHealthDto>();
+    private IReadOnlyList<ObservabilityEventDto> _events = Array.Empty<ObservabilityEventDto>();
+    private bool _failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // The organization comes from the signed-in principal, never from the URL.
+            var organizationId = CurrentUser.OrganizationId;
+
+            _health = await Observability.GetSystemHealthAsync(organizationId);
+            _errorGroups = await Observability.GetErrorGroupsAsync(
+                organizationId, DateTimeOffset.UtcNow.AddDays(-7));
+            _devices = await Observability.GetDeviceHealthAsync(organizationId);
+
+            var recent = await Observability.GetRecentEventsAsync(
+                organizationId, new EventQuery(Page: 1, PageSize: 25));
+            _events = recent.Items;
+        }
+        catch (Exception)
+        {
+            // Reported as unavailable rather than rendered as zeroes: an operations screen
+            // that silently shows "no errors" when it cannot read is worse than a blank one.
+            _failed = true;
+        }
+    }
+
+    private static string SeverityClass(string severity) => severity switch
+    {
+        "Error" => "bad",
+        "Warning" => "warn",
+        _ => "ok"
+    };
+
+    private static string Ago(DateTimeOffset when)
+    {
+        var elapsed = DateTimeOffset.UtcNow - when;
+        if (elapsed < TimeSpan.FromMinutes(1)) return "just now";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed < TimeSpan.FromDays(1)) return $"{(int)elapsed.TotalHours}h ago";
+        return $"{(int)elapsed.TotalDays}d ago";
+    }
+}

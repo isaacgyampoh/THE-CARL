@@ -1,11 +1,88 @@
 using Microsoft.EntityFrameworkCore;
+using Zazi.Application.Security;
 using Zazi.Domain;
 
 namespace Zazi.Infrastructure;
 
 public class ApplicationDbContext : DbContext
 {
+    private readonly ICurrentUserContext? _currentUser;
+
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+    /// <summary>
+    /// Used by the hosts, which can supply the caller's identity.
+    /// </summary>
+    /// <remarks>
+    /// Optional so migrations, design-time tooling and tests can construct a context with no
+    /// request in scope. When it is absent, audit entries are simply written without a
+    /// correlation id rather than failing.
+    /// </remarks>
+    public ApplicationDbContext(
+        DbContextOptions<ApplicationDbContext> options,
+        ICurrentUserContext currentUser) : base(options)
+    {
+        _currentUser = currentUser;
+    }
+
+    /// <summary>
+    /// Stamps audit entries with the request they belong to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nine services write audit entries, and none of them knew about correlation ids. Doing
+    /// this here rather than in each of them means a tenth writer is correlated the day it is
+    /// added, instead of being the one gap nobody notices until an incident cannot be
+    /// reconstructed.
+    /// </para>
+    /// <para>
+    /// Only fills what a caller left blank, so a service that deliberately sets its own
+    /// source or correlation keeps it.
+    /// </para>
+    /// </remarks>
+    private void StampAuditEntries()
+    {
+        // Deliberately not gated on authentication. A correlation id is not identity, and
+        // the entries most worth correlating — a failed sign-in, an enrolment that was
+        // refused — are written while the caller is still anonymous.
+        if (_currentUser is null)
+        {
+            return;
+        }
+
+        string? correlationId = null;
+
+        foreach (var entry in ChangeTracker.Entries<AuditLogEntry>())
+        {
+            if (entry.State != EntityState.Added)
+            {
+                continue;
+            }
+
+            // Resolved once, and only when there is something to stamp.
+            correlationId ??= _currentUser.CorrelationId;
+
+            if (string.IsNullOrWhiteSpace(entry.Entity.CorrelationId)
+                && !string.IsNullOrWhiteSpace(correlationId))
+            {
+                entry.Entity.CorrelationId = correlationId;
+            }
+
+            entry.Entity.Source ??= entry.Entity.ActorType;
+        }
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        StampAuditEntries();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override int SaveChanges()
+    {
+        StampAuditEntries();
+        return base.SaveChanges();
+    }
 
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Branch> Branches => Set<Branch>();
@@ -320,9 +397,33 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.Action).IsRequired().HasMaxLength(150);
             builder.Property(x => x.ActorType).HasMaxLength(50);
             builder.Property(x => x.Details).IsRequired().HasMaxLength(2000);
+            builder.Property(x => x.CorrelationId).HasMaxLength(100);
+            builder.Property(x => x.Source).HasMaxLength(50);
+            builder.Property(x => x.Status).HasMaxLength(50);
+            builder.Property(x => x.ErrorCode).HasMaxLength(100);
+            builder.Property(x => x.AppVersion).HasMaxLength(50);
+            builder.Property(x => x.Platform).HasMaxLength(50);
+
             builder.HasIndex(x => x.OrganizationId);
             builder.HasIndex(x => x.UserId);
             builder.HasIndex(x => x.RelatedTransactionId);
+
+            // The dashboard's three questions, each of which would otherwise scan the table:
+            // "what has gone wrong lately", "what happened in this one request", and "what
+            // has this device been doing".
+            builder.HasIndex(x => new { x.OrganizationId, x.Severity, x.CreatedAt })
+                .HasDatabaseName("IX_AuditLogEntries_Org_Severity_CreatedAt");
+
+            builder.HasIndex(x => x.CorrelationId)
+                .HasDatabaseName("IX_AuditLogEntries_CorrelationId");
+
+            builder.HasIndex(x => new { x.DeviceId, x.CreatedAt })
+                .HasDatabaseName("IX_AuditLogEntries_Device_CreatedAt");
+
+            // Error grouping reads this directly; without it, grouping recurring failures
+            // means reading every error the organization has ever recorded.
+            builder.HasIndex(x => new { x.OrganizationId, x.ErrorCode, x.CreatedAt })
+                .HasDatabaseName("IX_AuditLogEntries_Org_ErrorCode_CreatedAt");
         });
 
         modelBuilder.Entity<ReconciliationRecord>(builder =>

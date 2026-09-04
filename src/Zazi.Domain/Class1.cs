@@ -293,6 +293,36 @@ public sealed class DeadLetterTransaction : AggregateRoot
     public DateTimeOffset DeadLetteredAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
+/// <summary>How much attention an audit entry deserves.</summary>
+public enum AuditSeverity
+{
+    /// <summary>Something happened that is worth being able to reconstruct later.</summary>
+    Information = 0,
+
+    /// <summary>Degraded but handled — a retry, a rejected input, a slow dependency.</summary>
+    Warning = 1,
+
+    /// <summary>An operation failed. Someone may need to act.</summary>
+    Error = 2
+}
+
+/// <summary>
+/// One recorded thing that happened, and the single event model for the whole system.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Nine services already write here — authentication, device enrolment, transactions,
+/// sessions, reconciliation, SMS processing, revocation and evidence capture. The fields
+/// added for observability extend that record rather than starting a parallel one, because
+/// two event tables inevitably disagree about what happened.
+/// </para>
+/// <para>
+/// <b>This is not a log.</b> It carries no request bodies, no headers, no tokens and no
+/// credentials — only identifiers and an operator-readable summary. Anything sensitive is
+/// referenced by id so an investigator can follow it through the systems that are permitted
+/// to hold it.
+/// </para>
+/// </remarks>
 public sealed class AuditLogEntry : AggregateRoot
 {
     public Guid OrganizationId { get; set; }
@@ -302,6 +332,39 @@ public sealed class AuditLogEntry : AggregateRoot
     public string Action { get; set; } = string.Empty;
     public string Details { get; set; } = string.Empty;
     public string ActorType { get; set; } = "System";
+
+    // ─── Observability ───────────────────────────────────────────────────────
+
+    public AuditSeverity Severity { get; set; } = AuditSeverity.Information;
+
+    /// <summary>
+    /// Ties this entry to the request that caused it, and to every other entry from the same
+    /// request. Supplied by the caller and echoed in the response header, so a device, an API
+    /// request and the resulting ledger movement can be put on one timeline.
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
+    /// <summary>Which part of the system produced this — "Api", "Android", "SyncWorker".</summary>
+    public string? Source { get; set; }
+
+    /// <summary>Outcome token, e.g. "Succeeded", "Failed", "Rejected".</summary>
+    public string? Status { get; set; }
+
+    /// <summary>
+    /// Stable, non-sensitive classification of a failure, e.g. "auth.invalid_credentials".
+    /// Errors are grouped on this rather than on the message, so wording changes do not
+    /// fragment a recurring problem into many apparently new ones.
+    /// </summary>
+    public string? ErrorCode { get; set; }
+
+    /// <summary>How long the operation took, when it is meaningful to measure.</summary>
+    public int? DurationMs { get; set; }
+
+    /// <summary>Reporting client's version, for "only broken on 0.1.0" questions.</summary>
+    public string? AppVersion { get; set; }
+
+    /// <summary>Reporting platform, e.g. "Android 35".</summary>
+    public string? Platform { get; set; }
 }
 
 public sealed class ReconciliationRecord : AggregateRoot

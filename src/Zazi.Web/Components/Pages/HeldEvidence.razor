@@ -1,0 +1,105 @@
+@page "/held"
+@using Zazi.Application
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.TransactionRead)]
+@inject IObservabilityService Observability
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Held for review · Zazi</PageTitle>
+
+<h1>Held for review</h1>
+
+<p class="muted lead">
+    Transactions Zazi observed but would not post on its own — a truncated message, an
+    unrecognised template, anything without a provider reference. Nothing here has moved money.
+</p>
+
+@if (_failed)
+{
+    <p class="error" role="alert">The review queue could not be loaded.</p>
+}
+else if (_page is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_page.Items.Count == 0)
+{
+    <p class="muted">Nothing is waiting for review.</p>
+}
+else
+{
+    <p class="muted">@_page.TotalCount waiting, oldest first.</p>
+
+    <div class="scroll">
+        <table>
+            <thead>
+            <tr>
+                <th>Observed</th><th>Provider</th><th>Type</th><th class="n">Amount</th>
+                <th>Reference</th><th>Why held</th><th class="n">Confidence</th><th>Age</th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in _page.Items)
+            {
+                <tr class="@(item.AgeHours >= 24 ? "warn-row" : "")">
+                    <td>@item.ObservedAt.ToLocalTime().ToString("dd MMM HH:mm")<span class="sub">@item.SourceType</span></td>
+                    <td>@item.Provider</td>
+                    <td>@item.TransactionType</td>
+                    <td class="n">@Money(item.Amount, item.Currency)</td>
+                    <td>@(string.IsNullOrWhiteSpace(item.Reference) ? "—" : item.Reference)</td>
+                    <td>@item.OutcomeReason</td>
+                    <td class="n">@item.Confidence.ToString("0.00")</td>
+                    <td>@(item.AgeHours < 1 ? "<1h" : $"{item.AgeHours}h")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    @if (_page.TotalCount > PageSize)
+    {
+        <div class="pager">
+            <button disabled="@(_pageNumber <= 1)" @onclick="Previous">Previous</button>
+            <span class="muted">Page @_page.Page</span>
+            <button disabled="@(!_page.HasMore)" @onclick="Next">Next</button>
+        </div>
+    }
+}
+
+@code {
+    private PagedResult<HeldEvidenceDto>? _page;
+    private int _pageNumber = 1;
+    private bool _failed;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _page = await Observability.GetHeldEvidenceAsync(
+                CurrentUser.OrganizationId, _pageNumber, PageSize);
+        }
+        catch (Exception)
+        {
+            _failed = true;
+        }
+    }
+
+    private async Task Next()
+    {
+        _pageNumber++;
+        await LoadAsync();
+    }
+
+    private async Task Previous()
+    {
+        _pageNumber = Math.Max(1, _pageNumber - 1);
+        await LoadAsync();
+    }
+
+    private const int PageSize = 25;
+
+    private static string Money(decimal amount, string currency) =>
+        currency == "GHS" ? $"₵{amount:N2}" : $"{amount:N2} {currency}";
+}

@@ -5,6 +5,11 @@
 
     <AuthorizeView>
         <Authorized>
+            <nav class="links">
+                <a href="/">Today</a>
+                <a href="/held">Held</a>
+                <a href="/operations">Operations</a>
+            </nav>
             <span class="who">@context.User.Identity?.Name</span>
             @* A form post, because signing out must clear the cookie on a real response. *@
             <form method="post" action="/auth/sign-out">

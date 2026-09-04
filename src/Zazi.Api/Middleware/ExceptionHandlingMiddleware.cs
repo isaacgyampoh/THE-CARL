@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Zazi.Application.Security;
+using Zazi.Domain;
+using Zazi.Infrastructure;
 using Zazi.Infrastructure.Services;
 
 namespace Zazi.Api.Middleware;
@@ -38,6 +40,8 @@ public sealed class ExceptionHandlingMiddleware
     private async Task HandleAsync(HttpContext context, Exception exception)
     {
         var (status, title, logLevel) = Classify(exception);
+
+        await RecordAsync(context, exception, status, title);
 
         // The full exception (including message) is logged, not returned. Tenant-denial and
         // authentication failures are logged at Warning so they are alertable.
@@ -78,6 +82,90 @@ public sealed class ExceptionHandlingMiddleware
         context.Response.ContentType = "application/problem+json";
         await context.Response.WriteAsync(JsonSerializer.Serialize(problem, SerializerOptions));
     }
+
+    /// <summary>
+    /// Records the failure where an operator can find it, not only in the log stream.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The stored detail is the classified title and status, never the exception message.
+    /// An exception can carry a connection string, a row of customer data or a fragment of a
+    /// request body, and this table is readable from the dashboard — so it gets the same safe
+    /// summary the client receives, plus the correlation id that leads to the full server-side
+    /// log for anyone with access to it.
+    /// </para>
+    /// <para>
+    /// Only recorded for authenticated callers, because an audit row belongs to an
+    /// organization and an anonymous request has none. Those failures remain in the log.
+    /// </para>
+    /// <para>
+    /// Every failure here is swallowed. Telemetry that can fail a request would turn a
+    /// logging outage into a financial one.
+    /// </para>
+    /// </remarks>
+    private async Task RecordAsync(HttpContext context, Exception exception, int status, string title)
+    {
+        try
+        {
+            var currentUser = context.RequestServices.GetService<ICurrentUserContext>();
+            if (currentUser is null || !currentUser.IsAuthenticated)
+            {
+                return;
+            }
+
+            var database = context.RequestServices.GetService<ApplicationDbContext>();
+            if (database is null)
+            {
+                return;
+            }
+
+            database.AuditLogs.Add(new AuditLogEntry
+            {
+                OrganizationId = currentUser.OrganizationId,
+                UserId = currentUser.UserId,
+                Action = $"{context.Request.Method} {context.Request.Path}",
+                Details = title,
+                ActorType = "Api",
+                Severity = status >= StatusCodes.Status500InternalServerError
+                    ? AuditSeverity.Error
+                    : AuditSeverity.Warning,
+                Source = "Api",
+                Status = "Failed",
+                ErrorCode = ErrorCodeFor(exception),
+                CorrelationId = context.TraceIdentifier
+            });
+
+            await database.SaveChangesAsync(context.RequestAborted);
+        }
+        catch (Exception recordingFailure)
+        {
+            _logger.LogWarning(
+                recordingFailure,
+                "Could not record a failure for correlation {CorrelationId}. The request outcome is unaffected.",
+                context.TraceIdentifier);
+        }
+    }
+
+    /// <summary>
+    /// A stable, non-sensitive classification used to group recurring failures.
+    /// </summary>
+    /// <remarks>
+    /// Derived from the exception type rather than its message, so rewording an error does not
+    /// split one long-running problem into many apparently new ones.
+    /// </remarks>
+    private static string ErrorCodeFor(Exception exception) => exception switch
+    {
+        NotAuthenticatedException => "auth.not_authenticated",
+        UnauthorizedAccessException => "auth.failed",
+        TenantAccessDeniedException => "auth.tenant_denied",
+        ConflictException => "request.conflict",
+        SyncBatchTooLargeException => "sync.batch_too_large",
+        KeyNotFoundException => "request.not_found",
+        ArgumentException => "request.invalid",
+        InvalidOperationException => "request.conflict",
+        OperationCanceledException => "request.cancelled",
+        _ => "internal.unexpected"
+    };
 
     private static (int Status, string Title, LogLevel Level) Classify(Exception exception) => exception switch
     {

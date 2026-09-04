@@ -47,3 +47,61 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
 
 .error { color: var(--bad); font-size: .9rem; }
 .muted { color: var(--muted); }
+
+/* ─── Operations tables ─────────────────────────────────────────────────── */
+.lead { max-width: 44rem; margin-top: -.5rem; }
+
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+table { width: 100%; border-collapse: collapse; background: #fff;
+        border: 1px solid var(--line); border-radius: .75rem; overflow: hidden; }
+th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+
+.sub { display: block; color: var(--muted); font-size: .82rem; margin-top: .15rem; }
+.warn-row { background: #fffaf0; }
+.muted-row { opacity: .55; }
+
+code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
+       background: #f2effa; padding: .1rem .35rem; border-radius: .25rem; }
+
+.pill { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+.pill.ok   { background: #e8f5ec; color: #1c6b38; }
+.pill.warn { background: #fdf3e2; color: #8a5a00; }
+.pill.bad  { background: #fdeceb; color: var(--bad); }
+
+.tile.warn { border-color: #f0d9a8; }
+.tile.bad  { border-color: #f2c1bd; }
+
+.pager { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+.pager button { padding: .45rem .9rem; border: 1px solid var(--line); background: #fff;
+                border-radius: .5rem; font: inherit; cursor: pointer; }
+.pager button:disabled { opacity: .45; cursor: default; }
+
+/* ─── Timeline ──────────────────────────────────────────────────────────── */
+.timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); margin-left: .5rem; }
+.timeline li { position: relative; padding: .6rem 0 .6rem 1.25rem; }
+.timeline li::before { content: ""; position: absolute; left: -.42rem; top: 1rem;
+                       width: .7rem; height: .7rem; border-radius: 50%; background: var(--line); }
+.timeline li.warn::before { background: #d9a441; }
+.timeline li.bad::before  { background: var(--bad); }
+.timeline .when { display: inline-block; min-width: 7rem; color: var(--muted);
+                  font-variant-numeric: tabular-nums; font-size: .85rem; }
+.timeline .what { display: inline-block; vertical-align: top; }
+.timeline .meta { display: block; color: var(--muted); font-size: .8rem; margin-top: .1rem; }
+
+.nav .links { display: flex; gap: 1rem; }
+.nav .links a { color: var(--ink); text-decoration: none; font-size: .92rem; }
+.nav .links a:hover { color: var(--accent); }
+
+/* Narrow screens: the nav wraps, and dense tables scroll rather than being crushed. */
+@media (max-width: 640px) {
+    .nav { flex-wrap: wrap; gap: .5rem .9rem; padding: .6rem 1rem; }
+    .nav .who { margin-left: 0; order: 3; width: 100%; }
+    main { padding: 1rem; }
+    table { min-width: 34rem; }
+    .timeline .when { display: block; min-width: 0; }
+    .timeline .what { display: block; }
+}
