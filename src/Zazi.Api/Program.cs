@@ -57,11 +57,26 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     if (!string.IsNullOrWhiteSpace(connectionString))
     {
         options.UseNpgsql(connectionString);
+        return;
     }
-    else
+
+    // Outside development, refuse rather than fall back. An in-memory store accepts every
+    // write, reports success, and loses the lot on restart — so a deployment with a mistyped
+    // connection string would take real transactions from agents and silently discard them.
+    // It also drops the two guarantees the ledger depends on: the partial unique indexes that
+    // make submissions idempotent, and the atomic upsert that keeps balances correct under
+    // concurrent writes.
+    //
+    // This already cost hours once: the API ran happily on memory while every login failed
+    // with "0-candidate email", which looks nothing like a configuration problem.
+    if (!builder.Environment.IsDevelopment())
     {
-        options.UseInMemoryDatabase("ZaziDb");
+        throw new InvalidOperationException(
+            "ConnectionStrings:DefaultConnection is required outside Development. Zazi will not " +
+            "start against an in-memory store, because it would accept financial work and lose it.");
     }
+
+    options.UseInMemoryDatabase("ZaziDb");
 });
 
 // ─── Authentication ──────────────────────────────────────────────────────────

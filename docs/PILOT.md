@@ -13,6 +13,25 @@ So a pilot answers questions no test can: does automatic capture actually recogn
 messages this agent's network sends, is the till figure the one they would have written down,
 and do they trust it enough to stop keeping a paper book alongside.
 
+## The database is already PostgreSQL
+
+Worth stating plainly, because it is easy to assume otherwise: this project already runs
+PostgreSQL 16.2, installed without Docker, Homebrew or root. The binaries were extracted from
+a Maven Central archive into `~/.zazi-testdb` and are started by `scripts/start-stack.sh`.
+There is nothing to install before a pilot.
+
+That matters beyond convenience. Two of the ledger's guarantees are PostgreSQL features and
+do not exist in a lighter database:
+
+- **Idempotency** comes from partial unique indexes on `(OrganizationId, ClientTransactionId)`
+  and `(OrganizationId, EvidenceFingerprint)`. They are what stop a retried submission
+  becoming a second transaction.
+- **Balance correctness under concurrency** comes from `INSERT … ON CONFLICT … DO UPDATE`,
+  which increments inside the database rather than reading and writing back.
+
+Moving to a simpler store to "get started" would mean removing both, running the pilot without
+them, and reinstating them later — with real money already recorded in between.
+
 ## 1. Start the stack
 
 ```bash
@@ -117,3 +136,61 @@ while passing on the other.
   no iPhone can read another handset's SMS.
 - The dashboard is one summary page. Evidence review and device management are still done
   through the API.
+
+## Backing up
+
+```bash
+scripts/backup-database.sh [destination]      # defaults to ~/zazi-backups
+```
+
+Run it daily during the pilot, and before any deployment.
+
+The embedded PostgreSQL distribution ships only `initdb`, `pg_ctl` and `postgres` — no
+`pg_dump`. The script therefore takes a cold copy: it stops the server, copies the data
+directory and starts it again. That is a complete, restorable backup at the cost of a short
+outage, which is a fair trade for a pilot rather than adding a dependency purely to take a
+backup. Copying a *running* data directory would produce something that looks like a backup
+and refuses to start.
+
+It keeps the last seven and prunes older ones, because backups filling the disk the database
+runs on turn a safety measure into an outage. Restore instructions are written into each
+backup as `BACKUP_INFO.txt`.
+
+Verified end to end: a backup taken from the running pilot database was restored into a
+separate cluster, started, and queried — users, devices and audit history all present.
+
+## Who can join the pilot
+
+There is no feature flag, and none is needed: enrolment codes already are the gate. A device
+cannot reach any financial endpoint until a manager issues it a single-use code, so the pilot
+group is exactly the set of devices you have enrolled. Stop issuing codes and the pilot stops
+growing; revoke a device and it stops posting immediately while keeping its unsynced work.
+
+## Building the pilot APK
+
+```bash
+cd android
+./gradlew :app:assemblePilot \
+  -PapiBaseUrl=http://YOUR-SERVER:5055/ \
+  -PzaziKeystore=$HOME/.zazi/zazi-pilot.keystore \
+  -PzaziKeystorePassword=… -PzaziKeyAlias=zazi-pilot -PzaziKeyPassword=…
+```
+
+Output: `android/app/build/outputs/apk/pilot/app-pilot.apk`
+
+`-PapiBaseUrl` is required for a real handset. The default is `10.0.2.2`, which is the
+emulator's alias for the host machine and unreachable from a phone.
+
+The APK contains no signing key, no database password and no server secret — verified by
+scanning the built artifact, not by inspection of the source.
+
+## Configuration the backend requires
+
+| Variable | Why |
+|---|---|
+| `ConnectionStrings__DefaultConnection` | Required outside Development. The API now refuses to start without it rather than falling back to an in-memory store. |
+| `ZAZI_JWT_KEY` | Token signing. The API refuses to start without one outside Development. |
+| `ASPNETCORE_ENVIRONMENT` | Anything other than `Development` enables HSTS, HTTPS redirection and the two refusals above. |
+
+Note the key name: `ConnectionStrings__Default` is silently ignored, and cost hours once.
+Run `scripts/verify-e2e-env.sh` after deploying — it catches exactly that.
