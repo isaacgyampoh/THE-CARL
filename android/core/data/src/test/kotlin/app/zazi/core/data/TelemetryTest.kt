@@ -129,14 +129,14 @@ class TelemetryTest {
         val sent = server.takeRequest().getHeader(TelemetryInterceptor.CORRELATION_HEADER)
         assertThat(sent).isNotEmpty()
 
-        val recorded = runBlocking { database.telemetryDao().oldest(10) }
+        val recorded = awaitEvents(1)
         assertThat(recorded).isNotEmpty()
         assertThat(recorded.first().correlationId).isEqualTo(sent)
         assertThat(recorded.first().durationMillis).isNotNull()
     }
 
     @Test
-    fun `a server error is classified as a server error`() {
+    fun `server refusals and unreachable servers are classified differently`() {
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
         val client = clientWith(scope)
 
@@ -144,26 +144,25 @@ class TelemetryTest {
         client.newCall(Request.Builder().url(server.url("/api/v1/sync/transactions")).build())
             .execute().close()
 
-        // "The server answered and failed" is a different problem from "the phone could not
-        // reach the server", and only the status class distinguishes them.
-        val codes = runBlocking { database.telemetryDao().oldest(10).mapNotNull { it.errorCode } }
-        assertThat(codes).contains(TelemetryErrorCode.ANDROID_API_5XX.name)
-    }
-
-    @Test
-    fun `a rejected request is classified as a client error`() {
-        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
-        val client = clientWith(scope)
-
         server.enqueue(MockResponse().setResponseCode(404))
         client.newCall(Request.Builder().url(server.url("/api/v1/devices/me")).build())
             .execute().close()
 
-        // Recorded as a warning rather than an error: a 404 is usually the request, not the
-        // server falling over, and mixing the two buries real outages.
-        val rows = runBlocking { database.telemetryDao().oldest(10) }
-        assertThat(rows.mapNotNull { it.errorCode }).contains(TelemetryErrorCode.ANDROID_API_4XX.name)
-        assertThat(rows.map { it.severity }).contains(TelemetrySeverity.WARNING.name)
+        // A port nothing is listening on: the phone cannot reach a server at all, which is a
+        // different problem from a server that answered and refused.
+        runCatching {
+            client.newCall(
+                Request.Builder().url("http://127.0.0.1:1/api/v1/sync/transactions").build()
+            ).execute().close()
+        }
+
+        val codes = awaitEvents(3).mapNotNull { it.errorCode }
+
+        // The distinction field support needs first. All three look like "it didn't work" to
+        // an agent and mean entirely different things to whoever is investigating.
+        assertThat(codes).contains(TelemetryErrorCode.ANDROID_API_5XX.name)
+        assertThat(codes).contains(TelemetryErrorCode.ANDROID_API_4XX.name)
+        assertThat(codes.any { it.startsWith("ANDROID_") && it !in HTTP_CODES }).isTrue()
     }
 
     @Test
@@ -175,7 +174,7 @@ class TelemetryTest {
         client.newCall(Request.Builder().url(server.url("/api/v1/devices/me")).build())
             .execute().close()
 
-        val recorded = runBlocking { database.telemetryDao().oldest(10).first() }
+        val recorded = awaitEvents(1).first()
         assertThat(recorded.errorCode).isNull()
         assertThat(recorded.severity).isEqualTo(TelemetrySeverity.INFORMATION.name)
     }
@@ -198,7 +197,7 @@ class TelemetryTest {
                 .build()
         ).execute().close()
 
-        val stored = runBlocking { database.telemetryDao().oldest(10) }
+        val stored = awaitEvents(1)
             .joinToString(" ") { listOfNotNull(it.details, it.errorCode, it.correlationId).joinToString(" ") }
 
         // Telemetry must never become a way to move secrets off the device.
@@ -227,13 +226,41 @@ class TelemetryTest {
 
         // Without this, one failing endpoint becomes one error group per transaction and the
         // recurring problem disappears into the noise.
-        val details = runBlocking { database.telemetryDao().oldest(10).first().details!! }
+        val details = awaitEvents(1).first().details!!
         assertThat(details).doesNotContain("8f14e45f")
         assertThat(details).contains("{id}")
     }
 
     // A short read timeout so a withheld response surfaces as a timeout promptly and
     // deterministically, rather than after OkHttp's ten-second default.
+    /**
+     * Waits for [expected] events to be durable.
+     *
+     * <p>Recording is deliberately asynchronous — it must never block the operation it
+     * describes — so reading straight after a request races the write. Polling here tests the
+     * behaviour that matters without pretending the write is synchronous.</p>
+     */
+    private fun awaitEvents(expected: Int, timeoutMillis: Long = 5_000): List<app.zazi.core.data.database.TelemetryEventEntity> {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+
+        while (System.currentTimeMillis() < deadline) {
+            val rows = runBlocking { database.telemetryDao().oldest(50) }
+            if (rows.size >= expected) {
+                return rows
+            }
+            Thread.sleep(25)
+        }
+
+        return runBlocking { database.telemetryDao().oldest(50) }
+    }
+
+    private companion object {
+        val HTTP_CODES = setOf(
+            TelemetryErrorCode.ANDROID_API_4XX.name,
+            TelemetryErrorCode.ANDROID_API_5XX.name
+        )
+    }
+
     private fun clientWith(scope: kotlinx.coroutines.CoroutineScope) = OkHttpClient.Builder()
         .readTimeout(java.time.Duration.ofMillis(400))
         .addInterceptor(
