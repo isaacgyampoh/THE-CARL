@@ -252,11 +252,13 @@ public sealed class ObservabilityService : IObservabilityService
             FirstSeen: g.FirstSeen,
             LastSeen: g.LastSeen,
             AffectedDevices: g.AffectedDevices,
-            SampleDetails: g.SampleDetails)).ToList();
+            // Max() is typed nullable because it can return null for an empty sequence.
+            // A group is never empty and AuditLogEntry.Details is never null, so this
+            // coalesce is unreachable — but it states that rather than asserting it
+            // away with `!`, which would hide a real null if either fact ever changed.
+            SampleDetails: g.SampleDetails ?? string.Empty)).ToList();
     }
 
-    // An expression, not a method: EF composes this into the SQL projection. Written as a
-    // method it would compile and then fail at run time as untranslatable.
     // An expression, not a method: EF composes this into the SQL projection. Written as a
     // method it would compile and then fail at run time as untranslatable. Positional rather
     // than named arguments because an expression tree cannot carry named arguments.

@@ -75,7 +75,7 @@ class SyncWorker(
     }
 
     companion object {
-        const val UNIQUE_WORK_NAME = "thecarl.sync"
+        const val UNIQUE_WORK_NAME = "zazi.sync"
 
         /**
          * Enqueues a drain.

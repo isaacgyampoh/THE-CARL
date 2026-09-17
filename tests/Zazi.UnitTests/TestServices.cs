@@ -11,7 +11,7 @@ namespace Zazi.UnitTests;
 internal static class TestServices
 {
     /// <summary>A signing key long enough to satisfy <see cref="JwtOptions.Validate"/>.</summary>
-    public const string TestSigningKey = "thecarl-unit-test-signing-key-at-least-32-bytes-long";
+    public const string TestSigningKey = "zazi-unit-test-signing-key-at-least-32-bytes-long";
 
     public static JwtOptions CreateJwtOptions() => new()
     {

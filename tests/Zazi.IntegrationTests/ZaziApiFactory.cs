@@ -25,7 +25,7 @@ public sealed class ZaziApiFactory : WebApplicationFactory<Program>
     public const string Issuer = TestHostEnvironment.Issuer;
     public const string Audience = TestHostEnvironment.Audience;
 
-    private readonly string _databaseName = $"carl-tests-{Guid.NewGuid():N}";
+    private readonly string _databaseName = $"zazi-tests-{Guid.NewGuid():N}";
 
     static ZaziApiFactory() => TestHostEnvironment.Apply();
 

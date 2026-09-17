@@ -166,7 +166,7 @@ public class SessionRevocationTests
     {
         const string email = "session.user@carl.test";
         const string password = "Str0ng-Passphrase!";
-        const string deviceIdentifier = "carl-device-0001";
+        const string deviceIdentifier = "zazi-device-0001";
 
         var organization = new Organization { Name = "Session Org", Country = "GH", CurrencyCode = Money.DefaultCurrency };
         var branch = new Branch { OrganizationId = organization.Id, Name = "Main" };

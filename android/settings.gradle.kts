@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "thecarl"
+rootProject.name = "zazi"
 
 // Three modules, each with a real boundary rather than one per layer for appearance:
 //   :core:domain  pure Kotlin/JVM — parsers, ledger rules, identifiers. No Android APIs, so

@@ -33,7 +33,7 @@ class EncryptedDatabaseInstrumentedTest {
 
     @Test
     fun keystoreCryptoRoundTripsThroughRealHardwareBackedKeys() {
-        val cryptoBox = AndroidKeystoreCryptoBox("thecarl.test.crypto")
+        val cryptoBox = AndroidKeystoreCryptoBox("zazi.test.crypto")
         val plaintext = "refresh-token-value".toByteArray()
 
         val blob = cryptoBox.encrypt(plaintext)
@@ -44,7 +44,7 @@ class EncryptedDatabaseInstrumentedTest {
 
     @Test
     fun tamperedCiphertextFailsAuthenticationRatherThanDecryptingToGarbage() {
-        val cryptoBox = AndroidKeystoreCryptoBox("thecarl.test.tamper")
+        val cryptoBox = AndroidKeystoreCryptoBox("zazi.test.tamper")
         val blob = cryptoBox.encrypt("access-token".toByteArray())
 
         // Flip a byte in the ciphertext. GCM's authentication tag must catch this; a mode
@@ -56,7 +56,7 @@ class EncryptedDatabaseInstrumentedTest {
 
     @Test
     fun twoEncryptionsOfTheSameValueDifferBecauseTheNonceDiffers() {
-        val cryptoBox = AndroidKeystoreCryptoBox("thecarl.test.nonce")
+        val cryptoBox = AndroidKeystoreCryptoBox("zazi.test.nonce")
         val plaintext = "same-token".toByteArray()
 
         // Identical ciphertext would let an observer tell that a token was unchanged.
@@ -65,10 +65,10 @@ class EncryptedDatabaseInstrumentedTest {
 
     @Test
     fun credentialsSurviveARealStoreBackedByKeystore() = runBlocking {
-        val preferences = context.getSharedPreferences("thecarl.test.creds", Context.MODE_PRIVATE)
+        val preferences = context.getSharedPreferences("zazi.test.creds", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
 
-        val store = KeystoreCredentialStore(preferences, AndroidKeystoreCryptoBox("thecarl.test.store"))
+        val store = KeystoreCredentialStore(preferences, AndroidKeystoreCryptoBox("zazi.test.store"))
         val credentials = StoredCredentials(
             accessToken = "real-access-token",
             refreshToken = "real-refresh-token",
@@ -98,8 +98,8 @@ class EncryptedDatabaseInstrumentedTest {
         context.deleteDatabase(ZaziDatabase.DATABASE_NAME)
 
         val keyProvider = KeystoreDatabaseKeyProvider(
-            context.getSharedPreferences("thecarl.test.dbkey", Context.MODE_PRIVATE),
-            AndroidKeystoreCryptoBox("thecarl.test.dbkey")
+            context.getSharedPreferences("zazi.test.dbkey", Context.MODE_PRIVATE),
+            AndroidKeystoreCryptoBox("zazi.test.dbkey")
         )
 
         val database = ZaziDatabase.encrypted(context, keyProvider)
@@ -120,8 +120,8 @@ class EncryptedDatabaseInstrumentedTest {
     fun dataSurvivesClosingAndReopeningTheEncryptedDatabase() = runBlocking {
         context.deleteDatabase(ZaziDatabase.DATABASE_NAME)
 
-        val preferences = context.getSharedPreferences("thecarl.test.dbkey2", Context.MODE_PRIVATE)
-        val cryptoBox = AndroidKeystoreCryptoBox("thecarl.test.dbkey2")
+        val preferences = context.getSharedPreferences("zazi.test.dbkey2", Context.MODE_PRIVATE)
+        val cryptoBox = AndroidKeystoreCryptoBox("zazi.test.dbkey2")
 
         val first = ZaziDatabase.encrypted(context, KeystoreDatabaseKeyProvider(preferences, cryptoBox))
         first.evidenceDao().insert(sampleEvidence())
@@ -136,9 +136,9 @@ class EncryptedDatabaseInstrumentedTest {
 
     @Test
     fun theDatabaseKeyIsStableAcrossProviderInstances() {
-        val preferences = context.getSharedPreferences("thecarl.test.dbkey3", Context.MODE_PRIVATE)
+        val preferences = context.getSharedPreferences("zazi.test.dbkey3", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
-        val cryptoBox = AndroidKeystoreCryptoBox("thecarl.test.dbkey3")
+        val cryptoBox = AndroidKeystoreCryptoBox("zazi.test.dbkey3")
 
         val first = KeystoreDatabaseKeyProvider(preferences, cryptoBox).databaseKey()
         val second = KeystoreDatabaseKeyProvider(preferences, cryptoBox).databaseKey()

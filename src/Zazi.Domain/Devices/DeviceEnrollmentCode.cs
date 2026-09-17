@@ -54,7 +54,7 @@ public sealed class DeviceEnrollmentCode : AggregateRoot
     public string CodeHash { get; set; } = string.Empty;
 
     /// <summary>
-    /// Non-secret leading characters, for display in an admin list ("CARL-7F3A…"). Enough to
+    /// Non-secret leading characters, for display in an admin list ("ZAZI-7F3A…"). Enough to
     /// identify which code is which without disclosing anything usable.
     /// </summary>
     public string CodePrefix { get; set; } = string.Empty;

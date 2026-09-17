@@ -223,7 +223,7 @@ class SmsContractFixtureTest {
             }
 
             private fun locate(): File {
-                System.getProperty("thecarl.contracts.dir")?.let { configured ->
+                System.getProperty("zazi.contracts.dir")?.let { configured ->
                     val file = File(configured, "sms-contract-fixtures.json")
                     if (file.exists()) return file
                 }

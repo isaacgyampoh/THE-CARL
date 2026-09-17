@@ -112,7 +112,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         {
             _container = new PostgreSqlBuilder()
                 .WithImage("postgres:16-alpine")
-                .WithDatabase("thecarl_tests")
+                .WithDatabase("zazi_tests")
                 .WithUsername("carl")
                 .WithPassword("carl-test-password")
                 .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5432))

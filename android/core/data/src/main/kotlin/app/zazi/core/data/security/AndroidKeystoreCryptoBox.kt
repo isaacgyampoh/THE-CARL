@@ -96,7 +96,7 @@ class AndroidKeystoreCryptoBox(
     }
 
     companion object {
-        const val DEFAULT_KEY_ALIAS = "thecarl.credentials.v1"
+        const val DEFAULT_KEY_ALIAS = "zazi.credentials.v1"
 
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"

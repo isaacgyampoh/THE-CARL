@@ -112,7 +112,7 @@ class KeystoreCredentialStore(
 
     companion object {
         /** Preference file name. Contains ciphertext only. */
-        const val PREFERENCES_NAME = "thecarl.credentials"
+        const val PREFERENCES_NAME = "zazi.credentials"
 
         private const val KEY_CREDENTIAL_BLOB = "credentials.v1"
         private const val KEY_DEVICE_REVOKED = "device.revoked.v1"

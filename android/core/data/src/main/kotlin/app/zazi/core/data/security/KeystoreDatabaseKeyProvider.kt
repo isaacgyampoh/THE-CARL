@@ -52,7 +52,7 @@ class KeystoreDatabaseKeyProvider(
     }
 
     companion object {
-        const val PREFERENCES_NAME = "thecarl.database"
+        const val PREFERENCES_NAME = "zazi.database"
 
         private const val KEY_WRAPPED_DATABASE_KEY = "database.key.v1"
         private const val KEY_SIZE_BYTES = 32

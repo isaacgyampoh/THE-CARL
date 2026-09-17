@@ -15,7 +15,7 @@ namespace Zazi.IntegrationTests;
 /// </remarks>
 internal static class TestHostEnvironment
 {
-    public const string SigningKey = "thecarl-integration-test-signing-key-at-least-32-bytes";
+    public const string SigningKey = "zazi-integration-test-signing-key-at-least-32-bytes";
     public const string Issuer = "zazi";
     public const string Audience = "zazi-clients";
 

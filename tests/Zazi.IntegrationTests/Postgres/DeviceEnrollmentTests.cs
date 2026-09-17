@@ -44,7 +44,7 @@ public class DeviceEnrollmentTests : IDisposable
 
         var issued = await IssueAsync(tenant);
 
-        Assert.StartsWith("CARL-", issued.Code);
+        Assert.StartsWith("ZAZI-", issued.Code);
         Assert.Equal(tenant.BranchId, issued.BranchId);
         Assert.True(issued.ExpiresAtUtc > DateTimeOffset.UtcNow);
 
@@ -202,7 +202,7 @@ public class DeviceEnrollmentTests : IDisposable
         await RedeemAsync(tenant, issued.Code, "handset-used");
 
         var usedAgain = await RawRedeemAsync(tenant, issued.Code, "handset-a");
-        var neverExisted = await RawRedeemAsync(tenant, "CARL-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ", "handset-b");
+        var neverExisted = await RawRedeemAsync(tenant, "ZAZI-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZ", "handset-b");
 
         // Distinct responses would let an attacker probe which codes exist. Bodies carry a
         // per-request correlationId, so the comparison is on the parts that could leak:
@@ -346,7 +346,7 @@ public class DeviceEnrollmentTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await anonymous.PostAsJsonAsync(CodesPath, new { branchId = tenant.BranchId })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
-            (await anonymous.PostAsJsonAsync(EnrolPath, RedeemPayload("CARL-AAAA", "x"))).StatusCode);
+            (await anonymous.PostAsJsonAsync(EnrolPath, RedeemPayload("ZAZI-AAAA", "x"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await anonymous.GetAsync(SelfPath)).StatusCode);
     }

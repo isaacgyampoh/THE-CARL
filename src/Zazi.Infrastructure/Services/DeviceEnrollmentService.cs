@@ -23,7 +23,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
     private const int CodeEntropyBytes = 20;
 
     private const string CodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-    private const string CodePrefixMarker = "CARL";
+    private const string CodePrefixMarker = "ZAZI";
     private const int DisplayPrefixLength = 9;
 
     private readonly ApplicationDbContext _dbContext;
@@ -433,7 +433,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Crockford base32, grouped for readability: CARL-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX.</summary>
+    /// <summary>Crockford base32, grouped for readability: ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX.</summary>
     private static string GenerateCode()
     {
         var bytes = RandomNumberGenerator.GetBytes(CodeEntropyBytes);

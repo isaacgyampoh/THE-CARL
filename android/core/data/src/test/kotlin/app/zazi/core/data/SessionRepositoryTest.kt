@@ -181,7 +181,7 @@ class SessionRepositoryTest {
         server.enqueue(enrolResponse())
         server.enqueue(deviceSelfResponse())
 
-        val result = session.enrolDevice("CARL-ABCD-EFGH")
+        val result = session.enrolDevice("ZAZI-ABCD-EFGH")
 
         assertThat(result).isInstanceOf(EnrolmentResult.Success::class.java)
         assertThat(credentialStore.read()!!.deviceId).isEqualTo("device-1")
@@ -199,7 +199,7 @@ class SessionRepositoryTest {
 
         server.enqueue(enrolResponse())
         server.enqueue(deviceSelfResponse())
-        session.enrolDevice("CARL-ABCD-EFGH")
+        session.enrolDevice("ZAZI-ABCD-EFGH")
 
         // Skip login + devices/me, inspect the enrol request body.
         server.takeRequest(); server.takeRequest()
@@ -220,7 +220,7 @@ class SessionRepositoryTest {
 
         server.enqueue(MockResponse().setResponseCode(401))
 
-        assertThat(session.enrolDevice("CARL-EXPIRED")).isEqualTo(EnrolmentResult.InvalidOrExpiredCode)
+        assertThat(session.enrolDevice("ZAZI-EXPIRED")).isEqualTo(EnrolmentResult.InvalidOrExpiredCode)
         assertThat(credentialStore.read()!!.deviceId).isNull()
     }
 

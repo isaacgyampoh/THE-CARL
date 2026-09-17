@@ -149,7 +149,7 @@ fun EnrolmentScreen(
             value = state.code,
             onValueChange = onCodeChanged,
             label = { Text("Enrolment code") },
-            placeholder = { Text("CARL-XXXX-XXXX-…") },
+            placeholder = { Text("ZAZI-XXXX-XXXX-…") },
             singleLine = true,
             enabled = !state.isSubmitting,
             modifier = Modifier.fillMaxWidth()

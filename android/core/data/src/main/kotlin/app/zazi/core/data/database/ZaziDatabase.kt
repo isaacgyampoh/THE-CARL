@@ -40,7 +40,7 @@ abstract class ZaziDatabase : RoomDatabase() {
 
     companion object {
         const val VERSION = 2
-        const val DATABASE_NAME = "thecarl.db"
+        const val DATABASE_NAME = "zazi.db"
 
         /**
          * Opens the encrypted database.

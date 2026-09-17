@@ -24,5 +24,5 @@ tasks.withType<Test>().configureEach {
     // The cross-platform SMS contract corpus lives at the repository root and is read by
     // both this suite and the .NET one. Passed as a property rather than copied: a copy
     // could drift from the original, which is exactly what the corpus exists to prevent.
-    systemProperty("thecarl.contracts.dir", rootProject.projectDir.parentFile.resolve("contracts").absolutePath)
+    systemProperty("zazi.contracts.dir", rootProject.projectDir.parentFile.resolve("contracts").absolutePath)
 }

@@ -212,7 +212,7 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     }
 
     companion object {
-        private const val INSTALLATION_PREFERENCES = "thecarl.installation"
+        private const val INSTALLATION_PREFERENCES = "zazi.installation"
         private const val KEY_INSTALLATION_ID = "installation.id"
     }
 }
