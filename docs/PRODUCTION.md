@@ -20,6 +20,38 @@ built and verified.
 | **A TLS certificate** | Let's Encrypt is free and automatic via Caddy or nginx + certbot. Self-signed will not work — Android rejects it and there is no override in the release build. |
 | **A release keystore** | Signs the APK. Whoever holds it controls all future updates; lose it and you cannot update the app at all, only publish a new one under a new identity. Back it up somewhere other than the server. |
 
+## Where to host it (and why not Vercel)
+
+**Vercel cannot run Zazi.** This is not a configuration problem, so it is worth being clear
+about rather than attempting:
+
+- Vercel runs Node.js, Python, Go and Ruby functions. There is no supported .NET runtime.
+- The dashboard is **Blazor Server**. It holds an open SignalR connection per signed-in user
+  for the life of their session, and keeps that user's UI state in the server's memory.
+  Serverless functions are stateless, time-limited and cannot hold a long-lived connection.
+  This is not a limitation to work around — the two models are incompatible.
+- The rate limiters are in-memory and per-process. On a platform that starts a fresh process
+  per request, a login limiter counts to one forever and never triggers.
+- Vercel does not host PostgreSQL.
+
+The same reasoning rules out Netlify, Cloudflare Pages and GitHub Pages. What Zazi needs is
+somewhere that runs **two long-lived processes and a database** — a plain server, or a
+platform that runs containers rather than functions.
+
+| Option | Good for |
+|---|---|
+| **A VM** (Hetzner, DigitalOcean, Vultr) + Caddy | Cheapest and fully in your control. A small instance handles 100 agents comfortably. You manage updates and backups. |
+| **Render / Railway / Fly.io** | Containers with TLS and PostgreSQL handled for you. Less to run, more per month, less control. |
+| **Azure App Service** | First-class .NET and Blazor Server support, including WebSockets. |
+
+For a 100-agent pilot, a single small VM with Caddy in front is the straightforward choice:
+Caddy obtains and renews the Let's Encrypt certificate automatically, which is the part that
+otherwise takes the longest. `deploy/` contains a working Caddyfile and systemd units.
+
+**On region:** agents are in Ghana, and the nearest regions for most providers are in Europe
+(roughly 100–150 ms). That is fine here — the Android app is offline-first and syncs in
+batches, so it is not sensitive to round-trip latency. Do not pick a US region.
+
 ## Architecture
 
 Put TLS in front, terminate it there, and speak plain HTTP to the two processes on loopback:
@@ -150,6 +182,49 @@ opens, and fails every request.
 
 Never distribute a `pilot` build. It is minified and signed exactly like release but permits
 cleartext for any host, which exists so a trial can run on office wifi.
+
+## Putting it on a VM
+
+`deploy/` holds the files this refers to. Roughly, on a fresh Debian or Ubuntu server:
+
+```sh
+# 1. Runtime, database, proxy
+sudo apt install -y dotnet-runtime-8.0 aspnetcore-runtime-8.0 postgresql caddy
+
+# 2. A service account that owns nothing else
+sudo useradd --system --home /opt/zazi --shell /usr/sbin/nologin zazi
+
+# 3. Publish from your machine, copy the output up
+dotnet publish src/Zazi.Api -c Release -o out/api
+dotnet publish src/Zazi.Web -c Release -o out/web
+rsync -a out/api/ server:/opt/zazi/api/
+rsync -a out/web/ server:/opt/zazi/web/
+
+# 4. Secrets, readable only by root
+sudo install -d -m 700 /etc/zazi
+sudo cp deploy/api.env.example /etc/zazi/api.env    # edit, then chmod 600
+sudo cp deploy/web.env.example /etc/zazi/web.env    # edit, then chmod 600
+
+# 5. Services
+sudo cp deploy/zazi-api.service deploy/zazi-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now zazi-api zazi-web
+
+# 6. TLS. Edit the two domain names first.
+sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Then apply migrations as described above — they do not run on their own — and create the
+first owner with `Zazi.Bootstrap`.
+
+If a service does not come up, `journalctl -u zazi-api -n 50` will usually say exactly why:
+the startup guards refuse with a message naming the missing setting rather than failing
+obscurely.
+
+> These files are written for Debian/Ubuntu with systemd and have not been run on a server
+> from here — this repository is developed on macOS, which has no systemd. Expect to adjust
+> paths for your distribution.
 
 ## Before you let real agents on
 

@@ -1,0 +1,42 @@
+# Caddy terminates TLS and forwards to the two Zazi processes on loopback.
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically, which is the part of a
+# deployment that otherwise takes longest to get right. It needs ports 80 and 443 reachable
+# from the internet and the two DNS names below pointing at this server.
+#
+# Replace both names, then:   sudo caddy reload --config /etc/caddy/Caddyfile
+
+api.example.com {
+	# The Android app talks to this. It is the only thing the handset ever contacts.
+	reverse_proxy 127.0.0.1:5055
+
+	# Caddy sets X-Forwarded-For and X-Forwarded-Proto by default. Zazi needs both: with
+	# Zazi__BehindTlsProxy=true it trusts them, and the per-IP login rate limiter depends on
+	# seeing the real client address rather than this proxy's.
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/api.log
+	}
+}
+
+app.example.com {
+	# The dashboard. Blazor Server keeps a WebSocket open per signed-in user; Caddy proxies
+	# WebSocket upgrades without extra configuration, which is why this block looks ordinary.
+	reverse_proxy 127.0.0.1:5056
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/app.log
+	}
+}

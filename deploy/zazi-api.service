@@ -1,0 +1,41 @@
+# systemd unit for the Zazi API.
+#
+#   sudo cp zazi-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zazi-api
+#
+# Secrets live in /etc/zazi/api.env, which is read by root and should be chmod 600. They are
+# deliberately not in this file: unit files are world-readable.
+
+[Unit]
+Description=Zazi API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+# Type=simple, not notify: notify requires the Microsoft.Extensions.Hosting.Systemd
+# package and a UseSystemd() call. Without those, systemd waits for a readiness
+# notification that never arrives and kills the service as failed to start.
+Type=simple
+WorkingDirectory=/opt/zazi/api
+ExecStart=/usr/bin/dotnet /opt/zazi/api/Zazi.Api.dll
+Restart=always
+RestartSec=5
+User=zazi
+Group=zazi
+EnvironmentFile=/etc/zazi/api.env
+
+# Bound to loopback. Everything from outside arrives through Caddy, which terminates TLS.
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5055
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=Zazi__BehindTlsProxy=true
+
+# The process needs to read its own files and write nothing outside its own state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Creates /var/lib/zazi owned by this service user if it is not already there.
+StateDirectory=zazi
+
+[Install]
+WantedBy=multi-user.target

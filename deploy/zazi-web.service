@@ -1,0 +1,45 @@
+# systemd unit for the Zazi dashboard.
+#
+#   sudo cp zazi-web.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zazi-web
+#
+# Secrets live in /etc/zazi/web.env, which is read by root and should be chmod 600. They are
+# deliberately not in this file: unit files are world-readable.
+
+[Unit]
+Description=Zazi dashboard
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+# Type=simple, not notify: notify requires the Microsoft.Extensions.Hosting.Systemd
+# package and a UseSystemd() call. Without those, systemd waits for a readiness
+# notification that never arrives and kills the service as failed to start.
+Type=simple
+WorkingDirectory=/opt/zazi/web
+ExecStart=/usr/bin/dotnet /opt/zazi/web/Zazi.Web.dll
+Restart=always
+RestartSec=5
+User=zazi
+Group=zazi
+EnvironmentFile=/etc/zazi/web.env
+
+# Bound to loopback. Everything from outside arrives through Caddy, which terminates TLS.
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5056
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=Zazi__BehindTlsProxy=true
+
+# Required outside Development. Holds the keys that encrypt session cookies and antiforgery
+# tokens; if this directory is lost, every signed-in agent is signed out.
+Environment=Zazi__DataProtectionKeyPath=/var/lib/zazi/keys
+
+# The process needs to read its own files and write nothing outside its own state directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Creates /var/lib/zazi owned by this service user if it is not already there.
+StateDirectory=zazi
+
+[Install]
+WantedBy=multi-user.target
