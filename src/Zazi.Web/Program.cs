@@ -1,6 +1,8 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Zazi.Application;
@@ -127,6 +129,47 @@ var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
 {
+    // The same explicit decision the API makes. UseHttpsRedirection silently does nothing
+    // without a configured HTTPS port, and the session cookie is marked Secure here — so a
+    // plain-HTTP deployment would not leak the cookie, it would simply never keep anyone
+    // signed in, which is a confusing way to discover a transport mistake.
+    var behindTlsProxy = builder.Configuration.GetValue<bool>("Zazi:BehindTlsProxy");
+
+    var servesHttps = (builder.Configuration["ASPNETCORE_URLS"] ?? string.Empty)
+        .Contains("https://", StringComparison.OrdinalIgnoreCase)
+        || !string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_HTTPS_PORT"])
+        || !string.IsNullOrWhiteSpace(builder.Configuration["HTTPS_PORT"]);
+
+    // Only a real network listener can expose cleartext. An in-memory test host has no
+    // socket and nothing to protect, so the rule there would assert something that cannot
+    // be true rather than catch a misconfiguration.
+    //
+    // This deliberately identifies the *exception* and treats everything else as a real
+    // listener, so an unrecognised server still gets the check. Testing the other way round
+    // — asking whether the server is Kestrel — fails open: the registered implementation is
+    // the internal KestrelServerImpl, not the public KestrelServer, so the type test is
+    // never true and the guard silently stops protecting anything.
+    var serverType = app.Services.GetService<IServer>()?.GetType().FullName ?? string.Empty;
+    var bindsNetworkTransport = !serverType.StartsWith("Microsoft.AspNetCore.TestHost.", StringComparison.Ordinal);
+
+    if (bindsNetworkTransport && !servesHttps && !behindTlsProxy)
+    {
+        throw new InvalidOperationException(
+            "Refusing to serve plain HTTP outside Development. Either configure HTTPS on this " +
+            "process, or set Zazi:BehindTlsProxy=true if TLS is terminated by a proxy in front " +
+            "of it.");
+    }
+
+    if (bindsNetworkTransport && behindTlsProxy)
+    {
+        // So the cookie's Secure policy and the sign-in rate limiter see the client's scheme
+        // and address rather than the proxy's.
+        app.UseForwardedHeaders(new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+        });
+    }
+
     app.UseExceptionHandler("/error", createScopeForErrors: true);
     app.UseHsts();
 

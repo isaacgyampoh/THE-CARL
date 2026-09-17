@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive-icon foreground. The 108x108 viewport is the platform's; only the centre 72x72 is
+  guaranteed visible, because the launcher masks the rest to whatever shape the device uses.
+  The mark is drawn well inside that safe zone so it survives a circular mask.
+
+  A vector avoids shipping five PNG densities, and there is no binary asset to keep in sync.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M40,40 L68,40 L40,68 L68,68"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

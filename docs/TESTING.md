@@ -98,16 +98,16 @@ echo "carl-test-password" > pgpass.txt
 # 3. Start it.
 #    The socket directory must be SHORT: PostgreSQL caps the Unix socket path at 103 bytes
 #    and a deep temp path silently fails to start.
-mkdir -p /tmp/carlpg
+mkdir -p /tmp/zazipg
 #    max_connections must be raised: the suite deliberately drives 100-way concurrency
 #    across several test classes, and the default of 100 exhausts the server
 #    ("sorry, too many clients already").
 ./pgdist/bin/pg_ctl -D "$WORK/pgdata" \
-  -o "-p 55432 -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp/carlpg -c max_connections=400" \
+  -o "-p 55433 -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp/zazipg -c max_connections=400" \
   -l "$WORK/pg.log" start
 
 # 4. Point the tests at it
-export ZAZI_TEST_POSTGRES="Host=127.0.0.1;Port=55432;Database=postgres;Username=carl;Password=carl-test-password"
+export ZAZI_TEST_POSTGRES="Host=127.0.0.1;Port=55433;Database=postgres;Username=carl;Password=carl-test-password"
 dotnet test
 
 # 5. Stop when finished
@@ -119,13 +119,13 @@ Notes:
 - The distribution ships `initdb`, `pg_ctl` and `postgres` only — no `psql`. The tests
   connect through Npgsql, so no client binary is needed.
 - The x86_64 build runs under Rosetta on Apple silicon. That is fine for testing.
-- Port 55432 avoids clashing with any real local PostgreSQL on 5432. It is **not**
+- Port 55433 avoids clashing with any real local PostgreSQL on 5432. It is **not**
   guaranteed free: another project on the same machine may already hold it, and a foreign
   cluster accepts the TCP connection and then rejects the `carl` role, which reads like a
   broken client rather than the wrong server. Check first, and pick another port if taken:
 
   ```bash
-  lsof -nP -iTCP:55432 -sTCP:LISTEN     # empty means free
+  lsof -nP -iTCP:55433 -sTCP:LISTEN     # empty means free
   ```
 
   Every port below is overridable — `pg_ctl -o "-p <port>"` and the matching

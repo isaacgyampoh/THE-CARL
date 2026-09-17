@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Lint reports the v26 qualifier as redundant because minSdk is already 26 and suggests
+      merging the folder into mipmap-anydpi. Following that advice breaks the build: AAPT2
+      does not resolve @mipmap/ic_launcher from an unqualified anydpi folder and resource
+      linking fails outright. The qualifier stays, and the check is silenced for this path
+      only so a genuine obsolete-SDK finding elsewhere still surfaces.
+    -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

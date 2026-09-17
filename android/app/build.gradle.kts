@@ -106,6 +106,9 @@ android {
     }
 
     lint {
+        // Path-scoped suppressions live in lint.xml so they carry their reason with them.
+        lintConfig = file("lint.xml")
+
         // AGP 8.7's NonNullableMutableLiveDataDetector throws NoClassDefFoundError when
         // lifecycle-livedata is not on the classpath, crashing the entire lint run. This
         // module uses no LiveData, so the detector has nothing to inspect. Disabling a
