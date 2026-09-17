@@ -1,5 +1,8 @@
 # Running a Zazi pilot
 
+> For a real deployment — your own server, a domain name and TLS — see
+> [PRODUCTION.md](PRODUCTION.md). This document covers a trial run from a laptop.
+
 How to get Zazi in front of a real agent. Everything below has been executed end to end; the
 commands are the ones that were actually run, not a sketch.
 

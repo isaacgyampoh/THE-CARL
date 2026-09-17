@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.RateLimiting;
@@ -32,6 +33,32 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
+
+// ─── Data protection ─────────────────────────────────────────────────────────
+// Data Protection encrypts the authentication cookie and the antiforgery tokens. Without a
+// persisted key ring ASP.NET generates one under the process user's home directory, which is
+// exactly the thing a container does not keep: every deploy or restart mints new keys, every
+// agent's cookie becomes unreadable and they are all signed out mid-shift. Two instances
+// behind a load balancer never agree at all, so sign-in appears to work and then randomly
+// does not.
+//
+// It is required rather than defaulted because the failing case looks like it is working.
+// The application name is pinned so the keys stay readable across deployments.
+var keyRingPath = builder.Configuration["Zazi:DataProtectionKeyPath"];
+
+if (!string.IsNullOrWhiteSpace(keyRingPath))
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(Directory.CreateDirectory(keyRingPath))
+        .SetApplicationName("zazi-web");
+}
+else if (!builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "Zazi:DataProtectionKeyPath is required outside Development. Point it at a directory " +
+        "that survives restarts and is shared by every instance, or sessions will be dropped " +
+        "whenever this process restarts.");
+}
 
 // ─── Authentication ──────────────────────────────────────────────────────────
 // A cookie carries the browser session; the credentials behind it are verified by the

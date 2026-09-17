@@ -40,6 +40,15 @@ This repository is currently greenfield. No application code, infrastructure, or
 
 ## Documentation index
 
+Running it:
+
+- [docs/PRODUCTION.md](docs/PRODUCTION.md) — deploying to a real server, with TLS
+- [docs/PILOT.md](docs/PILOT.md) — running a trial from a laptop
+- [docs/TESTING.md](docs/TESTING.md) — the test database and how to run the suites
+- [docs/MIGRATION_SAFETY.md](docs/MIGRATION_SAFETY.md) — applying schema changes
+
+Design:
+
 - [docs/phase0-connectivity-prototype.md](docs/phase0-connectivity-prototype.md)
 - [docs/threat-model.md](docs/threat-model.md)
 - [docs/domain-model.md](docs/domain-model.md)
