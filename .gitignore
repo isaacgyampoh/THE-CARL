@@ -17,3 +17,31 @@ venv/
 Thumbs.db
 
 .fake
+# Signing material and credentials. Nothing here is currently committed; these rules exist so
+# a stray `git add -A` cannot be the moment it happens.
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+signing.key
+
+# Local and per-deployment configuration. appsettings.json holds structure and safe defaults
+# and is committed; anything carrying a real connection string, JWT key or credential is not.
+appsettings.Production.json
+appsettings.*.local.json
+.env
+.env.*
+!.env.example
+
+# Build artefacts. Android build/ output is already ignored, but an APK copied elsewhere for
+# distribution is not, and a signed pilot build is a redistributable credential-bearing binary.
+*.apk
+*.aab
+*.idsig
+
+# Database backups, if anyone points backup-database.sh inside the working tree. They contain
+# every user record and every piece of transaction evidence in the pilot.
+zazi-backups/
+*.backup

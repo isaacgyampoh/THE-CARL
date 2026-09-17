@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release-only manifest overlay.
+
+  targetSdk 35 already blocks cleartext by default, so this changes nothing today. It is here
+  so the guarantee belongs to the release build itself rather than to whatever the platform
+  default happens to be: lowering targetSdk later would otherwise quietly re-permit plain HTTP
+  for a build that carries credentials and transaction evidence.
+
+  It is scoped to src/release rather than src/main deliberately. In main it would also merge
+  into debug and pilot, where cleartext is permitted on purpose via a networkSecurityConfig,
+  and those builds would then depend on a precedence rule between the two settings holding.
+  Scoping it removes that interaction instead of relying on it.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:usesCleartextTraffic="false" />
+
+</manifest>

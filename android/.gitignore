@@ -4,3 +4,11 @@ build/
 local.properties
 *.iml
 .idea/
+
+# gradle.properties is deliberately NOT listed here. It is tracked, it carries build flags the
+# project needs, and an ignore rule would not protect it anyway — git keeps tracking a file it
+# already knows about. Signing properties belong in ~/.gradle/gradle.properties, outside the
+# repository; app/build.gradle.kts fails the build if they appear in the tracked file instead.
+keystore.properties
+*.keystore
+*.jks

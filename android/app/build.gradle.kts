@@ -34,6 +34,24 @@ android {
     // four properties are supplied — by CI, or by a local gradle.properties that is not
     // committed — and is left unsigned otherwise rather than failing the build, so an
     // unsigned release can still be produced for inspection.
+    // Signing properties belong in ~/.gradle/gradle.properties, or on the command line with
+    // -P. The project's own gradle.properties is tracked by git, so a password written there is
+    // one `git commit -a` away from being published — and a keystore password in history cannot
+    // be retracted, only rotated. Fail loudly rather than sign quietly.
+    val trackedProperties = rootProject.file("gradle.properties")
+    if (trackedProperties.exists()) {
+        val lines = trackedProperties.readLines()
+        val leaked = listOf("zaziKeystore", "zaziKeystorePassword", "zaziKeyAlias", "zaziKeyPassword")
+            .filter { name -> lines.any { it.trimStart().startsWith("$name=") } }
+        if (leaked.isNotEmpty()) {
+            throw GradleException(
+                "Signing properties (${leaked.joinToString()}) are set in android/gradle.properties, " +
+                    "which is tracked by git. Move them to ~/.gradle/gradle.properties, or pass " +
+                    "them with -P on the command line."
+            )
+        }
+    }
+
     val releaseStore = (project.findProperty("zaziKeystore") as String?)?.let(::file)
 
     signingConfigs {
