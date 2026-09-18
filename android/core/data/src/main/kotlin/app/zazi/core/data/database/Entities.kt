@@ -1,5 +1,6 @@
 package app.zazi.core.data.database
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -261,4 +262,19 @@ data class RecentTransactionRow(
     val reference: String?,
     val sourceType: String,
     val outboxState: String?
+)
+
+/**
+ * One transaction with everything known about its delivery.
+ *
+ * <p><c>@Embedded</c> reuses the stored entity rather than restating twenty financial fields
+ * in a second shape that could drift from it. The joined columns are null once the outbox row
+ * has been pruned, which means settled and tidied — not unknown.</p>
+ */
+data class TransactionDetailRow(
+    @Embedded val transaction: LocalTransactionEntity,
+    val outboxState: String?,
+    val attemptCount: Int?,
+    val lastReasonCode: String?,
+    val lastAttemptAtUtcMillis: Long?
 )

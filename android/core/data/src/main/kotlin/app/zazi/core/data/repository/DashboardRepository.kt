@@ -1,6 +1,7 @@
 package app.zazi.core.data.repository
 
 import app.zazi.core.data.database.RecentTransactionRow
+import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.database.ZaziDatabase
 import app.zazi.core.domain.sync.OutboxState
 import kotlinx.coroutines.flow.Flow
@@ -43,6 +44,29 @@ class DashboardRepository(private val database: ZaziDatabase) {
      */
     fun observeRecent(limit: Int = DEFAULT_RECENT): Flow<List<RecentTransactionRow>> =
         database.localTransactionDao().observeRecentWithDelivery(limit)
+
+    /** The same, confined to a window — a day, or the last several. */
+    fun observeBetween(
+        fromUtcMillis: Long,
+        toUtcMillis: Long,
+        limit: Int = DEFAULT_RECENT
+    ): Flow<List<RecentTransactionRow>> =
+        database.localTransactionDao().observeBetweenWithDelivery(fromUtcMillis, toUtcMillis, limit)
+
+    /** Everything known about one transaction, including why it is stuck. */
+    suspend fun findDetail(clientTransactionId: String): TransactionDetailRow? =
+        database.localTransactionDao().findDetail(clientTransactionId)
+
+    /**
+     * Returns a dead-lettered transaction to the queue.
+     *
+     * <p>Returns whether anything changed. False means the row was not dead-lettered — it may
+     * have been delivered by a retry between the screen being drawn and the button being
+     * pressed, or it may be a conflict, which no retry can resolve. Either way the caller
+     * should re-read rather than assume.</p>
+     */
+    suspend fun retryDeadLettered(clientTransactionId: String, nowUtcMillis: Long): Boolean =
+        database.outboxDao().requeueDeadLettered(clientTransactionId, nowUtcMillis) > 0
 
     private companion object {
         /** Enough to cover a shift's worth of checking back, without becoming a report. */

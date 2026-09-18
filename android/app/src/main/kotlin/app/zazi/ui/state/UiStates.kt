@@ -86,6 +86,7 @@ data class DashboardUiState(
     val todayFloatMinor: Long? = null,
     /** What this device has recorded, newest first. Empty until the first capture. */
     val activity: List<ActivityItem> = emptyList(),
+    val activityFilter: ActivityFilter = ActivityFilter.TODAY,
     val isOnline: Boolean = true,
     val isSyncing: Boolean = false
 ) {
@@ -244,6 +245,74 @@ enum class ActivityDelivery {
             else -> SENDING
         }
     }
+}
+
+/**
+ * Which slice of the agent's own record is on screen.
+ *
+ * <p>Windows are computed from a supplied "now" rather than read from the clock inside, so
+ * the boundary is testable and every figure on one screen refers to the same instant.</p>
+ */
+enum class ActivityFilter(val label: String) {
+    TODAY("Today"),
+    YESTERDAY("Yesterday"),
+    LAST_SEVEN_DAYS("Last 7 days");
+
+    /** Half-open window in UTC millis. Ghana observes UTC+0, so this is the business day. */
+    fun windowUtcMillis(nowUtcMillis: Long): LongRange {
+        val dayStart = nowUtcMillis / DAY_MILLIS * DAY_MILLIS
+        return when (this) {
+            TODAY -> dayStart until dayStart + DAY_MILLIS
+            YESTERDAY -> dayStart - DAY_MILLIS until dayStart
+            // Seven days including today, so "last 7 days" never excludes what just happened.
+            LAST_SEVEN_DAYS -> dayStart - 6 * DAY_MILLIS until dayStart + DAY_MILLIS
+        }
+    }
+
+    private companion object {
+        const val DAY_MILLIS = 24 * 60 * 60 * 1000L
+    }
+}
+
+/**
+ * One transaction, in full, with why it is where it is.
+ *
+ * <p>Exists so an agent can answer a customer standing in front of them — what was the
+ * reference, what number was it, has it actually gone — without calling anyone.</p>
+ */
+data class TransactionDetail(
+    val clientTransactionId: String,
+    val label: String,
+    val provider: String,
+    val amountMinor: Long,
+    val cashDeltaMinor: Long,
+    val atUtcMillis: Long,
+    val customerPhone: String?,
+    val reference: String?,
+    val capturedAutomatically: Boolean,
+    val delivery: ActivityDelivery,
+    val attemptCount: Int,
+    val lastReasonCode: String?,
+    val isRetryable: Boolean
+) {
+    val shortReference: String get() = clientTransactionId.takeLast(8)
+
+    /**
+     * What the agent should do, in their terms.
+     *
+     * <p>A conflict is deliberately not offered a retry. The server disagreeing is not
+     * something re-sending the same payload can fix — it would fail identically and leave a
+     * second audit entry — so the honest instruction is that somebody with more authority
+     * has to look.</p>
+     */
+    val guidance: String?
+        get() = when {
+            delivery == ActivityDelivery.SENT -> null
+            delivery == ActivityDelivery.SENDING -> null
+            isRetryable -> "This stopped after $attemptCount attempts. You can try again."
+            else -> "The server did not accept this. Ask your manager to review it — " +
+                "sending it again would be refused the same way."
+        }
 }
 
 /** How a queued item is presented. Mirrors OutboxState; deliberately not a second enum. */

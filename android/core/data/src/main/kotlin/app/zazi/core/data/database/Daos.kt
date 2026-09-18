@@ -98,6 +98,57 @@ interface LocalTransactionDao {
     )
     fun observeRecentWithDelivery(limit: Int): Flow<List<RecentTransactionRow>>
 
+    /**
+     * The same rows, confined to a window.
+     *
+     * <p>Half-open on the raw millis column so an index can serve it and a transaction on a
+     * boundary belongs to exactly one day.</p>
+     */
+    @Query(
+        """
+        SELECT t.clientTransactionId AS clientTransactionId,
+               t.transactionType     AS transactionType,
+               t.provider            AS provider,
+               t.amountMinor         AS amountMinor,
+               t.cashDeltaMinor      AS cashDeltaMinor,
+               t.transactionAtUtcMillis AS transactionAtUtcMillis,
+               t.reference           AS reference,
+               t.sourceType          AS sourceType,
+               o.state               AS outboxState
+        FROM local_transactions t
+        LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        WHERE t.transactionAtUtcMillis >= :fromUtcMillis
+          AND t.transactionAtUtcMillis < :toUtcMillis
+        ORDER BY t.transactionAtUtcMillis DESC
+        LIMIT :limit
+        """
+    )
+    fun observeBetweenWithDelivery(
+        fromUtcMillis: Long,
+        toUtcMillis: Long,
+        limit: Int
+    ): Flow<List<RecentTransactionRow>>
+
+    /**
+     * Everything known about one transaction, including why it is stuck.
+     *
+     * <p>LEFT JOIN for the same reason as the list: a settled row whose outbox entry has been
+     * pruned is still inspectable.</p>
+     */
+    @Query(
+        """
+        SELECT t.*,
+               o.state             AS outboxState,
+               o.attemptCount      AS attemptCount,
+               o.lastReasonCode    AS lastReasonCode,
+               o.lastAttemptAtUtcMillis AS lastAttemptAtUtcMillis
+        FROM local_transactions t
+        LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        WHERE t.clientTransactionId = :clientTransactionId
+        """
+    )
+    suspend fun findDetail(clientTransactionId: String): TransactionDetailRow?
+
     @Query(
         """
         SELECT * FROM local_transactions
@@ -173,6 +224,30 @@ interface OutboxDao {
 
     @Query("SELECT * FROM outbox_items WHERE state = :state ORDER BY updatedAtUtcMillis DESC")
     suspend fun findByState(state: String): List<OutboxItemEntity>
+
+    /**
+     * Returns one dead-lettered item to the queue at an agent's request.
+     *
+     * <p>Scoped to DEAD_LETTER in the WHERE clause rather than checked in Kotlin, so a
+     * concurrent change cannot slip a CONFLICT or an in-flight row through: the server
+     * disagreeing is not something a retry can fix, and re-sending would produce the same
+     * conflict and a second audit entry.</p>
+     *
+     * <p>The attempt count is reset so backoff starts from the beginning — this is a fresh
+     * decision by a person, not a continuation of the schedule that gave up.</p>
+     */
+    @Query(
+        """
+        UPDATE outbox_items
+        SET state = 'PENDING',
+            attemptCount = 0,
+            nextAttemptAtUtcMillis = :nowUtcMillis,
+            updatedAtUtcMillis = :nowUtcMillis
+        WHERE clientTransactionId = :clientTransactionId
+          AND state = 'DEAD_LETTER'
+        """
+    )
+    suspend fun requeueDeadLettered(clientTransactionId: String, nowUtcMillis: Long): Int
 
     /**
      * Returns items stranded in SYNCING to PENDING.

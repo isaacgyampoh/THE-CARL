@@ -22,7 +22,7 @@ evidence-based accounting data.
 | Refresh tokens | Implemented | 32 random bytes, stored only as a SHA-256 hash |
 | Refresh rotation | Implemented | Each redemption revokes the presented token and issues a replacement in the same family |
 | Reuse detection | Implemented | Presenting an already-rotated token revokes the entire token family |
-| Signing key | Implemented | No fallback key exists. The API refuses to start without `Jwt:Key` / `THECARL_JWT_KEY` (≥32 bytes) outside Development |
+| Signing key | Implemented | No fallback key exists. The API refuses to start without `Jwt:Key` / `ZAZI_JWT_KEY` (≥32 bytes) outside Development |
 | MFA | **Not implemented** | Architecture groundwork only — no second factor is enforced |
 | Security-stamp revocation | **Partial** | The stamp is issued as a claim but is not yet re-checked per request, so an issued access token stays valid until it expires |
 

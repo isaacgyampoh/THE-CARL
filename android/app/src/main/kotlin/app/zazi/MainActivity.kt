@@ -33,7 +33,9 @@ import app.zazi.ui.DeviceRevokedScreen
 import app.zazi.ui.EnrolmentScreen
 import app.zazi.ui.LoadingScreen
 import app.zazi.ui.LoginScreen
+import app.zazi.ui.TransactionDetailScreen
 import app.zazi.ui.state.ActivityDelivery
+import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.CaptureTransactionType
 import app.zazi.ui.viewmodel.CaptureViewModel
@@ -81,7 +83,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** Screen currently shown within the authenticated part of the app. */
-private enum class AuthenticatedScreen { DASHBOARD, CAPTURE }
+private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION }
 
 @Composable
 private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
@@ -108,10 +110,14 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 totals.cashMinor to totals.floatMinor
             },
             syncedTodayCount = { container.dashboardRepository.syncedCount() },
-            recentActivity = {
+            recentActivity = { filter ->
                 // Mapped here rather than in the repository so the persistence projection
                 // stays a persistence concern and the screen gets a model in its own terms.
-                container.dashboardRepository.observeRecent().first().map { row ->
+                val window = filter.windowUtcMillis(System.currentTimeMillis())
+                container.dashboardRepository
+                    .observeBetween(window.first, window.last + 1)
+                    .first()
+                    .map { row ->
                     ActivityItem(
                         clientTransactionId = row.clientTransactionId,
                         label = CaptureTransactionType.entries
@@ -131,11 +137,48 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         delivery = ActivityDelivery.fromOutboxState(row.outboxState)
                     )
                 }
+            },
+            transactionDetail = { clientTransactionId ->
+                container.dashboardRepository.findDetail(clientTransactionId)?.let { row ->
+                    val state = row.outboxState
+                    TransactionDetail(
+                        clientTransactionId = row.transaction.clientTransactionId,
+                        label = CaptureTransactionType.entries
+                            .firstOrNull { it.name == row.transaction.transactionType }
+                            ?.label
+                            ?: row.transaction.transactionType.lowercase().replace('_', ' ')
+                                .replaceFirstChar { it.uppercase() },
+                        provider = row.transaction.provider,
+                        amountMinor = row.transaction.amountMinor,
+                        cashDeltaMinor = row.transaction.cashDeltaMinor,
+                        atUtcMillis = row.transaction.transactionAtUtcMillis,
+                        customerPhone = row.transaction.customerPhoneNumber,
+                        reference = row.transaction.reference,
+                        capturedAutomatically = row.transaction.sourceType == "SMS",
+                        delivery = ActivityDelivery.fromOutboxState(state),
+                        attemptCount = row.attemptCount ?: 0,
+                        lastReasonCode = row.lastReasonCode,
+                        // Only a dead letter. A conflict means the server disagreed, which
+                        // re-sending cannot resolve — the DAO enforces the same boundary, so
+                        // this decides what to offer rather than what is permitted.
+                        isRetryable = state == "DEAD_LETTER"
+                    )
+                }
+            },
+            retryTransaction = { clientTransactionId ->
+                val requeued = container.dashboardRepository
+                    .retryDeadLettered(clientTransactionId, System.currentTimeMillis())
+                // Only wake the worker if something actually changed; an unnecessary wake on
+                // every tap would drain a handset that is already struggling to sync.
+                if (requeued) SyncWorker.enqueue(application)
+                requeued
             }
         )
     }
 
     var screen by remember { mutableStateOf(AuthenticatedScreen.DASHBOARD) }
+    var selectedTransaction by remember { mutableStateOf<TransactionDetail?>(null) }
+    var isRetrying by remember { mutableStateOf(false) }
 
     when (val state = sessionState) {
         SessionState.Initialising -> LoadingScreen()
@@ -207,6 +250,18 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     DashboardScreen(
                         state = dashboardState,
                         onCapture = { screen = AuthenticatedScreen.CAPTURE },
+                        onFilterChanged = { filter ->
+                            scope.launch { dashboardViewModel.onFilterChanged(filter, isOnline) }
+                        },
+                        onActivitySelected = { item ->
+                            scope.launch {
+                                // Loaded before navigating, so the screen never appears empty
+                                // and then fills in.
+                                selectedTransaction =
+                                    dashboardViewModel.detailFor(item.clientTransactionId)
+                                screen = AuthenticatedScreen.TRANSACTION
+                            }
+                        },
                         // A trigger only. The outbox remains the source of truth and the UI
                         // never calls the sync API directly.
                         onSyncNow = { SyncWorker.enqueue(application) },
@@ -216,6 +271,38 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         // prompt before any explanation is how people learn to decline.
                         onRequestSmsPermission = {
                             permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                        }
+                    )
+                }
+
+                AuthenticatedScreen.TRANSACTION -> {
+                    // Back returns to the list rather than leaving the app, for the same
+                    // reason capture does: an agent reaching for "go back" after checking a
+                    // figure should land where they came from.
+                    BackHandler {
+                        selectedTransaction = null
+                        screen = AuthenticatedScreen.DASHBOARD
+                    }
+
+                    TransactionDetailScreen(
+                        detail = selectedTransaction,
+                        isRetrying = isRetrying,
+                        onRetry = {
+                            val target = selectedTransaction ?: return@TransactionDetailScreen
+                            scope.launch {
+                                isRetrying = true
+                                dashboardViewModel.retry(target.clientTransactionId, isOnline)
+                                // Re-read rather than assume: a retry may have been refused
+                                // because the item was delivered in the meantime, and the
+                                // screen should show what is now true.
+                                selectedTransaction =
+                                    dashboardViewModel.detailFor(target.clientTransactionId)
+                                isRetrying = false
+                            }
+                        },
+                        onBack = {
+                            selectedTransaction = null
+                            screen = AuthenticatedScreen.DASHBOARD
                         }
                     )
                 }

@@ -13,6 +13,8 @@ import app.zazi.core.domain.model.Provider
 import app.zazi.core.domain.model.TransactionType
 import app.zazi.core.domain.sync.OutboxState
 import app.zazi.ui.state.ActivityItem
+import app.zazi.ui.state.ActivityFilter
+import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.CaptureConfirmation
 import app.zazi.ui.state.CaptureError
 import app.zazi.ui.state.CaptureProvider
@@ -137,10 +139,43 @@ class DashboardViewModel(
      * What this device has recorded. Supplied as a function so this class stays free of
      * Room, and defaulted to empty so existing callers and tests are unaffected.
      */
-    private val recentActivity: suspend () -> List<ActivityItem> = { emptyList() }
+    private val recentActivity: suspend (ActivityFilter) -> List<ActivityItem> = { emptyList() },
+    /** Detail for one transaction, or null if it has gone. */
+    private val transactionDetail: suspend (String) -> TransactionDetail? = { null },
+    /** Returns whether the item was actually re-queued. */
+    private val retryTransaction: suspend (String) -> Boolean = { false }
 ) {
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
+
+    /** The slice of history on screen. Held here so a refresh does not reset the agent's choice. */
+    private var filter: ActivityFilter = ActivityFilter.TODAY
+
+    suspend fun onFilterChanged(value: ActivityFilter, isOnline: Boolean) {
+        filter = value
+        refresh(isOnline)
+    }
+
+    /**
+     * Detail for one transaction.
+     *
+     * <p>Read on demand rather than carried in the list: the list is redrawn constantly as
+     * sync progresses, and it has no business holding customer numbers it does not display.</p>
+     */
+    suspend fun detailFor(clientTransactionId: String): TransactionDetail? =
+        runCatching { transactionDetail(clientTransactionId) }.getOrNull()
+
+    /**
+     * Puts a stopped transaction back in the queue at the agent's request.
+     *
+     * <p>Returns false when nothing changed, which is not necessarily a failure — a retry may
+     * have delivered it in the meantime. The caller re-reads rather than assuming either way.</p>
+     */
+    suspend fun retry(clientTransactionId: String, isOnline: Boolean): Boolean {
+        val requeued = runCatching { retryTransaction(clientTransactionId) }.getOrDefault(false)
+        refresh(isOnline)
+        return requeued
+    }
 
     suspend fun refresh(isOnline: Boolean = true) {
         val device = (sessionRepository.state.value as? SessionState.Active)?.device
@@ -160,7 +195,8 @@ class DashboardViewModel(
             todayFloatMinor = totals?.second,
             // Failing to read the history must not blank the figures above it; an empty list
             // is the honest fallback, and the screen says when there is nothing to show.
-            activity = runCatching { recentActivity() }.getOrDefault(emptyList()),
+            activity = runCatching { recentActivity(filter) }.getOrDefault(emptyList()),
+            activityFilter = filter,
             isOnline = isOnline,
             isSyncing = outboxRepository.countByState(OutboxState.SYNCING) > 0
         )

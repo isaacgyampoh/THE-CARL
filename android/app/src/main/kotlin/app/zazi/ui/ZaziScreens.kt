@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -24,10 +25,12 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -51,6 +54,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.zazi.ui.state.ActivityDelivery
+import app.zazi.ui.state.ActivityFilter
 import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.CaptureConfirmation
 import app.zazi.ui.state.CaptureError
@@ -63,6 +67,7 @@ import app.zazi.ui.state.LoginUiState
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.MoneyFormat
 
 /**
@@ -228,7 +233,7 @@ fun EnrolmentScreen(
             isError = state.error == EnrolmentError.INVALID_OR_EXPIRED,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Characters,
-                autoCorrect = false,
+                autoCorrectEnabled = false,
                 keyboardType = KeyboardType.Ascii
             ),
             modifier = Modifier.fillMaxWidth()
@@ -270,6 +275,8 @@ fun DashboardScreen(
     onCapture: () -> Unit,
     onSyncNow: () -> Unit,
     onLogout: () -> Unit,
+    onFilterChanged: (ActivityFilter) -> Unit = {},
+    onActivitySelected: (ActivityItem) -> Unit = {},
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
     onRequestSmsPermission: () -> Unit = {}
@@ -325,7 +332,12 @@ fun DashboardScreen(
             // none of them. They could record and never look back — no way to confirm a
             // capture took, check a figure, or quote a reference to a customer standing
             // there. The data was already local; only the screen was missing.
-            ActivitySection(items = state.activity)
+            ActivitySection(
+                items = state.activity,
+                filter = state.activityFilter,
+                onFilterChanged = onFilterChanged,
+                onSelect = onActivitySelected
+            )
 
             state.device?.let { device ->
                 Spacer(Modifier.height(20.dp))
@@ -485,15 +497,38 @@ private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
 
 /** The agent's own record of what this device captured. */
 @Composable
-private fun ActivitySection(items: List<ActivityItem>) {
+private fun ActivitySection(
+    items: List<ActivityItem>,
+    filter: ActivityFilter,
+    onFilterChanged: (ActivityFilter) -> Unit,
+    onSelect: (ActivityItem) -> Unit
+) {
     Text("Recent", style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(8.dp))
 
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ActivityFilter.entries.forEach { option ->
+            FilterChip(
+                selected = filter == option,
+                onClick = { onFilterChanged(option) },
+                label = { Text(option.label, maxLines = 1) }
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
     if (items.isEmpty()) {
-        // Says what will happen rather than that something is missing. An empty list on a
-        // fresh device is the expected state, not a fault.
+        // Says what will happen rather than that something is missing. An empty list is the
+        // expected state on a fresh device, and on any quiet day in the chosen window.
         Text(
-            "Transactions you record appear here, newest first.",
+            when (filter) {
+                ActivityFilter.TODAY -> "Transactions you record today appear here, newest first."
+                else -> "Nothing recorded in this period."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -509,21 +544,26 @@ private fun ActivitySection(items: List<ActivityItem>) {
                 if (index > 0) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
-                ActivityRow(item)
+                ActivityRow(item, onClick = { onSelect(item) })
             }
         }
     }
 }
 
 @Composable
-private fun ActivityRow(item: ActivityItem) {
+private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
     // Direction comes from the stored cash delta, never re-derived from the type. Direction
     // was decided once at capture by LedgerProjection; deciding it again here would be a
     // second opinion that could disagree with the figures above.
     val incoming = item.cashDeltaMinor >= 0
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        // Clickable before padding, so the whole row is the target rather than the text
+        // inside it — this is tapped on a phone held in one hand at a counter.
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
@@ -853,6 +893,153 @@ private fun ConfirmationCard(confirmation: CaptureConfirmation, onDone: () -> Un
         }
     }
 }
+
+/**
+ * One transaction, in full.
+ *
+ * <p>Exists so an agent can answer a customer standing in front of them — what was the
+ * reference, which number was it, has it actually gone — without phoning anyone. It is also
+ * the only place a stopped transaction can be acted on.</p>
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransactionDetailScreen(
+    detail: TransactionDetail?,
+    isRetrying: Boolean,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Transaction") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        // AutoMirrored: the manifest declares supportsRtl, and a back arrow that does
+                        // not flip points the wrong way in a right-to-left layout.
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { insets ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(insets)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+        ) {
+            if (detail == null) {
+                // Reached by tapping a row, so this is a race rather than a wrong link: the
+                // transaction was there a moment ago. Said plainly instead of an empty screen.
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "This transaction is no longer on this device.",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                return@Column
+            }
+
+            val incoming = detail.cashDeltaMinor >= 0
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                (if (incoming) "+" else "−") + MoneyFormat.format(detail.amountMinor),
+                style = MaterialTheme.typography.displaySmall
+            )
+            Text(
+                "${detail.label} · ${detail.provider}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(4.dp)) {
+                    DetailRow("When", formatStamp(detail.atUtcMillis))
+                    DetailRow("Recorded", if (detail.capturedAutomatically) "Automatically, from SMS" else "By hand")
+                    DetailRow("Customer", detail.customerPhone ?: "Not recorded")
+                    DetailRow("Provider reference", detail.reference ?: "Not recorded")
+                    // The handle to quote to support. Shown last because it is the least
+                    // meaningful to the agent and the most useful to whoever they call.
+                    DetailRow("Zazi reference", detail.shortReference)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Text("Delivery", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    DeliveryLabel(detail.delivery)
+
+                    detail.guidance?.let { guidance ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(guidance, style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    // The reason code is the server's word, not a message written for an
+                    // agent, so it is labelled as a diagnostic rather than presented as an
+                    // explanation they are expected to understand.
+                    detail.lastReasonCode?.let { reason ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Reported: $reason",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (detail.isRetryable) {
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = onRetry,
+                            enabled = !isRetrying,
+                            modifier = Modifier.fillMaxWidth().height(52.dp)
+                        ) {
+                            if (isRetrying) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Try again")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(150.dp)
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    }
+}
+
+/** Full local timestamp, for checking against a provider's own record. */
+private fun formatStamp(utcMillis: Long): String =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+        .format(Instant.ofEpochMilli(utcMillis).atZone(ZoneId.systemDefault()))
 
 /** Shown when the server no longer trusts this device. */
 @Composable
