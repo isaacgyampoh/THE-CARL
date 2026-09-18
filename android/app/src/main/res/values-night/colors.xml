@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches ZaziTheme's dark background, so the launch window and the first composed
+         frame are the same colour and the transition is invisible. -->
+    <color name="window_background">#15121C</color>
+</resources>

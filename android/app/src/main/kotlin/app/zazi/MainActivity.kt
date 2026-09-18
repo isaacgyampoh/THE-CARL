@@ -10,10 +10,10 @@ import androidx.core.content.ContextCompat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
@@ -36,6 +36,7 @@ import app.zazi.ui.LoginScreen
 import app.zazi.ui.viewmodel.CaptureViewModel
 import app.zazi.ui.viewmodel.DashboardViewModel
 import app.zazi.ui.viewmodel.EnrolmentViewModel
+import app.zazi.ui.theme.ZaziTheme
 import app.zazi.ui.viewmodel.LoginViewModel
 import kotlinx.coroutines.launch
 
@@ -54,11 +55,20 @@ class MainActivity : ComponentActivity() {
         val container = (application as ZaziApplication).container
 
         setContent {
-            MaterialTheme {
+            ZaziTheme {
                 // targetSdk 35 draws edge to edge, so without this every screen's header
                 // sits underneath the status bar clock. Applied once at the root rather
                 // than per screen, so a new screen cannot forget it.
-                Surface(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
+                //
+                // imePadding for the same reason: the activity is adjustResize, but nothing
+                // was insetting for the keyboard, so on a short handset it covered whatever
+                // was at the bottom of the screen — including the sign-in button.
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding()
+                        .imePadding()
+                ) {
                     ZaziApp(container, application as ZaziApplication)
                 }
             }

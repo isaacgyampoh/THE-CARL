@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Launcher background. Kept as a colour resource rather than inlined in the icon so the
-         adaptive-icon layers and any future themed variant stay in step. -->
-    <color name="ic_launcher_background">#0F6E5C</color>
+    <!-- Launcher background. This is the brand accent, the same value the dashboard and the
+         app's Compose theme use, so the icon on the home screen belongs to the same product
+         as the screen it opens. Kept as a colour resource rather than inlined in the icon so
+         the adaptive-icon layers and any themed variant stay in step. -->
+    <color name="ic_launcher_background">#5B3FA8</color>
+    <!-- Matches ZaziTheme's light background; see values-night for the dark counterpart. -->
+    <color name="window_background">#FAF8FD</color>
 </resources>

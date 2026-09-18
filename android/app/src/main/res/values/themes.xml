@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The window theme, which is what the system draws before Compose has rendered a frame.
+      Without a night variant the launch window stays light, so opening the app in dark mode
+      flashes a white screen and then snaps dark — most visible on a cold start, which is
+      exactly when an agent opens it to record something.
+
+      It is separate from ZaziTheme: that colours the composables, this colours the window
+      around them. Both follow the system setting, so they agree.
+    -->
+    <style name="Theme.Zazi" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

@@ -56,8 +56,15 @@ fun LoginScreen(
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
 
+    // Scrollable, and centred only when there is room to be. With the keyboard open on a
+    // short handset the submit button was drawn underneath it and could not be reached —
+    // the form had no scroll of its own and nothing reserved space for the IME. Center
+    // still applies when the content is shorter than the screen.
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text("Zazi", style = MaterialTheme.typography.headlineMedium)
@@ -133,8 +140,15 @@ fun EnrolmentScreen(
     onCodeChanged: (String) -> Unit,
     onSubmit: () -> Unit
 ) {
+    // Scrollable, and centred only when there is room to be. With the keyboard open on a
+    // short handset the submit button was drawn underneath it and could not be reached —
+    // the form had no scroll of its own and nothing reserved space for the IME. Center
+    // still applies when the content is shorter than the screen.
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text("Register this device", style = MaterialTheme.typography.headlineSmall)
