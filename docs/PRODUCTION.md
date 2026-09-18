@@ -243,7 +243,10 @@ obscurely.
 - [ ] Plain `http://` redirects to `https://` rather than serving anything
 - [ ] Both processes are bound to `127.0.0.1` — check with `ss -tlnp`
 - [ ] PostgreSQL is not reachable from outside the server
+- [ ] `scripts/healthcheck.sh` passes against the real URLs
+- [ ] The health-check timer is enabled and `OnFailure=` points at something that reaches you
 - [ ] A backup has been taken *and restored somewhere else*
+- [ ] `ZAZI_BACKUP_REMOTE` is set, and a backup has arrived at the far end
 - [ ] The keystore is backed up off the server
 - [ ] The first owner account exists (`Zazi.Bootstrap`; it refuses if an organization already exists)
 - [ ] A signed release APK installs on a real handset and captures one real SMS end to end
@@ -258,8 +261,10 @@ Stated plainly so it is not discovered later:
 - **No automated deploy.** Deployment is manual; there is no CI pipeline publishing releases.
 - **No log aggregation.** Logs go to standard output. The dashboard's trace view covers
   application-level diagnosis, but there is no searchable history across restarts.
-- **No alerting.** Nothing pages anyone if the API stops. Health endpoints exist for an
-  uptime monitor to poll; nothing polls them yet.
+- **No notification channel.** `scripts/healthcheck.sh` knows what healthy means here and
+  exits non-zero when it is not — `deploy/zazi-healthcheck.timer` runs it every minute, and
+  systemd's `OnFailure=` starts whatever you point it at. What is missing is the thing it
+  points at: how you want to be woken up is not something this repository can choose for you.
 - **No horizontal scaling story.** One instance of each process. The rate limiters are
   in-memory and per-process, so a second instance would double the effective limits.
 - **Backups are offsite only if you point them there.** `backup-database.sh` writes locally

@@ -1,0 +1,26 @@
+# Runs the health check once. Paired with zazi-healthcheck.timer.
+#
+#   sudo cp zazi-healthcheck.service zazi-healthcheck.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now zazi-healthcheck.timer
+#
+# OnFailure is where notification belongs. systemd will start the unit named there whenever
+# this check exits non-zero, so wiring up a pager, an email or a webhook is one unit file —
+# and it is left to you deliberately, because how you want to be woken up is not something
+# this repository can guess.
+#
+#   OnFailure=zazi-alert@%n.service
+
+[Unit]
+Description=Zazi health check
+# OnFailure=zazi-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/zazi/scripts/healthcheck.sh
+User=zazi
+Group=zazi
+
+# The addresses the check should use. Localhost is right when the check runs on the same
+# machine, which is the normal case; it verifies the applications rather than the proxy.
+Environment=ZAZI_API_URL=http://127.0.0.1:5055
+Environment=ZAZI_WEB_URL=http://127.0.0.1:5056

@@ -1,0 +1,17 @@
+# Runs the health check every minute.
+#
+# A minute is short enough that an outage is noticed before agents start calling, and long
+# enough that the check itself is not load worth thinking about.
+
+[Unit]
+Description=Run the Zazi health check every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+# Prevents every machine in a fleet checking on the same second.
+RandomizedDelaySec=10s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
