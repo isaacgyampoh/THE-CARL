@@ -1,7 +1,11 @@
 @inherits LayoutComponentBase
 
+@* First thing focus reaches, so a keyboard user can jump past the navigation instead of
+   tabbing through it on every page. Hidden until focused — see .skip in app.css. *@
+<a class="skip" href="#content">Skip to content</a>
+
 <NavMenu />
 
-<main>
+<main id="content" tabindex="-1">
     @Body
 </main>

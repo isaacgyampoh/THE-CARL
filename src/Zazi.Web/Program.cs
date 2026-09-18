@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -88,6 +89,25 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // A bare 429 tells a client it was refused but not when to come back, so every client
+    // has to guess. The Android sync engine already reads Retry-After and prefers it to its
+    // own backoff curve — the header was simply never sent, which left that path dead and
+    // the handsets guessing. The limiter knows exactly when the window reopens, so it says so.
+    options.OnRejected = (context, _) =>
+    {
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            // Seconds, not an HTTP date: both are legal, and the client honours the seconds
+            // form only. Rounded up, because rounding down invites a retry that is refused
+            // again a fraction of a second early.
+            var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+            context.HttpContext.Response.Headers.RetryAfter =
+                seconds.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return ValueTask.CompletedTask;
+    };
 
     options.AddPolicy(WebRateLimitPolicies.Authentication, context =>
         RateLimitPartition.GetFixedWindowLimiter(

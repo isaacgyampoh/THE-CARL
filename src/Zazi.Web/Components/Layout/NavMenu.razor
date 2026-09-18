@@ -1,14 +1,20 @@
 @using Microsoft.AspNetCore.Components.Authorization
 
-<div class="nav">
+@* <header>/<nav> rather than divs, so a screen reader can announce the banner and the
+   navigation as landmarks and skip between them. *@
+<header class="nav">
     <a class="brand" href="/">Zazi</a>
 
     <AuthorizeView>
         <Authorized>
-            <nav class="links">
-                <a href="/">Today</a>
-                <a href="/held">Held</a>
-                <a href="/operations">Operations</a>
+            @* NavLink sets aria-current="page" on the active link, which tells a screen
+               reader which page this is and drives the underline in app.css. Match.All on
+               "/" stops Today staying highlighted on every page, since every path starts
+               with it. *@
+            <nav class="links" aria-label="Sections">
+                <NavLink href="/" Match="NavLinkMatch.All">Today</NavLink>
+                <NavLink href="/held">Held</NavLink>
+                <NavLink href="/operations">Operations</NavLink>
             </nav>
             <span class="who">@context.User.Identity?.Name</span>
             @* A form post, because signing out must clear the cookie on a real response. *@
@@ -18,4 +24,4 @@
             </form>
         </Authorized>
     </AuthorizeView>
-</div>
+</header>

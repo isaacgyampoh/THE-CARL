@@ -1,10 +1,46 @@
 :root {
+    color-scheme: light dark;
+
     --ink: #1a1523;
     --muted: #6b6478;
     --line: #e6e1ec;
     --accent: #5b3fa8;
     --bad: #b3261e;
     --surface: #faf8fd;
+    --card: #fff;
+    /* Text drawn on the accent. In dark mode the accent lightens, so white on it would
+       fail contrast — the pairing has to flip with the palette, not stay fixed. */
+    --on-accent: #fff;
+
+    /* Status colours are tokens too, so dark mode redefines them in one place rather than
+       each rule carrying a hard-coded pair. */
+    --ok-bg: #e8f5ec;   --ok-fg: #1c6b38;
+    --warn-bg: #fdf3e2; --warn-fg: #8a5a00;
+    --bad-bg: #fdeceb;
+    --row-warn: #fffaf0;
+    --code-bg: #f2effa;
+}
+
+/* An agent reconciling at the end of a night shift is reading this in the dark. The palette
+   is rebuilt rather than inverted: pure white on pure black is harder to read for long
+   stretches than a lifted dark surface, and the accent has to stay legible on it. */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ink: #ece7f2;
+        --muted: #a49bb4;
+        --line: #322b3d;
+        --accent: #b9a3ef;
+        --bad: #ff8a80;
+        --surface: #15121c;
+        --card: #1e1a27;
+        --on-accent: #221c2e;
+
+        --ok-bg: #16301f;   --ok-fg: #7fd79c;
+        --warn-bg: #362a15; --warn-fg: #f0c274;
+        --bad-bg: #3a1d1c;
+        --row-warn: #2a2116;
+        --code-bg: #2a2338;
+    }
 }
 
 * { box-sizing: border-box; }
@@ -21,7 +57,7 @@ h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: v
 
 .nav {
     display: flex; align-items: center; gap: 1rem;
-    padding: .75rem 1.5rem; border-bottom: 1px solid var(--line); background: #fff;
+    padding: .75rem 1.5rem; border-bottom: 1px solid var(--line); background: var(--card);
 }
 .nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--ink); text-decoration: none; }
 .nav .who { margin-left: auto; color: var(--muted); font-size: .9rem; }
@@ -29,11 +65,11 @@ h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: v
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
-.tile { background: #fff; border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: .75rem; padding: 1rem; }
 .tile .label { display: block; color: var(--muted); font-size: .85rem; }
 .tile .value { display: block; font-size: 1.5rem; font-weight: 600; margin-top: .25rem; font-variant-numeric: tabular-nums; }
 
-.attention ul, .estate ul { list-style: none; margin: 0; padding: 0; background: #fff; border: 1px solid var(--line); border-radius: .75rem; }
+.attention ul, .estate ul { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: .75rem; }
 .attention li, .estate li { display: flex; justify-content: space-between; padding: .7rem 1rem; border-bottom: 1px solid var(--line); }
 .attention li:last-child, .estate li:last-child { border-bottom: 0; }
 .attention strong, .estate strong { font-variant-numeric: tabular-nums; }
@@ -43,7 +79,7 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
 .signin label { display: block; margin-top: 1rem; font-size: .9rem; color: var(--muted); }
 .signin input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: .5rem; font: inherit; }
 .signin button { width: 100%; margin-top: 1.5rem; padding: .7rem; border: 0; border-radius: 999px;
-                 background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+                 background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer; }
 
 .error { color: var(--bad); font-size: .9rem; }
 .muted { color: var(--muted); }
@@ -53,7 +89,7 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
 
 .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
-table { width: 100%; border-collapse: collapse; background: #fff;
+table { width: 100%; border-collapse: collapse; background: var(--card);
         border: 1px solid var(--line); border-radius: .75rem; overflow: hidden; }
 th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
@@ -61,22 +97,22 @@ tr:last-child td { border-bottom: 0; }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 
 .sub { display: block; color: var(--muted); font-size: .82rem; margin-top: .15rem; }
-.warn-row { background: #fffaf0; }
+.warn-row { background: var(--row-warn); }
 .muted-row { opacity: .55; }
 
 code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
-       background: #f2effa; padding: .1rem .35rem; border-radius: .25rem; }
+       background: var(--code-bg); padding: .1rem .35rem; border-radius: .25rem; }
 
 .pill { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; font-weight: 600; }
-.pill.ok   { background: #e8f5ec; color: #1c6b38; }
-.pill.warn { background: #fdf3e2; color: #8a5a00; }
-.pill.bad  { background: #fdeceb; color: var(--bad); }
+.pill.ok   { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.pill.bad  { background: var(--bad-bg); color: var(--bad); }
 
-.tile.warn { border-color: #f0d9a8; }
-.tile.bad  { border-color: #f2c1bd; }
+.tile.warn { border-color: var(--warn-fg); }
+.tile.bad  { border-color: var(--bad); }
 
 .pager { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
-.pager button { padding: .45rem .9rem; border: 1px solid var(--line); background: #fff;
+.pager button { padding: .45rem .9rem; border: 1px solid var(--line); background: var(--card);
                 border-radius: .5rem; font: inherit; cursor: pointer; }
 .pager button:disabled { opacity: .45; cursor: default; }
 
@@ -85,7 +121,7 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
 .timeline li { position: relative; padding: .6rem 0 .6rem 1.25rem; }
 .timeline li::before { content: ""; position: absolute; left: -.42rem; top: 1rem;
                        width: .7rem; height: .7rem; border-radius: 50%; background: var(--line); }
-.timeline li.warn::before { background: #d9a441; }
+.timeline li.warn::before { background: var(--warn-fg); }
 .timeline li.bad::before  { background: var(--bad); }
 .timeline .when { display: inline-block; min-width: 7rem; color: var(--muted);
                   font-variant-numeric: tabular-nums; font-size: .85rem; }
@@ -104,4 +140,52 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
     table { min-width: 34rem; }
     .timeline .when { display: block; min-width: 0; }
     .timeline .what { display: block; }
+}
+
+/* ─── Keyboard access ───────────────────────────────────────────────────── */
+
+/* Removing the default outline without replacing it leaves a keyboard user with no idea
+   where they are. :focus-visible shows it for keyboard navigation without putting a ring
+   round every mouse click. */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: .25rem;
+}
+
+/* The nav sits before the content on every page, so tabbing to what you came for means
+   passing the whole thing each time. This link is the first thing focus reaches and jumps
+   straight past it; it stays hidden until then. */
+.skip {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--card);
+    color: var(--ink);
+    padding: .6rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0 0 .5rem 0;
+    z-index: 10;
+}
+.skip:focus {
+    left: 0;
+}
+
+/* Which page you are on, for people who cannot see which link looks different. The
+   underline carries the same information visually. */
+.nav .links a[aria-current="page"] {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: .35rem;
+}
+
+/* Respect a reduced-motion preference rather than assuming everyone wants transitions. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+    }
 }

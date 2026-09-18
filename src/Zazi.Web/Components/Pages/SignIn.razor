@@ -13,7 +13,10 @@
     <form method="post" action="/auth/sign-in">
         <AntiforgeryToken />
         <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="username" required />
+        @* Focus starts here: this page exists to be typed into, and an agent signing in
+           on a phone should not have to tap the field first. *@
+        <input id="email" name="email" type="email" autocomplete="username"
+               inputmode="email" autofocus required />
 
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
