@@ -352,6 +352,30 @@ public class DeviceEnrollmentTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task DeviceSelfCarriesTheBranchNameSoAHandsetNeedNotShowAUuid()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var issued = await IssueAsync(tenant);
+        await RedeemAsync(tenant, issued.Code, "handset-branch-name");
+
+        var self = await GetSelfAsync(tenant, "handset-branch-name");
+
+        // The handset has always known its BranchId. It had nothing to display, so the
+        // dashboard printed the raw UUID at the agent. The name travels with the device's
+        // own state rather than needing a second call the app makes while offline.
+        await using var db = _postgres.CreateContext();
+        var expected = await db.Branches
+            .AsNoTracking()
+            .Where(x => x.Id == tenant.BranchId)
+            .Select(x => x.Name)
+            .SingleAsync();
+
+        Assert.Equal(expected, self.BranchName);
+        Assert.Equal(tenant.BranchId, self.BranchId);
+    }
+
+    [SkippableFact]
     public async Task EnrolmentIsAudited()
     {
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);

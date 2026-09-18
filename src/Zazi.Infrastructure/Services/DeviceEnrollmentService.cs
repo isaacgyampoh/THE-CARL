@@ -339,6 +339,15 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             return null;
         }
 
+        // Read separately rather than through a navigation property: the device query is
+        // AsNoTracking and projecting a join here would pull the whole branch row for one
+        // string. Null when the branch has somehow gone, which the client renders as absent.
+        var branchName = await _dbContext.Branches
+            .AsNoTracking()
+            .Where(x => x.Id == device.BranchId)
+            .Select(x => x.Name)
+            .SingleOrDefaultAsync(cancellationToken);
+
         var lastSync = await _dbContext.AuthSessions
             .AsNoTracking()
             .Where(x => x.DeviceId == device.Id)
@@ -371,6 +380,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             // stamping transactions with a wrong local time.
             DateTimeOffset.UtcNow)
         {
+            BranchName = branchName,
             DeviceType = device.DeviceType,
             PlatformCapabilities = platformCapabilities,
             CanCaptureSms = PlatformCapabilityPolicy.CanCaptureSms(device.DeviceType, isRevoked),

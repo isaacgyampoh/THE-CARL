@@ -150,6 +150,9 @@ data class DeviceSelfResponse(
     val deviceId: String,
     val organizationId: String,
     val branchId: String,
+    // Null-tolerant: a server older than this field simply omits it, and the handset
+    // shows the branch reference instead of a name rather than failing to deserialise.
+    val branchName: String? = null,
     val deviceIdentifier: String,
     val status: Int,
     val isRevoked: Boolean,

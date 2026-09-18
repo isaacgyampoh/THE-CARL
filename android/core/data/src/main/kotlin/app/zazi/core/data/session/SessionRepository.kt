@@ -345,6 +345,7 @@ class SessionRepository(
         deviceIdentifier = deviceIdentifier,
         organizationId = organizationId,
         branchId = branchId,
+        branchName = branchName,
         deviceType = DeviceType.fromWire(deviceType),
         capabilities = platformCapabilities.mapNotNull { PlatformCapability.fromWire(it) },
         isRevoked = isRevoked,

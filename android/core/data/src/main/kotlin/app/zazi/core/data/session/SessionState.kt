@@ -61,6 +61,8 @@ data class DeviceContext(
     val deviceIdentifier: String,
     val organizationId: String,
     val branchId: String,
+    /** Display name for [branchId]; absent offline and from servers that predate it. */
+    val branchName: String? = null,
     val deviceType: DeviceType,
     val capabilities: List<PlatformCapability>,
     val isRevoked: Boolean,

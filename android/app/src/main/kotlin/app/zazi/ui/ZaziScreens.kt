@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -41,6 +42,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import app.zazi.ui.state.EnrolmentError
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -62,6 +66,30 @@ import app.zazi.ui.state.MoneyFormat
  * and emits events back — no financial logic, no direction calculation, no formatting of
  * money beyond [MoneyFormat]. Functionality before decoration, as this phase intends.</p>
  */
+
+
+/**
+ * A failure, presented the same way on every screen.
+ *
+ * <p>Error text used to be a bare red line on some screens and a tinted panel on others, so
+ * the same kind of event looked like two different kinds of event.</p>
+ */
+@Composable
+private fun ErrorNotice(message: String) {
+    Spacer(Modifier.height(12.dp))
+    Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            message,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        )
+    }
+}
 
 @Composable
 fun LoginScreen(
@@ -124,14 +152,7 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        state.error?.let { error ->
-            Spacer(Modifier.height(12.dp))
-            Text(
-                error.message,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        state.error?.let { error -> ErrorNotice(error.message) }
 
         Spacer(Modifier.height(24.dp))
 
@@ -142,7 +163,11 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
             if (state.isSubmitting) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
             } else {
                 Text("Sign in")
             }
@@ -175,24 +200,35 @@ fun EnrolmentScreen(
             modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
         )
 
+        // The code is fifty-odd characters and is read aloud or copied from a message, so
+        // this field is built for checking work rather than for brevity:
+        //
+        //  - not singleLine, because on one line an agent only ever sees the tail and cannot
+        //    compare what they typed against what they were given;
+        //  - monospace, so the groups align and O/0 and I/1 are told apart;
+        //  - forced uppercase as they type, so it matches the code on the page. The server
+        //    normalises case anyway, but a field that looks wrong invites a retype;
+        //  - autocorrect off. A keyboard "helpfully" rewriting a group is invisible until
+        //    enrolment fails, and the agent has no way to tell what happened.
         OutlinedTextField(
             value = state.code,
-            onValueChange = onCodeChanged,
+            onValueChange = { onCodeChanged(it.uppercase()) },
             label = { Text("Enrolment code") },
             placeholder = { Text("ZAZI-XXXX-XXXX-…") },
-            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+            minLines = 2,
+            maxLines = 3,
             enabled = !state.isSubmitting,
+            isError = state.error == EnrolmentError.INVALID_OR_EXPIRED,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                autoCorrect = false,
+                keyboardType = KeyboardType.Ascii
+            ),
             modifier = Modifier.fillMaxWidth()
         )
 
-        state.error?.let { error ->
-            Spacer(Modifier.height(12.dp))
-            Text(
-                error.message,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+        state.error?.let { error -> ErrorNotice(error.message) }
 
         Spacer(Modifier.height(24.dp))
 
@@ -202,7 +238,11 @@ fun EnrolmentScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
             if (state.isSubmitting) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
             } else {
                 Text("Register device")
             }
@@ -296,12 +336,11 @@ fun DashboardScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                // The branch is a UUID on this device — no name is carried in the device
-                // context — so it is presented as what it usefully is: a reference to quote
-                // to support, not a place name. Printing the whole thing told an agent
-                // nothing and took a line and a half doing it.
+                // The branch name when the server has sent one. It falls back to a short
+                // reference offline, and on servers predating the field — never the full
+                // UUID, which told an agent nothing and took a line and a half doing it.
                 Text(
-                    "Branch ref ${device.branchId.take(8)}",
+                    device.branchName ?: "Branch ref ${device.branchId.take(8)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -740,17 +779,26 @@ fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
         )
 
         if (queuedWorkCount > 0) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Stated explicitly and unconditionally. An agent whose device is cut off needs
             // to know their work is safe, not wonder whether it was discarded — and this is
-            // the moment they are most likely to assume the worst.
-            Text(
-                "$queuedWorkCount transaction${if (queuedWorkCount == 1) "" else "s"} " +
-                    "recorded on this device have not been deleted. They are still stored " +
-                    "here and will sync once access is restored.",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            // the moment they are most likely to assume the worst. Given its own surface so
+            // it reads as the reassurance it is, rather than as more of the bad news.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "$queuedWorkCount transaction${if (queuedWorkCount == 1) "" else "s"} still saved here",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Nothing has been deleted. They will sync once access is restored.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -768,5 +816,12 @@ fun LoadingScreen() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         CircularProgressIndicator()
+        Spacer(Modifier.height(16.dp))
+        // A bare spinner leaves an agent guessing whether the app is working or stuck.
+        Text(
+            "Opening Zazi…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

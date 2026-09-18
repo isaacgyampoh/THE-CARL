@@ -370,6 +370,18 @@ public record DeviceSelfDto(
     DateTimeOffset ServerTimeUtc)
 {
     /// <summary>
+    /// The branch's name, for display on the handset.
+    /// </summary>
+    /// <remarks>
+    /// The device already knows its <see cref="BranchId"/>, but an identifier is not
+    /// something to show an agent — the dashboard printed a raw UUID at them. Sent as an
+    /// init-only property rather than a constructor parameter so existing callers of the
+    /// positional record keep compiling, and null-tolerant on the client so an older server
+    /// simply shows nothing rather than failing to deserialise.
+    /// </remarks>
+    public string? BranchName { get; init; }
+
+    /// <summary>
     /// Validated platform and form factor. Clients read this instead of inferring a platform
     /// from the legacy <c>Platform</c> string.
     /// </summary>
