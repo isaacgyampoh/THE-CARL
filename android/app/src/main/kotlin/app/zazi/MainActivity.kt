@@ -44,6 +44,8 @@ import app.zazi.ui.EnrolmentScreen
 import app.zazi.ui.LoadingScreen
 import app.zazi.ui.LoginScreen
 import app.zazi.ui.TransactionDetailScreen
+import app.zazi.ui.state.EntryDestination
+import app.zazi.ui.state.EntryNavigator
 import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
@@ -244,20 +246,19 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     val activationState by activationViewModel.state.collectAsState()
     val justActivated = activationState.activated
 
-    // The one screen that has to outlive the state change that caused it. Activation issues a
-    // real session, so SessionState is already Active by the time the server replies — and a
-    // worker who never sees this goes straight from typing a code to a dashboard, never told
-    // which business they just joined or under whose name they are about to record money. For
-    // a financial product that is the wrong first impression, so it gates the workspace until
-    // dismissed.
-    if (sessionState is SessionState.Active && justActivated != null && !activationAcknowledged) {
-        ActivatedScreen(
-            workerName = justActivated.workerName,
-            organizationName = justActivated.organizationName,
-            branchName = justActivated.branchName,
-            onContinue = { activationAcknowledged = true }
-        )
-    } else when (val state = sessionState) {
+    // Where the app goes is decided by EntryNavigator, not inline here. The two decisions it
+    // owns are the two that have already gone wrong: whether a signed-out worker sees the code
+    // field or the email form, and whether a freshly activated one is told who they are before
+    // the workspace takes over. Both used to be conditions buried in this composable, where
+    // the only way to observe them was to install the app and look — which is how the
+    // confirmation screen shipped written, wired and unreachable.
+    val destination = EntryNavigator.destinationFor(
+        session = sessionState,
+        hasUnacknowledgedActivation = justActivated != null && !activationAcknowledged,
+        showLogin = showLogin
+    )
+
+    when (val state = sessionState) {
         SessionState.Initialising -> LoadingScreen()
 
         SessionState.SignedOut -> {
@@ -268,8 +269,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
             //
             // Sign-in is still reachable, and is what an owner or manager with an existing
             // account gets. Nothing about that path changed.
-            when {
-                showLogin -> {
+            when (destination) {
+                EntryDestination.LOGIN -> {
                     val loginState by loginViewModel.state.collectAsState()
 
                     LoginScreen(
@@ -334,7 +335,18 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
             }
         )
 
-        is SessionState.Active -> {
+        is SessionState.Active -> if (destination == EntryDestination.ACTIVATION_CONFIRMED) {
+            // Has to outlive the state change that caused it: activation issues a real
+            // session, so this branch is already the live one by the time the server replies.
+            // A worker who never sees this goes from typing a code straight to a dashboard,
+            // never told which business they joined or under whose name they record money.
+            ActivatedScreen(
+                workerName = justActivated!!.workerName,
+                organizationName = justActivated.organizationName,
+                branchName = justActivated.branchName,
+                onContinue = { activationAcknowledged = true }
+            )
+        } else {
             // Starts optimistic so the first frame does not flash "Offline" before the
             // platform answers; the observer corrects it immediately.
             val isOnline by container.connectivityObserver.isOnline

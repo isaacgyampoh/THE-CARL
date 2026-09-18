@@ -145,11 +145,28 @@ else
                 <td>@(revoked ? "Revoked" : device.Status.ToString())</td>
                 <td>@device.LastSeenAt.ToLocalTime().ToString("g")</td>
                 <td>
-                    @if (!revoked)
+                    @if (revoked)
                     {
-                        @* No confirmation dialogue here yet, and that is worth knowing: this
-                           acts immediately and cannot be undone from this page. *@
+                        <span class="muted">—</span>
+                    }
+                    else if (_confirmingRevokeOf == device.Id)
+                    {
+                        @* Two steps, in the page's own state rather than a browser confirm().
+                           Revoking cuts a working phone off mid-shift and cannot be undone
+                           from here — the worker needs a fresh code afterwards — so it should
+                           not be one stray click away. In-component rather than JS interop so
+                           the decision stays testable. *@
+                        <span class="attention">Cut this device off?</span>
                         <button class="link" @onclick="() => RevokeAsync(device)" disabled="@_busy">
+                            Yes, revoke
+                        </button>
+                        <button class="link" @onclick="CancelRevoke" disabled="@_busy">
+                            Cancel
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="link" @onclick="() => ConfirmRevoke(device)" disabled="@_busy">
                             Revoke
                         </button>
                     }
@@ -185,6 +202,10 @@ else
 
     private string? _error;
     private bool _busy;
+
+    // Which device is one click away from being revoked. Null means none, which is the only
+    // state in which the destructive action is not reachable.
+    private Guid? _confirmingRevokeOf;
 
     // Held only for this render. The plaintext exists nowhere else and is never stored.
     private string? _issuedCode;
@@ -280,13 +301,25 @@ else
         }
     }
 
+    private void ConfirmRevoke(DeviceDto device) => _confirmingRevokeOf = device.Id;
+
+    private void CancelRevoke() => _confirmingRevokeOf = null;
+
     private async Task RevokeAsync(DeviceDto device)
     {
+        // Refuses to act on anything the owner has not just confirmed, so a stale render or a
+        // duplicated event cannot revoke a device on its own.
+        if (_confirmingRevokeOf != device.Id)
+        {
+            return;
+        }
+
         _busy = true;
         _error = null;
         try
         {
             await Devices.RevokeDeviceAsync(device.Id, CurrentUser.OrganizationId, CurrentUser.UserId);
+            _confirmingRevokeOf = null;
             await LoadAsync();
         }
         catch (Exception)
