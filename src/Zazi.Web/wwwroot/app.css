@@ -189,3 +189,8 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
         scroll-behavior: auto !important;
     }
 }
+
+/* The dashboard's "as of" line. Quiet, but present — figures someone may act on should say
+   how old they are rather than leaving the reader to assume they are live. */
+.asof { margin-top: -.5rem; font-size: .88rem; }
+.asof a { color: var(--accent); }

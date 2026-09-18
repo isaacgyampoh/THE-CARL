@@ -156,6 +156,16 @@ If the schema is behind, the API refuses to start and names the first missing mi
 stopping the database. Whichever you use, restore it somewhere else and sign in before you
 trust it. An untested backup is not a backup.
 
+Send them off the machine:
+
+```sh
+ZAZI_BACKUP_REMOTE=backups@offsite.example:/srv/zazi scripts/backup-database.sh /var/backups/zazi
+```
+
+The offsite copy runs after the local one is complete, so a network failure never costs you
+the backup you just took — but the script says so loudly and exits non-zero, because a copy
+that has quietly stopped working is worse than none: it is one people are relying on.
+
 ## Building the release APK
 
 The keystore lives outside the repository and its passwords are passed on the command line or
@@ -252,7 +262,10 @@ Stated plainly so it is not discovered later:
   uptime monitor to poll; nothing polls them yet.
 - **No horizontal scaling story.** One instance of each process. The rate limiters are
   in-memory and per-process, so a second instance would double the effective limits.
-- **Backups are not offsite.** `backup-database.sh` writes to the same machine by default.
+- **Backups are offsite only if you point them there.** `backup-database.sh` writes locally
+  and, with `ZAZI_BACKUP_REMOTE` set, copies each backup to an rsync destination. Nothing
+  sets that for you, and a backup on the same machine as the database protects against a
+  mistake, not against losing the machine.
 
 None of these block a controlled pilot. All of them matter before this is the system of
 record for someone's livelihood.

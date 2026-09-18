@@ -11,6 +11,12 @@
 # just to take a backup. Copying a *running* data directory would produce a file that looks
 # fine and fails to start, so the stop is not optional.
 #
+# A backup on the same machine as the database protects against a mistake, not against
+# losing the machine. Set ZAZI_BACKUP_REMOTE to somewhere else and each backup is copied
+# there too — an rsync destination, so anything ssh can reach:
+#
+#   ZAZI_BACKUP_REMOTE=backups@offsite.example:/srv/zazi scripts/backup-database.sh
+#
 # Usage: scripts/backup-database.sh [destination-directory]
 
 set -euo pipefail
@@ -79,6 +85,26 @@ INFO
 SIZE="$(du -sh "$TARGET" | cut -f1)"
 echo "  backup complete: $TARGET ($SIZE)"
 
+# ─── Offsite ────────────────────────────────────────────────────────────────
+# Deliberately after the local copy is complete and verified-by-existence, and deliberately
+# non-fatal: a network that is down must not leave the operator without the local backup
+# they just took. It is loud about failing, because a copy nobody notices has stopped
+# working is worse than no copy at all — it is a copy people are relying on.
+if [ -n "${ZAZI_BACKUP_REMOTE:-}" ]; then
+    echo "  copying offsite: $ZAZI_BACKUP_REMOTE"
+
+    if ! command -v rsync >/dev/null 2>&1; then
+        echo "  OFFSITE COPY SKIPPED: rsync is not installed." >&2
+    elif rsync -a --partial "$TARGET" "$ZAZI_BACKUP_REMOTE/"; then
+        echo "  offsite copy complete"
+    else
+        echo "" >&2
+        echo "  OFFSITE COPY FAILED. The local backup at $TARGET is intact." >&2
+        echo "  This machine now holds the only copy. Fix before relying on it." >&2
+        OFFSITE_FAILED=1
+    fi
+fi
+
 # Keep the last 7. Unbounded backups fill the disk that the database is running on, which
 # turns a safety measure into an outage.
 KEEP=7
@@ -86,3 +112,9 @@ ls -1dt "$DEST"/zazi-* 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old;
     echo "  pruning $old"
     rm -rf "$old"
 done
+
+# A failed offsite copy exits non-zero so a scheduler notices. The local backup is already
+# safe by this point, so nothing is lost by failing loudly here.
+if [ -n "${OFFSITE_FAILED:-}" ]; then
+    exit 1
+fi

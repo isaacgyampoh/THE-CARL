@@ -6,6 +6,19 @@
 
 <PageTitle>Today · Zazi</PageTitle>
 
+@* A full page refresh, deliberately, rather than an interactive circuit with a timer.
+   Revocation is enforced in RevokedSessionValidator, which runs when the cookie is
+   validated — that is, on each HTTP request. A Blazor circuit establishes its principal
+   once and holds it, so a revoked owner's open dashboard would go on serving live figures
+   for as long as the circuit lived. Reloading keeps that guarantee intact: every refresh is
+   a real request, and a revoked session is signed out on the next one.
+
+   Only this page. Operations and Held are paged and filtered, and reloading them would
+   throw away where the reader had got to. *@
+<HeadContent>
+    <meta http-equiv="refresh" content="@RefreshSeconds" />
+</HeadContent>
+
 <h1>Today</h1>
 
 @if (_failed)
@@ -20,6 +33,13 @@ else if (_summary is null)
 }
 else
 {
+    @* A dashboard that cannot say when it was read invites being trusted as live. These
+       are figures someone may act on, so the page says how old they are. *@
+    <p class="muted asof">
+        Updated @_readAt.ToString("HH:mm:ss") · refreshes every @RefreshSeconds seconds ·
+        <a href="/">refresh now</a>
+    </p>
+
     <section class="tiles">
         @* Balances are read from the server's ledger. This page never computes a balance of
            its own, so it cannot disagree with what the ledger says moved. *@
@@ -66,8 +86,12 @@ else
 }
 
 @code {
+    /// <summary>How often the page reloads. Long enough not to churn, short enough to act on.</summary>
+    private const int RefreshSeconds = 60;
+
     private DashboardSummaryDto? _summary;
     private bool _failed;
+    private DateTimeOffset _readAt;
 
     protected override async Task OnInitializedAsync()
     {
@@ -76,6 +100,9 @@ else
             // The organization comes from the signed-in principal, never from the URL or a
             // form field, so a caller cannot ask for another tenant's figures.
             _summary = await Dashboard.GetOrganizationDashboardAsync(CurrentUser.OrganizationId);
+            // Stamped after the read returns, so it is the age of these figures rather than
+            // the age of the request.
+            _readAt = DateTimeOffset.Now;
         }
         catch (Exception)
         {
