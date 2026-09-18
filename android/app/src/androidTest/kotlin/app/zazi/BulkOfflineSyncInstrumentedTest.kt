@@ -47,8 +47,8 @@ class BulkOfflineSyncInstrumentedTest {
     private val container: AppContainer get() = application.container
 
     private val arguments get() = InstrumentationRegistry.getArguments()
-    private val email: String? get() = arguments.getString("carlEmail")
-    private val password: String? get() = arguments.getString("carlPassword")
+    private val email: String? get() = arguments.getString("zaziEmail")
+    private val password: String? get() = arguments.getString("zaziPassword")
 
     /**
      * Ten cash-ins and ten cash-outs, every amount distinct.
@@ -62,7 +62,7 @@ class BulkOfflineSyncInstrumentedTest {
 
     @Test
     fun capturesTwentyTransactions() = runBlocking {
-        assumeTrue("carlEmail/carlPassword not supplied", email != null && password != null)
+        assumeTrue("zaziEmail/zaziPassword not supplied", email != null && password != null)
 
         // A real login against the real backend. No token is forged and no authentication
         // step is skipped to make this test possible.
@@ -73,8 +73,8 @@ class BulkOfflineSyncInstrumentedTest {
         // fresh install. Enrolment is part of the real flow, so it is performed rather than
         // assumed.
         if (container.sessionRepository.state.value is SessionState.NeedsEnrolment) {
-            val code = arguments.getString("carlEnrolmentCode")
-            assumeTrue("carlEnrolmentCode not supplied for an unenrolled device", code != null)
+            val code = arguments.getString("zaziEnrolmentCode")
+            assumeTrue("zaziEnrolmentCode not supplied for an unenrolled device", code != null)
             container.sessionRepository.enrolDevice(code!!)
         }
 
@@ -115,18 +115,35 @@ class BulkOfflineSyncInstrumentedTest {
 
     @Test
     fun drainsAllTwentyAfterProcessRestart() = runBlocking {
-        assumeTrue("carlEmail/carlPassword not supplied", email != null && password != null)
+        assumeTrue("zaziEmail/zaziPassword not supplied", email != null && password != null)
 
         val clientIds = capturedIdsFile().readLines().filter { it.isNotBlank() }
         assertThat(clientIds).hasSize(20)
 
         // Written by a process that no longer exists: every one of the twenty is still on
-        // disk, still queued, and still carrying its original idempotency key.
+        // disk, still carrying its original idempotency key, and still on its way.
+        //
+        // The state is deliberately not pinned to PENDING. A successful capture wakes the
+        // sync worker, so by the time the previous process was killed it may already have
+        // claimed rows (SYNCING) or delivered them (SYNCED). Rows left SYNCING by a dead
+        // process are returned to PENDING by recoverStrandedItems once the lease expires, so
+        // all three states mean the same thing here: queued, and nothing has been lost.
+        // Requiring PENDING asserted that the previous process never began syncing, which
+        // this test cannot control and does not need.
+        //
+        // What must not appear is CONFLICT or DEAD_LETTER — those need a person — and the
+        // real assertion below is unchanged: every one of the twenty reaches SYNCED.
+        val stillQueued = setOf(
+            OutboxState.PENDING.name,
+            OutboxState.SYNCING.name,
+            OutboxState.SYNCED.name,
+            OutboxState.RETRYABLE_FAILURE.name
+        )
         val dao = container.database.outboxDao()
         clientIds.forEach { id ->
             val item = dao.findByClientId(id)
             assertThat(item).isNotNull()
-            assertThat(item!!.state).isEqualTo(OutboxState.PENDING.name)
+            assertThat(item!!.state).isIn(stillQueued)
         }
 
         assertThat(container.sessionRepository.restore())

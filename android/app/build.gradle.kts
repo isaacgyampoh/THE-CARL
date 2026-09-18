@@ -105,6 +105,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
 
+            // Appended to the rules inherited from release, not a replacement for them. Holds
+            // the one thing running instrumentation against minified code needs, so release
+            // never carries it.
+            proguardFile("proguard-rules-pilot.pro")
+
             // Cleartext is permitted by src/pilot's network security config. It is scoped
             // to this build type rather than to a host list, because a pilot's server
             // address is whichever laptop is running it and pinning that would mean either

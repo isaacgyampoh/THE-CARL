@@ -82,7 +82,19 @@ class SyncEngine(
     suspend fun runOnce(): SyncPassResult {
         // Stranded items first. A process death mid-request leaves rows in SYNCING with
         // nothing driving them; without this they would never be retried.
-        outbox.recoverStrandedItems()
+        //
+        // The first pass after the process starts ignores the lease. The lease exists to
+        // avoid snatching rows from a pass that is genuinely in flight, and every pass runs
+        // in this process — so at process start there is nothing in flight by definition, and
+        // any row still marked SYNCING was left by an instance that no longer exists. Waiting
+        // out the lease there would strand an agent's captured transactions for five minutes
+        // after a crash, and they cannot be re-claimed in the meantime because claimBatch
+        // deliberately skips SYNCING. Later passes use the normal lease.
+        if (recoveredSinceProcessStart.compareAndSet(false, true)) {
+            outbox.recoverStrandedItems(leaseMillis = 0)
+        } else {
+            outbox.recoverStrandedItems()
+        }
 
         val batchSize = batchSizeProvider().coerceIn(1, MAX_BATCH_SIZE)
         val claimed = outbox.claimBatch(batchSize)
@@ -228,6 +240,15 @@ class SyncEngine(
         header?.trim()?.toLongOrNull()?.times(1_000L)
 
     companion object {
+        /**
+         * Whether the lease-free recovery has run since this process started.
+         *
+         * Deliberately on the companion rather than the instance: a SyncEngine is built per
+         * worker run, so an instance field would make every run believe it was the first and
+         * clear the lease each time, which is exactly what the lease is there to prevent.
+         */
+        private val recoveredSinceProcessStart = java.util.concurrent.atomic.AtomicBoolean(false)
+
         /** Matches the backend default; overridden by the server's reported configuration. */
         const val DEFAULT_BATCH_SIZE = 50
 

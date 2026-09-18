@@ -32,3 +32,8 @@
 }
 -keep class app.zazi.**Test { *; }
 -dontwarn org.junit.**
+
+# Note: androidx.tracing is deliberately NOT kept here. AGP leaves out of the test APK
+# anything the application under test already depends on, so a keep rule in this file has
+# nothing to act on — the classes are not an input to the test APK's R8 run at all. The rule
+# that matters lives in proguard-rules-pilot.pro, on the application side.

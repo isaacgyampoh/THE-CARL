@@ -228,7 +228,7 @@ adb shell pm grant app.zazi android.permission.RECEIVE_SMS
 # Establish a session and record a baseline
 adb shell am instrument -w \
   -e class 'app.zazi.SmsReceiverInstrumentedTest#signsInAndRecordsTheBaseline' \
-  -e carlEmail '<agent>' -e carlPassword '<password>' \
+  -e zaziEmail '<agent>' -e zaziPassword '<password>' \
   app.zazi.test/androidx.test.runner.AndroidJUnitRunner
 
 adb shell am kill app.zazi          # see the warning below
@@ -240,7 +240,7 @@ adb emu sms send MTN "$MSG"; sleep 14   # the same message twice, on purpose
 
 adb shell am instrument -w \
   -e class 'app.zazi.SmsReceiverInstrumentedTest#theInjectedMessageBecameExactlyOneTransaction' \
-  -e carlEmail '<agent>' -e carlPassword '<password>' \
+  -e zaziEmail '<agent>' -e zaziPassword '<password>' \
   app.zazi.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
@@ -259,7 +259,7 @@ Three things will waste an afternoon if they are not known in advance:
 - **`OK (1 test)` does not always mean the test ran.** These tests use `assumeTrue`, and JUnit
   reports an unmet assumption as a pass. A device that needs re-enrolment skips the baseline
   step and reports success while writing nothing, after which the second half fails on a
-  missing file. Pass `-e carlEnrolmentCode` whenever the emulator has been recreated, and
+  missing file. Pass `-e zaziEnrolmentCode` whenever the emulator has been recreated, and
   confirm the baseline exists before trusting a green first half:
 
   ```bash

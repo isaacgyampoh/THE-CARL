@@ -32,12 +32,12 @@ class SmsReceiverInstrumentedTest {
     private val container: AppContainer get() = application.container
 
     private val arguments get() = InstrumentationRegistry.getArguments()
-    private val email: String? get() = arguments.getString("carlEmail")
-    private val password: String? get() = arguments.getString("carlPassword")
+    private val email: String? get() = arguments.getString("zaziEmail")
+    private val password: String? get() = arguments.getString("zaziPassword")
 
     @Test
     fun signsInAndRecordsTheBaseline() = runBlocking {
-        assumeTrue("carlEmail/carlPassword not supplied", email != null && password != null)
+        assumeTrue("zaziEmail/zaziPassword not supplied", email != null && password != null)
 
         val login = container.sessionRepository.login(email!!, password!!)
         assertThat(login).isInstanceOf(LoginResult.Success::class.java)
@@ -45,8 +45,8 @@ class SmsReceiverInstrumentedTest {
         // A fresh emulator image has no enrolled device. Enrolment is part of the real flow,
         // so it is performed here rather than assumed.
         if (container.sessionRepository.state.value is SessionState.NeedsEnrolment) {
-            val code = arguments.getString("carlEnrolmentCode")
-            assumeTrue("carlEnrolmentCode not supplied for an unenrolled device", code != null)
+            val code = arguments.getString("zaziEnrolmentCode")
+            assumeTrue("zaziEnrolmentCode not supplied for an unenrolled device", code != null)
             container.sessionRepository.enrolDevice(code!!)
         }
 
@@ -66,7 +66,7 @@ class SmsReceiverInstrumentedTest {
 
     @Test
     fun theInjectedMessageBecameExactlyOneTransaction() = runBlocking {
-        assumeTrue("carlEmail/carlPassword not supplied", email != null && password != null)
+        assumeTrue("zaziEmail/zaziPassword not supplied", email != null && password != null)
 
         val (transactionsBefore, evidenceBefore, pendingBefore, syncedBefore) =
             baselineFile().readText().split(",").map { it.trim().toInt() }
