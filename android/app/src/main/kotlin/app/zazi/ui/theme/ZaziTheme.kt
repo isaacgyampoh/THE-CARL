@@ -31,6 +31,14 @@ private val LightColours = lightColorScheme(
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFE9E1FA),
     onPrimaryContainer = Color(0xFF1F1136),
+    // Selected chips use the secondary container. Left undefined it falls back to a grey
+    // barely distinguishable from an unselected chip — which on the capture form meant the
+    // cash-in/cash-out choice, the costliest mistake available there, was hard to read at a
+    // glance. Tinted towards the brand so "chosen" is unmistakable.
+    secondary = Color(0xFF5B3FA8),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFD7C9F5),
+    onSecondaryContainer = Color(0xFF1F1136),
     background = Color(0xFFFAF8FD),
     onBackground = Color(0xFF1A1523),
     surface = Color(0xFFFFFFFF),
@@ -53,6 +61,10 @@ private val DarkColours = darkColorScheme(
     onPrimary = Color(0xFF221C2E),
     primaryContainer = Color(0xFF3B2E63),
     onPrimaryContainer = Color(0xFFE9E1FA),
+    secondary = Color(0xFFB9A3EF),
+    onSecondary = Color(0xFF221C2E),
+    secondaryContainer = Color(0xFF4B3A7A),
+    onSecondaryContainer = Color(0xFFEDE4FF),
     background = Color(0xFF15121C),
     onBackground = Color(0xFFECE7F2),
     // Lifted rather than pure black: a reconciliation screen is read for minutes at a time,
