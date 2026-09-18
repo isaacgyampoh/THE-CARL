@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,7 +56,21 @@ import app.zazi.ui.state.EnrolmentError
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.zazi.ui.design.AnchoredActionBar
+import app.zazi.ui.design.DirectionBadge
+import app.zazi.ui.design.EmptyState
+import app.zazi.ui.design.ErrorNotice
+import app.zazi.ui.design.Radius
+import app.zazi.ui.design.SectionHeader
+import app.zazi.ui.design.SegmentedFilter
+import app.zazi.ui.design.Sizing
+import app.zazi.ui.design.Spacing
+import app.zazi.ui.design.StatusLabel
+import app.zazi.ui.design.StatusTone
+import app.zazi.ui.design.ZaziPanel
+import app.zazi.ui.design.ZaziPrimaryButton
 import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.ActivityFilter
 import app.zazi.ui.state.ActivityItem
@@ -80,113 +96,6 @@ import app.zazi.ui.state.MoneyFormat
  * money beyond [MoneyFormat]. Functionality before decoration, as this phase intends.</p>
  */
 
-
-/**
- * A failure, presented the same way on every screen.
- *
- * <p>Error text used to be a bare red line on some screens and a tinted panel on others, so
- * the same kind of event looked like two different kinds of event.</p>
- */
-@Composable
-private fun ErrorNotice(message: String) {
-    Spacer(Modifier.height(12.dp))
-    Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
-        shape = MaterialTheme.shapes.small,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            message,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-        )
-    }
-}
-
-@Composable
-fun LoginScreen(
-    state: LoginUiState,
-    onEmailChanged: (String) -> Unit,
-    onPasswordChanged: (String) -> Unit,
-    onSubmit: () -> Unit
-) {
-    var passwordVisible by remember { mutableStateOf(false) }
-
-    // Scrollable, and centred only when there is room to be. With the keyboard open on a
-    // short handset the submit button was drawn underneath it and could not be reached —
-    // the form had no scroll of its own and nothing reserved space for the IME. Center
-    // still applies when the content is shorter than the screen.
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("Zazi", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "Sign in to your account",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
-        )
-
-        OutlinedTextField(
-            value = state.email,
-            onValueChange = onEmailChanged,
-            label = { Text("Email") },
-            singleLine = true,
-            enabled = !state.isSubmitting,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = state.password,
-            onValueChange = onPasswordChanged,
-            label = { Text("Password") },
-            singleLine = true,
-            enabled = !state.isSubmitting,
-            // Masked by default. The toggle exists because a mistyped password on a small
-            // keyboard is the commonest sign-in failure.
-            visualTransformation = if (passwordVisible) {
-                VisualTransformation.None
-            } else {
-                PasswordVisualTransformation()
-            },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            trailingIcon = {
-                TextButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Text(if (passwordVisible) "Hide" else "Show")
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        state.error?.let { error -> ErrorNotice(error.message) }
-
-        Spacer(Modifier.height(24.dp))
-
-        Button(
-            onClick = onSubmit,
-            // Disabled while in flight so a double tap cannot send two login requests.
-            enabled = state.canSubmit,
-            modifier = Modifier.fillMaxWidth().height(52.dp)
-        ) {
-            if (state.isSubmitting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text("Sign in")
-            }
-        }
-    }
-}
 
 @Composable
 fun EnrolmentScreen(
@@ -241,7 +150,10 @@ fun EnrolmentScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        state.error?.let { error -> ErrorNotice(error.message) }
+        state.error?.let { error ->
+            Spacer(Modifier.height(Spacing.small))
+            ErrorNotice(error.message)
+        }
 
         Spacer(Modifier.height(24.dp))
 
@@ -266,9 +178,9 @@ fun EnrolmentScreen(
 /**
  * The screen an agent looks at between customers.
  *
- * <p>Three questions, in the order they are asked: where do I stand today, did the thing I
- * just recorded actually take, and is anything stuck. The action performed dozens of times a
- * day is anchored to the bottom so it is always under a thumb.</p>
+ * <p>Ordered by the questions actually being asked, in the order they are asked: where do I
+ * stand, what has moved today, did the thing I just recorded take, and is anything stuck.
+ * The action performed dozens of times a shift is anchored under a thumb.</p>
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -286,27 +198,17 @@ fun DashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Today") },
+                title = { Text("Today", style = MaterialTheme.typography.titleLarge) },
                 actions = {
                     ConnectionChip(isOnline = state.isOnline)
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(Spacing.tight))
                     TextButton(onClick = onLogout) { Text("Sign out") }
                 }
             )
         },
         bottomBar = {
-            // Anchored rather than placed in the scroll. Recording a transaction is the whole
-            // point of the screen, and in the scroll it moved as the list below it grew.
-            Surface(tonalElevation = 3.dp) {
-                Button(
-                    onClick = onCapture,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                        .height(56.dp)
-                ) {
-                    Text("Record transaction", style = MaterialTheme.typography.titleMedium)
-                }
+            AnchoredActionBar {
+                ZaziPrimaryButton(text = "Record transaction", onClick = onCapture)
             }
         }
     ) { insets ->
@@ -315,25 +217,19 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(insets)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = Spacing.large)
         ) {
-            Spacer(Modifier.height(4.dp))
-
             PositionPanel(
                 cashMinor = state.todayCashMinor,
                 floatMinor = state.todayFloatMinor
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Spacing.small))
 
-            SyncCard(state = state, onSyncNow = onSyncNow)
+            DeliverySummary(state = state, onSyncNow = onSyncNow)
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Spacing.section))
 
-            // The device held every transaction it had ever captured and showed the agent
-            // none of them. They could record and never look back — no way to confirm a
-            // capture took, check a figure, or quote a reference to a customer standing
-            // there. The data was already local; only the screen was missing.
             ActivitySection(
                 items = state.activity,
                 filter = state.activityFilter,
@@ -342,7 +238,7 @@ fun DashboardScreen(
             )
 
             state.device?.let { device ->
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(Spacing.section))
 
                 // Two different facts, deliberately not collapsed into one line. The server
                 // says whether this kind of device may capture SMS at all; Android says
@@ -358,10 +254,10 @@ fun DashboardScreen(
                             "Mobile-money alerts are recorded as they arrive."
                         )
 
-                    else -> SmsPermissionCard(onRequestSmsPermission)
+                    else -> SmsPermissionPanel(onRequestSmsPermission)
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(Spacing.medium))
 
                 // The branch name when the server has sent one; a short reference offline and
                 // on servers predating the field — never the full UUID, which told an agent
@@ -373,7 +269,7 @@ fun DashboardScreen(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Spacing.large))
         }
     }
 }
@@ -385,7 +281,7 @@ private fun ConnectionChip(isOnline: Boolean) {
     val tint = if (isOnline) colours.primary else colours.onSurfaceVariant
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(8.dp).background(tint, CircleShape))
+        Box(Modifier.size(8.dp).background(tint, CircleShape))
         Spacer(Modifier.width(6.dp))
         Text(
             if (isOnline) "Online" else "Offline",
@@ -396,30 +292,27 @@ private fun ConnectionChip(isOnline: Boolean) {
 }
 
 /**
- * Today's movement, given the weight it earns.
+ * Where the agent stands today.
  *
- * <p>Filled rather than outlined because this is the one thing on the screen an agent looks
- * for first, and as a plain card it carried no more emphasis than the sync status underneath
- * it. Absent rather than zero when a total cannot be calculated: a fabricated figure on a
- * financial dashboard is worse than an empty one.</p>
+ * <p>The one figure looked for first, so it gets the strongest surface in the palette and the
+ * largest type on the screen. Absent rather than zero when a total cannot be calculated: a
+ * fabricated figure on a financial dashboard is worse than an empty one.</p>
  */
 @Composable
 private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
-    Surface(
+    ZaziPanel(
         color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        shape = MaterialTheme.shapes.large,
-        modifier = Modifier.fillMaxWidth()
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
     ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+        Row(Modifier.fillMaxWidth().padding(Spacing.large)) {
             PositionFigure("Cash", cashMinor, Modifier.weight(1f))
-            // A hairline rather than a gap: the two figures are read together and move in
-            // opposite directions, so they should look like one statement, not two cards.
+            // A hairline rather than a gap: the two are read together and move in opposite
+            // directions, so they should look like one statement, not two panels.
             VerticalDivider(
-                modifier = Modifier.height(56.dp),
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.25f)
+                modifier = Modifier.height(52.dp),
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
             )
-            PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = 16.dp))
+            PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
         }
     }
 }
@@ -428,25 +321,26 @@ private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
 private fun PositionFigure(label: String, minor: Long?, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(label, style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(Spacing.tight))
         Text(
             minor?.let { MoneyFormat.format(it) } ?: "—",
             style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1
         )
     }
 }
 
 /**
- * Sync state, summarised.
+ * What has and has not reached the server.
  *
- * <p>Previously four rows that read "0" all day. The counts only matter when they are not
- * zero, so the ordinary case is a single settled line.</p>
+ * <p>One settled line in the ordinary case. The counts only matter when they are not zero,
+ * and four rows reading "0" all day taught an agent to stop looking at this panel.</p>
  */
 @Composable
-private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp)) {
+private fun DeliverySummary(state: DashboardUiState, onSyncNow: () -> Unit) {
+    ZaziPanel {
+        Column(Modifier.padding(Spacing.large)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -455,9 +349,10 @@ private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
                             state.syncedTodayCount > 0 -> "All synced"
                             else -> "Nothing recorded yet"
                         },
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(Spacing.hairline))
                     Text(
                         when {
                             state.unsyncedCount > 0 && !state.isOnline ->
@@ -476,22 +371,14 @@ private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
                 }
             }
 
-            // Never auto-resolved and never hidden. Given its own tone because it is the one
-            // thing on this screen that needs a person rather than time.
+            // Never auto-resolved and never hidden. The one thing on this screen that needs a
+            // person rather than time, so it is the one thing given a filled surface.
             if (state.needsAttentionCount > 0) {
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        "${state.needsAttentionCount} need review",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
+                Spacer(Modifier.height(Spacing.small))
+                StatusLabel(
+                    text = "${state.needsAttentionCount} need review",
+                    tone = StatusTone.Attention
+                )
             }
         }
     }
@@ -505,34 +392,26 @@ private fun ActivitySection(
     onFilterChanged: (ActivityFilter) -> Unit,
     onSelect: (ActivityItem) -> Unit
 ) {
-    Text("Recent", style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(8.dp))
+    SectionHeader("Activity")
 
-    Row(
-        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        ActivityFilter.entries.forEach { option ->
-            FilterChip(
-                selected = filter == option,
-                onClick = { onFilterChanged(option) },
-                label = { Text(option.label, maxLines = 1) }
-            )
-        }
-    }
+    Spacer(Modifier.height(Spacing.small))
 
-    Spacer(Modifier.height(12.dp))
+    SegmentedFilter(
+        options = ActivityFilter.entries.map { it.label },
+        selectedIndex = ActivityFilter.entries.indexOf(filter),
+        onSelect = { index -> onFilterChanged(ActivityFilter.entries[index]) }
+    )
+
+    Spacer(Modifier.height(Spacing.medium))
 
     if (items.isEmpty()) {
-        // Says what will happen rather than that something is missing. An empty list is the
-        // expected state on a fresh device, and on any quiet day in the chosen window.
-        Text(
-            when (filter) {
-                ActivityFilter.TODAY -> "Transactions you record today appear here, newest first."
-                else -> "Nothing recorded in this period."
+        EmptyState(
+            title = when (filter) {
+                ActivityFilter.TODAY -> "No transactions today"
+                ActivityFilter.YESTERDAY -> "No transactions yesterday"
+                ActivityFilter.LAST_SEVEN_DAYS -> "No transactions this week"
             },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            detail = "Everything you record on this device appears here, newest first."
         )
         return
     }
@@ -540,11 +419,16 @@ private fun ActivitySection(
     // A Column, not a LazyColumn: this sits inside a scrolling parent, where nesting a lazy
     // list of the same orientation is a measurement error rather than an optimisation. The
     // query is capped well below any size where laziness would pay.
-    Card(modifier = Modifier.fillMaxWidth()) {
+    ZaziPanel {
         Column {
             items.forEachIndexed { index, item ->
                 if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(
+                        // Inset past the badge, so the rule separates the text rather than
+                        // cutting the row in half.
+                        modifier = Modifier.padding(start = 68.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
                 }
                 ActivityRow(item, onClick = { onSelect(item) })
             }
@@ -565,18 +449,21 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = Sizing.minimumTouchTarget)
+            .padding(horizontal = Spacing.medium, vertical = Spacing.small),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Direction as a shape before it is a number. An agent scanning a shift's worth of
-        // rows reads the column of badges, not the amounts — and the arrow differs as well
-        // as the tint, so it survives a monochrome screen and a colour-blind reader.
         DirectionBadge(incoming)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(Spacing.small))
 
         Column(Modifier.weight(1f)) {
-            Text(item.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-            Spacer(Modifier.height(2.dp))
+            Text(
+                item.label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(Spacing.hairline))
             Text(
                 buildString {
                     append(item.provider)
@@ -592,12 +479,15 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
             )
         }
 
+        Spacer(Modifier.width(Spacing.snug))
+
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 (if (incoming) "+" else "−") + MoneyFormat.format(item.amountMinor),
                 style = MaterialTheme.typography.bodyLarge,
-                // Money in is tinted; money out stays the ordinary ink. The sign is still
-                // there, so the colour adds emphasis rather than carrying the meaning.
+                fontWeight = FontWeight.SemiBold,
+                // Money in is tinted; money out stays ordinary ink. The sign is still there,
+                // so colour adds emphasis rather than carrying the meaning.
                 color = if (incoming) {
                     MaterialTheme.colorScheme.tertiary
                 } else {
@@ -605,48 +495,23 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
                 },
                 maxLines = 1
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(Spacing.hairline))
             DeliveryLabel(item.delivery)
         }
     }
 }
 
-/** Cash in or cash out, as a glyph, before any figure is read. */
-@Composable
-private fun DirectionBadge(incoming: Boolean) {
-    val colours = MaterialTheme.colorScheme
-    val background = if (incoming) colours.tertiaryContainer else colours.surfaceVariant
-    val tint = if (incoming) colours.onTertiaryContainer else colours.onSurfaceVariant
-
-    Box(
-        modifier = Modifier.size(40.dp).background(background, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = if (incoming) {
-                Icons.Filled.KeyboardArrowDown
-            } else {
-                Icons.Filled.KeyboardArrowUp
-            },
-            // Described, not decorative: the row's own text does not say which way the money
-            // moved, only the sign on the amount does.
-            contentDescription = if (incoming) "Cash in" else "Cash out",
-            tint = tint,
-            modifier = Modifier.size(24.dp)
-        )
-    }
-}
-
+/** Delivery state, said the same way in the list and on the record. */
 @Composable
 private fun DeliveryLabel(delivery: ActivityDelivery) {
-    val colours = MaterialTheme.colorScheme
-    val tint = when (delivery) {
-        ActivityDelivery.SENT -> colours.onSurfaceVariant
-        ActivityDelivery.SENDING -> colours.primary
-        ActivityDelivery.NEEDS_REVIEW -> colours.error
-    }
-
-    Text(delivery.label, style = MaterialTheme.typography.labelSmall, color = tint)
+    StatusLabel(
+        text = delivery.label,
+        tone = when (delivery) {
+            ActivityDelivery.SENT -> StatusTone.Neutral
+            ActivityDelivery.SENDING -> StatusTone.Progress
+            ActivityDelivery.NEEDS_REVIEW -> StatusTone.Attention
+        }
+    )
 }
 
 /** Local wall-clock time. Ghana observes UTC+0 year-round, so this is also the business day. */
@@ -657,7 +522,7 @@ private fun formatClock(utcMillis: Long): String =
 @Composable
 private fun CaptureModeRow(title: String, detail: String) {
     Column {
-        Text(title, style = MaterialTheme.typography.bodyMedium)
+        Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         Text(
             detail,
             style = MaterialTheme.typography.bodySmall,
@@ -669,45 +534,45 @@ private fun CaptureModeRow(title: String, detail: String) {
 /**
  * The SMS permission ask.
  *
- * <p>A card with one action. It was four paragraphs of prose that dominated the screen and
- * buried the choice; the reassurance that declining is fine belongs next to the button rather
- * than three lines below it.</p>
+ * <p>One panel, one action. It was four paragraphs that dominated the screen and buried the
+ * choice; the reassurance that declining is fine belongs beside the button, not below it.</p>
  */
 @Composable
-private fun SmsPermissionCard(onRequest: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp)) {
-            Text("Record transactions automatically", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
+private fun SmsPermissionPanel(onRequest: () -> Unit) {
+    ZaziPanel(border = true, color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.padding(Spacing.large)) {
+            Text(
+                "Record transactions automatically",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(Spacing.tight))
             Text(
                 "Zazi can read incoming mobile-money alerts so you do not have to type them. " +
                     "It never reads your other messages and never sends any.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = onRequest) { Text("Allow") }
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "Recording by hand keeps working.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Spacer(Modifier.height(Spacing.medium))
+            // A filled button, not a text one. Beside another line of prose a bare text
+            // button reads as more prose, and this is the only thing on the panel to press.
+            FilledTonalButton(
+                onClick = onRequest,
+                shape = Radius.control,
+                modifier = Modifier.heightIn(min = Sizing.secondaryAction)
+            ) {
+                Text("Allow access")
             }
+            Spacer(Modifier.height(Spacing.snug))
+            Text(
+                "Recording by hand keeps working.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
-/**
- * Manual capture.
- *
- * <p>Ordered by how much each answer matters. Direction first, because cash in and cash out
- * move the ledger opposite ways and picking the wrong one is the costliest mistake available
- * on this screen; then the amount, large enough to check against the customer's handset
- * before saving; then the optional details, plainly marked so nobody types them out of
- * obligation.</p>
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CaptureScreen(

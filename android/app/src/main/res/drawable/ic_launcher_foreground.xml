@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive-icon foreground. The 108x108 viewport is the platform's; only the centre 72x72 is
-  guaranteed visible, because the launcher masks the rest to whatever shape the device uses.
-  The mark is drawn well inside that safe zone so it survives a circular mask.
+  The Zazi mark: two bars and the stroke that joins them.
 
-  A vector avoids shipping five PNG densities, and there is no binary asset to keep in sync.
+  The bars are deliberately offset — the upper one sits left, the lower one right — because
+  the product's job is reconciling two sides that do not line up, and the diagonal is what
+  brings them together. It reads as a Z without being a letter dropped into a circle.
+
+  The 108x108 viewport is the platform's; only the centre 72x72 is guaranteed visible, so the
+  mark sits well inside that and survives a circular mask. Solid fill, no gradient, and no
+  detail small enough to disappear at launcher size.
+
+  Geometry mirrors ZaziMark in ui/brand so the icon and the in-app mark stay the same shape.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -12,9 +18,6 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M40,40 L68,40 L40,68 L68,68"
-        android:strokeColor="#16250A"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:fillColor="#16250A"
+        android:pathData="M34,36 L68,36 L68,44.8 L46.2,63.2 L74,63.2 L74,72 L40,72 L40,63.2 L61.8,44.8 L34,44.8 Z" />
 </vector>
