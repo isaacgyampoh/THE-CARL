@@ -280,6 +280,55 @@ It checks that the API is backed by PostgreSQL rather than the in-memory store, 
 cluster answering the port belongs to this project. Both have previously produced convincing
 false diagnoses.
 
+## Running instrumentation against the minified build
+
+The suite normally runs against `debug`, which is not minified. Pointing it at `pilot` runs
+the same tests against R8-shrunk, obfuscated code — the only place a missing keep rule shows
+up before an agent does.
+
+```bash
+CODE=…   # a fresh enrolment code; they are single use
+
+./gradlew :app:connectedAndroidTest \
+  -PtestBuildType=pilot \
+  -PapiBaseUrl=http://10.0.2.2:5055/ \
+  -PzaziKeystore=… -PzaziKeystorePassword=… -PzaziKeyAlias=… -PzaziKeyPassword=… \
+  -Pandroid.testInstrumentationRunnerArguments.zaziEmail=… \
+  -Pandroid.testInstrumentationRunnerArguments.zaziPassword=… \
+  -Pandroid.testInstrumentationRunnerArguments.zaziEnrolmentCode="$CODE"
+```
+
+The staged tests — the two SMS halves and the two bulk-sync halves — still have to be driven
+one at a time with a process kill between them, exactly as described above. Run as one batch
+they execute in the wrong order and the second half reports a missing baseline file.
+
+### Why the pilot build has its own keep rules
+
+`app/proguard-rules-pilot.pro` exists because the application and the instrumentation APK are
+minified **separately**, and AGP leaves out of the test APK anything the application under
+test already provides. R8 then removes from the application whatever the application itself
+never calls — so a class the runner needs ends up in neither APK. That is how a run dies in
+`handleBindApplication` on `androidx.tracing.Trace` before a single test executes.
+
+The two APKs must also agree on signatures. `ListenableFuture` was renamed inside the
+application, so `getWorkInfosForUniqueWork` was present but with a signature the test APK had
+never been compiled against, and the runtime reported it as missing rather than mismatched.
+
+**`mapping.txt` is not evidence that a method exists.** It retains inlined and removed methods
+so stack traces can be deobfuscated. `SessionRepository.login` appeared there while the dex
+had no such method — R8 had inlined it into its only caller. Check the dex itself:
+
+```bash
+unzip -p app/build/outputs/apk/pilot/app-pilot.apk classes.dex > /tmp/c.dex
+$ANDROID_HOME/build-tools/*/dexdump -d /tmp/c.dex | grep -A3 "Class descriptor.*LJ1/C;"
+```
+
+These rules are never applied to `release`, which is checked by comparing
+`app/build/outputs/mapping/release/configuration.txt` with the pilot one. They are also listed
+class by class rather than as a blanket `-keep class app.zazi.** { *; }`: a blanket keep would
+preserve every `@Serializable` DTO too, and a missing serialization keep rule is precisely the
+defect this build type exists to find.
+
 ## Web dashboard
 
 `Zazi.Web` is a Blazor Server application that reads the same PostgreSQL database through the
