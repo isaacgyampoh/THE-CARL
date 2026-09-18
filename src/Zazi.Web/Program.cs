@@ -170,6 +170,12 @@ builder.Services.AddScoped<IObservabilityService, ObservabilityService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
+// DeviceService revokes sessions as well as marking the device, so it needs this. The portal
+// failed to start without it — registered in the API but not here, which no test caught
+// because every test builds the API's container.
+builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService>();
+// The Team page issues and revokes activation codes.
+builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
 
 var app = builder.Build();
@@ -254,3 +260,8 @@ app.MapAuthEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();
+
+// Test-visible entry point, so the portal's own dependency graph can be built in a test.
+// It was not, and the portal stopped starting when a service it newly depended on was
+// registered in the API but not here — a failure that only appeared when someone ran it.
+public partial class Program { }

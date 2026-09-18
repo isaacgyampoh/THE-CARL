@@ -1,0 +1,306 @@
+@page "/team"
+@using Zazi.Application
+@using Zazi.Application.Security
+@using Zazi.Domain
+@attribute [Authorize(Policy = ZaziPolicies.StaffManage)]
+@inject IAuthService Auth
+@inject IDeviceService Devices
+@inject IDeviceEnrollmentService Enrollment
+@inject IOrganizationService Organizations
+@inject ICurrentUserContext CurrentUser
+
+@* The owner's side of worker activation: create a worker, hand them a code, see their
+   device, take it away again. Deliberately one page — these four things are one job, and
+   splitting them across an admin section would make the common case (a new hire on Monday)
+   a navigation exercise. *@
+
+<PageTitle>Team · Zazi</PageTitle>
+
+<h1>Team</h1>
+
+@if (_error is not null)
+{
+    <p class="error" role="alert">@_error</p>
+}
+
+@if (_issuedCode is not null)
+{
+    @* Shown exactly once. The server stores only a hash and cannot produce this again, so
+       the page says so plainly rather than letting an owner navigate away assuming they can
+       come back for it. *@
+    <section class="tile" role="status">
+        <span class="label">Activation code for @_issuedForName</span>
+        <span class="value"><code>@_issuedCode</code></span>
+        <p class="muted">
+            Give this to @_issuedForName now. It is shown once and cannot be recovered —
+            generate a new one if it is lost. Expires @_issuedExpiry?.ToLocalTime().ToString("g").
+        </p>
+    </section>
+}
+
+<h2>Workers</h2>
+
+@if (_users is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Access</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Status</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var user in _users)
+        {
+            <tr class="@(user.IsActive ? "" : "muted-row")">
+                <td>@user.FullName</td>
+                <td>
+                    @* The distinction the whole change rests on, stated rather than inferred
+                       from a blank email column. *@
+                    @(user.CredentialType == UserCredentialType.ActivationOnly
+                        ? "Activation code"
+                        : "Email and password")
+                </td>
+                <td>@BranchName(user.BranchId)</td>
+                <td>@(user.IsActive ? "Active" : "Disabled")</td>
+                <td>
+                    @if (user.CredentialType == UserCredentialType.ActivationOnly && user.IsActive)
+                    {
+                        <button class="link" @onclick="() => IssueCodeAsync(user)" disabled="@_busy">
+                            Generate activation code
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+        @if (_users.Count == 0)
+        {
+            <tr><td colspan="5" class="muted">No one yet. Add your first worker below.</td></tr>
+        }
+        </tbody>
+    </table>
+}
+
+<h2>Add a worker</h2>
+
+<p class="muted">
+    A worker does not need an email address or a password. Create them here, then give them
+    an activation code to enter on their phone.
+</p>
+
+<EditForm Model="_newWorker" OnValidSubmit="CreateWorkerAsync" FormName="add-worker">
+    <AntiforgeryToken />
+
+    <p>
+        <label for="worker-name">Full name</label>
+        <InputText id="worker-name" @bind-Value="_newWorker.FullName" />
+    </p>
+
+    <p>
+        <label for="worker-branch">Branch</label>
+        <InputSelect id="worker-branch" @bind-Value="_newWorker.BranchId">
+            <option value="">Choose a branch…</option>
+            @foreach (var branch in _branches ?? new List<BranchDto>())
+            {
+                <option value="@branch.Id">@branch.Name</option>
+            }
+        </InputSelect>
+    </p>
+
+    <button type="submit" disabled="@_busy">Add worker</button>
+</EditForm>
+
+<h2>Devices</h2>
+
+@if (_devices is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th scope="col">Device</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Status</th>
+                <th scope="col">Last seen</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var device in _devices)
+        {
+            var revoked = device.Status == DeviceStatus.Revoked;
+            <tr class="@(revoked ? "muted-row" : "")">
+                <td>@device.Name</td>
+                <td>@BranchName(device.BranchId)</td>
+                <td>@(revoked ? "Revoked" : device.Status.ToString())</td>
+                <td>@device.LastSeenAt.ToLocalTime().ToString("g")</td>
+                <td>
+                    @if (!revoked)
+                    {
+                        @* No confirmation dialogue here yet, and that is worth knowing: this
+                           acts immediately and cannot be undone from this page. *@
+                        <button class="link" @onclick="() => RevokeAsync(device)" disabled="@_busy">
+                            Revoke
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+        @if (_devices.Count == 0)
+        {
+            <tr><td colspan="5" class="muted">No devices activated yet.</td></tr>
+        }
+        </tbody>
+    </table>
+
+    <p class="muted">
+        Revoking takes effect the next time that phone reaches Zazi. A phone that is switched
+        off or out of signal keeps working until it reconnects, then loses access — it cannot
+        be told sooner.
+    </p>
+}
+
+@code {
+    private sealed class NewWorker
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string BranchId { get; set; } = string.Empty;
+    }
+
+    private readonly NewWorker _newWorker = new();
+
+    private IReadOnlyList<UserDto>? _users;
+    private IReadOnlyList<DeviceDto>? _devices;
+    private IReadOnlyList<BranchDto>? _branches;
+
+    private string? _error;
+    private bool _busy;
+
+    // Held only for this render. The plaintext exists nowhere else and is never stored.
+    private string? _issuedCode;
+    private string? _issuedForName;
+    private DateTimeOffset? _issuedExpiry;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var organizationId = CurrentUser.OrganizationId;
+            _branches = await Organizations.GetBranchesAsync(organizationId);
+            _users = await Auth.GetUsersAsync(organizationId);
+            _devices = await Devices.GetDevicesAsync(organizationId);
+        }
+        catch (Exception)
+        {
+            // No exception detail on screen: it can carry identifiers and internal state, and
+            // an owner can do nothing with either.
+            _error = "The team could not be loaded. Please try again.";
+        }
+    }
+
+    private async Task CreateWorkerAsync()
+    {
+        if (!Guid.TryParse(_newWorker.BranchId, out var branchId))
+        {
+            _error = "Choose a branch for this worker.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Auth.CreateWorkerAsync(
+                new CreateWorkerRequest(
+                    CurrentUser.OrganizationId,
+                    branchId,
+                    _newWorker.FullName,
+                    new[] { ZaziRoles.Agent }));
+
+            _newWorker.FullName = string.Empty;
+            _newWorker.BranchId = string.Empty;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            // Validation messages are the caller's own words and safe to show.
+            _error = exception.Message;
+        }
+        catch (Exception)
+        {
+            _error = "The worker could not be created. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task IssueCodeAsync(UserDto worker)
+    {
+        if (worker.BranchId is not { } branchId)
+        {
+            _error = "This worker has no branch, so a code cannot be scoped to one.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var issued = await Enrollment.IssueCodeAsync(
+                new IssueEnrollmentCodeRequest(branchId, DeviceRole.TransactionDevice, worker.Id),
+                CurrentUser.OrganizationId,
+                branchId,
+                CurrentUser.UserId);
+
+            _issuedCode = issued.Code;
+            _issuedForName = worker.FullName;
+            _issuedExpiry = issued.ExpiresAtUtc;
+        }
+        catch (Exception)
+        {
+            _error = "The activation code could not be generated. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RevokeAsync(DeviceDto device)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Devices.RevokeDeviceAsync(device.Id, CurrentUser.OrganizationId, CurrentUser.UserId);
+            await LoadAsync();
+        }
+        catch (Exception)
+        {
+            _error = "The device could not be revoked. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string BranchName(Guid? branchId) =>
+        branchId is { } id
+            ? _branches?.FirstOrDefault(b => b.Id == id)?.Name ?? "—"
+            : "All branches";
+}

@@ -805,5 +805,6 @@ public class AuthService : IAuthService
             user.EmailVerified,
             user.PhoneVerified,
             user.CreatedAt,
+            user.CredentialType,
             roles);
 }

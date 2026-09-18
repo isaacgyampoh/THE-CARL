@@ -144,6 +144,8 @@ public record UserDto(
     bool EmailVerified,
     bool PhoneVerified,
     DateTimeOffset CreatedAt,
+    /// <summary>Whether this identity signs in with a password or activates with a code.</summary>
+    UserCredentialType CredentialType,
     IReadOnlyList<string> Roles);
 
 public record LoginRequest(

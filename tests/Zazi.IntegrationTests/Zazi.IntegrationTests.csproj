@@ -25,6 +25,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Zazi.Api\Zazi.Api.csproj" />
+    <!-- Aliased: both web projects generate a global Program from top-level statements,
+         so an unaliased reference makes every existing `Program` in this project ambiguous.
+         The alias keeps those resolving to the API and lets the portal test name its own. -->
+    <ProjectReference Include="..\..\src\Zazi.Web\Zazi.Web.csproj" Aliases="portal" />
     <ProjectReference Include="..\..\src\Zazi.Domain\Zazi.Domain.csproj" />
     <ProjectReference Include="..\..\src\Zazi.Application\Zazi.Application.csproj" />
     <ProjectReference Include="..\..\src\Zazi.Infrastructure\Zazi.Infrastructure.csproj" />
