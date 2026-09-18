@@ -8,6 +8,7 @@ import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.OutboxRepository
 import app.zazi.core.data.security.KeystoreCredentialStore
+import app.zazi.core.data.session.ActivationResult
 import app.zazi.core.data.session.EnrolmentResult
 import app.zazi.core.data.session.LoginResult
 import app.zazi.core.data.session.SessionRepository
@@ -393,6 +394,155 @@ class SessionRepositoryTest {
         reference = "REF-${System.nanoTime()}",
         customerPhoneNumber = "0241234567"
     )
+
+    // ─── Worker activation ───────────────────────────────────────────────────
+
+    @Test
+    fun `activation establishes a session with no prior sign-in`() = runTest {
+        // Nothing stored. This is a handset out of the box, which is exactly the case the
+        // old flow could not serve: enrolment needed a token, and a token needed an account.
+        assertThat(credentialStore.read()).isNull()
+
+        server.enqueue(activationResponse())
+        server.enqueue(deviceSelfResponse())
+
+        val result = session.activate("ZAZI-ABCD-EFGH-JKMN-PQRS")
+
+        assertThat(result).isInstanceOf(ActivationResult.Success::class.java)
+        val success = result as ActivationResult.Success
+        assertThat(success.identity.workerName).isEqualTo("Ama Mensah")
+        assertThat(success.identity.organizationName).isEqualTo("Mensah Mobile Money")
+        assertThat(success.identity.branchName).isEqualTo("Accra Central")
+
+        // A real stored session, not a marker.
+        val stored = credentialStore.read()
+        assertThat(stored).isNotNull()
+        assertThat(stored!!.accessToken).isEqualTo("access-token-1")
+        assertThat(stored.deviceId).isEqualTo("device-1")
+
+        assertThat(session.state.value).isInstanceOf(SessionState.Active::class.java)
+    }
+
+    @Test
+    fun `the activation request never names an organization or branch`() = runTest {
+        server.enqueue(activationResponse())
+        server.enqueue(deviceSelfResponse())
+
+        session.activate("ZAZI-ABCD-EFGH-JKMN-PQRS")
+
+        val body = server.takeRequest().body.readUtf8()
+
+        // Scope is the server's to decide. If the handset ever started sending it, this is
+        // the test that would notice.
+        assertThat(body).doesNotContain("organizationId")
+        assertThat(body).doesNotContain("branchId")
+        assertThat(body).doesNotContain("role")
+    }
+
+    @Test
+    fun `the activation request carries no authorization header`() = runTest {
+        server.enqueue(activationResponse())
+        server.enqueue(deviceSelfResponse())
+
+        session.activate("ZAZI-ABCD-EFGH-JKMN-PQRS")
+
+        // The whole point of the endpoint. If an interceptor ever started attaching a token
+        // here, activation would silently start depending on having one.
+        assertThat(server.takeRequest().getHeader("Authorization")).isNull()
+    }
+
+    @Test
+    fun `an unusable code is reported as one thing`() = runTest {
+        // The server answers 401 for invalid, expired, revoked, spent, attempt-limited and
+        // worker-disabled alike. The client must not invent a distinction the server
+        // deliberately refuses to make.
+        // Mirrors startup: the application restores before showing anything, which is what
+        // moves the repository off Initialising.
+        session.restore()
+        server.enqueue(MockResponse().setResponseCode(401))
+
+        assertThat(session.activate("ZAZI-WRONG")).isEqualTo(ActivationResult.CodeNotValid)
+        assertThat(credentialStore.read()).isNull()
+        assertThat(session.state.value).isEqualTo(SessionState.SignedOut)
+    }
+
+    @Test
+    fun `an already registered handset is reported distinctly`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(409))
+
+        // Distinct because the recovery differs: this one needs the owner to reset the
+        // device, not to issue another code.
+        assertThat(session.activate("ZAZI-ABCD")).isEqualTo(ActivationResult.AlreadyActivated)
+    }
+
+    @Test
+    fun `rate limiting is surfaced with the server's retry hint`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "45"))
+
+        val result = session.activate("ZAZI-ABCD")
+
+        assertThat(result).isEqualTo(ActivationResult.RateLimited(45))
+    }
+
+    @Test
+    fun `activation cannot happen offline`() = runTest {
+        server.shutdown()
+
+        // Stated as a product fact, not a failure: only the server can say who this worker
+        // is, so a brand-new handset genuinely cannot activate without reaching it.
+        assertThat(session.activate("ZAZI-ABCD")).isEqualTo(ActivationResult.NetworkUnavailable)
+        assertThat(credentialStore.read()).isNull()
+    }
+
+    @Test
+    fun `a failed activation leaves no session behind`() = runTest {
+        session.restore()
+        server.enqueue(MockResponse().setResponseCode(500))
+
+        session.activate("ZAZI-ABCD")
+
+        // A half-activated handset that believes it has a session is worse than one that
+        // knows it has none.
+        assertThat(credentialStore.read()).isNull()
+        assertThat(session.state.value).isEqualTo(SessionState.SignedOut)
+    }
+
+    @Test
+    fun `captured work survives a failed activation`() = runTest {
+        // The invariant this whole file exists for, checked on the new path too: a
+        // transaction is an agent's financial record and does not depend on authentication.
+        capture.captureManual(cashIn("40.00")) as CaptureOutcome.Queued
+
+        server.enqueue(MockResponse().setResponseCode(401))
+        session.activate("ZAZI-WRONG")
+
+        assertThat(database.outboxDao().count()).isEqualTo(1)
+    }
+
+    private fun activationResponse() = MockResponse()
+        .setResponseCode(200)
+        .setHeader("Content-Type", "application/json")
+        .setBody(
+            """
+            {
+              "session": {
+                "accessToken": "access-token-1",
+                "refreshToken": "refresh-token-1",
+                "expiresAtUtc": "2030-01-01T00:00:00Z",
+                "user": {
+                  "id": "user-1", "organizationId": "org-1", "branchId": "branch-1",
+                  "email": null, "fullName": "Ama Mensah", "roles": ["AGENT"]
+                }
+              },
+              "deviceId": "device-1",
+              "deviceName": "Test Handset",
+              "branchId": "branch-1",
+              "branchName": "Accra Central",
+              "organizationName": "Mensah Mobile Money",
+              "workerName": "Ama Mensah"
+            }
+            """.trimIndent()
+        )
 
     private fun loginResponse() = MockResponse()
         .setResponseCode(200)

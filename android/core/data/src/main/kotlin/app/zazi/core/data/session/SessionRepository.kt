@@ -3,6 +3,7 @@ package app.zazi.core.data.session
 import app.zazi.core.data.network.ZaziApi
 import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.network.DeviceSelfResponse
+import app.zazi.core.data.network.ActivateDeviceRequest
 import app.zazi.core.data.network.EnrolDeviceRequest
 import app.zazi.core.data.network.LoginRequest
 import app.zazi.core.data.repository.OutboxRepository
@@ -211,6 +212,100 @@ class SessionRepository(
             correlationId = response.correlationId()
         )
         return LoginResult.Success(restore())
+    }
+
+    /**
+     * Activates this handset from an owner-issued code, with no prior sign-in.
+     *
+     * <p>The difference from [enrolDevice] is what the handset starts with: nothing. There is
+     * no session to enrol inside, so the code establishes the identity and the server returns
+     * a real session — the same shape login returns, which is what lets everything downstream
+     * (refresh, revocation, sync) work without knowing how it began.</p>
+     *
+     * <p>Scope is never sent. Organization, branch, role and worker all come from the code,
+     * server-side.</p>
+     */
+    suspend fun activate(code: String): ActivationResult {
+        // The code is a single-use credential and is never reported, logged or stored.
+        report(TelemetryEventType.ENROLMENT_STARTED)
+
+        val response = try {
+            api.activateDevice(
+                ActivateDeviceRequest(
+                    code = code.trim(),
+                    deviceIdentifier = deviceInstallationId,
+                    name = deviceName,
+                    platform = "Android",
+                    network = "MTN",
+                    appVersion = appVersion,
+                    osVersion = osVersion
+                )
+            )
+        } catch (_: IOException) {
+            return ActivationResult.NetworkUnavailable
+        } catch (_: Exception) {
+            return ActivationResult.ServerError(0)
+        }
+
+        val body = response.body()
+
+        if (!response.isSuccessful || body == null) {
+            return when (response.code()) {
+                // One answer for every way a code can be unusable. The server does not
+                // distinguish them and neither does this: doing so would report which codes
+                // exist to anyone who asked.
+                401 -> ActivationResult.CodeNotValid
+                409 -> ActivationResult.AlreadyActivated
+                429 -> ActivationResult.RateLimited(
+                    response.headers()["Retry-After"]?.trim()?.toLongOrNull()
+                )
+                else -> ActivationResult.ServerError(response.code())
+            }
+        }
+
+        val session = body.session
+
+        credentialStore.save(
+            StoredCredentials(
+                accessToken = session.accessToken,
+                refreshToken = session.refreshToken,
+                accessTokenExpiresAtUtcMillis = Instant.parse(session.expiresAtUtc).toEpochMilli(),
+                userId = session.user.id,
+                organizationId = session.user.organizationId,
+                branchId = session.user.branchId,
+                // Assigned by the server during activation, so unlike login there is no
+                // earlier value to preserve.
+                deviceId = body.deviceId,
+                deviceInstallationId = deviceInstallationId
+            )
+        )
+
+        // A fresh activation supersedes any earlier revocation notice on this handset.
+        // Whether it is permitted now is the server's decision, not this marker's.
+        credentialStore.clearDeviceRevokedMark()
+
+        val identity = ActivatedIdentity(
+            workerName = body.workerName,
+            organizationName = body.organizationName,
+            branchName = body.branchName
+        )
+
+        report(
+            TelemetryEventType.LOGIN_SUCCESS,
+            errorCode = null,
+            status = TelemetryStatus.SUCCEEDED,
+            correlationId = response.correlationId()
+        )
+
+        // /devices/me is the authority on capabilities, exactly as after enrolment. The
+        // activation response says who the worker is; it does not say what the device may do.
+        return when (val device = fetchDeviceContext(deviceInstallationId)) {
+            is DeviceFetch.Found -> {
+                update(SessionState.Active(credentialStore.read()!!.toUser(), device.context))
+                ActivationResult.Success(identity, device.context)
+            }
+            else -> ActivationResult.ServerError(0)
+        }
     }
 
     /**

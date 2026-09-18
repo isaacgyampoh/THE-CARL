@@ -35,6 +35,8 @@ import app.zazi.ui.brand.BrandIntroGate
 import app.zazi.ui.brand.LaunchState
 import app.zazi.ui.brand.ZaziBrandIntro
 import app.zazi.ui.design.rememberReducedMotion
+import app.zazi.ui.ActivatedScreen
+import app.zazi.ui.ActivationScreen
 import app.zazi.ui.CaptureScreen
 import app.zazi.ui.DashboardScreen
 import app.zazi.ui.DeviceRevokedScreen
@@ -46,6 +48,7 @@ import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.CaptureTransactionType
+import app.zazi.ui.viewmodel.ActivationViewModel
 import app.zazi.ui.viewmodel.CaptureViewModel
 import app.zazi.ui.viewmodel.DashboardViewModel
 import app.zazi.ui.viewmodel.EnrolmentViewModel
@@ -150,6 +153,12 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     val sessionState by container.sessionRepository.state.collectAsStateWithLifecycle()
 
     val loginViewModel = remember { LoginViewModel(container.sessionRepository) }
+    val activationViewModel = remember { ActivationViewModel(container.sessionRepository) }
+
+    // Whether the worker asked for the email form instead. Not a session state — nothing on
+    // the server changes — so it lives here rather than in SessionState, which stays the
+    // single description of what the server believes about this handset.
+    var showLogin by rememberSaveable { mutableStateOf(false) }
     val enrolmentViewModel = remember { EnrolmentViewModel(container.sessionRepository) }
 
     val captureViewModel = remember {
@@ -229,21 +238,61 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
         SessionState.Initialising -> LoadingScreen()
 
         SessionState.SignedOut -> {
-            val loginState by loginViewModel.state.collectAsState()
+            val activationState by activationViewModel.state.collectAsState()
 
-            LoginScreen(
-                state = loginState,
-                onEmailChanged = loginViewModel::onEmailChanged,
-                onPasswordChanged = loginViewModel::onPasswordChanged,
-                onSubmit = {
-                    scope.launch {
-                        if (loginViewModel.submit()) {
-                            // Drain anything captured before this sign-in.
-                            SyncWorker.enqueue(application)
+            // Activation is the front door, not one of two equal options. This is the app a
+            // worker uses on a business phone; the owner works in the web portal. Presenting
+            // a choice would make every worker stop and decide which kind of person they are,
+            // to reach the only answer that was ever going to apply to them.
+            //
+            // Sign-in is still reachable, and is what an owner or manager with an existing
+            // account gets. Nothing about that path changed.
+            val identity = activationState.activated
+
+            when {
+                identity != null && !showLogin -> ActivatedScreen(
+                    workerName = identity.workerName,
+                    organizationName = identity.organizationName,
+                    branchName = identity.branchName,
+                    // The session already exists by this point — the server issued it during
+                    // activation. This only dismisses the confirmation; SessionState has
+                    // already moved to Active underneath it.
+                    onContinue = { /* state observation takes over */ }
+                )
+
+                showLogin -> {
+                    val loginState by loginViewModel.state.collectAsState()
+
+                    LoginScreen(
+                        state = loginState,
+                        onEmailChanged = loginViewModel::onEmailChanged,
+                        onPasswordChanged = loginViewModel::onPasswordChanged,
+                        onSubmit = {
+                            scope.launch {
+                                if (loginViewModel.submit()) {
+                                    // Drain anything captured before this sign-in.
+                                    SyncWorker.enqueue(application)
+                                }
+                            }
                         }
-                    }
+                    )
                 }
-            )
+
+                else -> ActivationScreen(
+                    state = activationState,
+                    onCodeChanged = activationViewModel::onCodeChanged,
+                    onSubmit = {
+                        scope.launch {
+                            if (activationViewModel.submit()) {
+                                // Anything captured before activation still belongs to this
+                                // agent and is drained now, exactly as after a sign-in.
+                                SyncWorker.enqueue(application)
+                            }
+                        }
+                    },
+                    onUseEmailInstead = { showLogin = true }
+                )
+            }
         }
 
         is SessionState.NeedsEnrolment -> {

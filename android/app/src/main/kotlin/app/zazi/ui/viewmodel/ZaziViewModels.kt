@@ -5,6 +5,7 @@ import app.zazi.core.data.capture.ManualCaptureRequest
 import app.zazi.core.data.capture.MinorUnits
 import app.zazi.core.data.repository.TransactionCapture
 import app.zazi.core.data.repository.OutboxRepository
+import app.zazi.core.data.session.ActivationResult
 import app.zazi.core.data.session.EnrolmentResult
 import app.zazi.core.data.session.LoginResult
 import app.zazi.core.data.session.SessionRepository
@@ -12,6 +13,8 @@ import app.zazi.core.data.session.SessionState
 import app.zazi.core.domain.model.Provider
 import app.zazi.core.domain.model.TransactionType
 import app.zazi.core.domain.sync.OutboxState
+import app.zazi.ui.state.ActivationError
+import app.zazi.ui.state.ActivationUiState
 import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.ActivityFilter
 import app.zazi.ui.state.TransactionDetail
@@ -121,6 +124,52 @@ class EnrolmentViewModel(private val sessionRepository: SessionRepository) {
     }
 
     private fun failWith(current: EnrolmentUiState, error: EnrolmentError): Boolean {
+        _state.value = current.copy(isSubmitting = false, error = error)
+        return false
+    }
+}
+
+/**
+ * First-run activation.
+ *
+ * <p>Holds no identity of its own. Everything shown after a successful activation — the
+ * worker's name, their branch, their business — comes from the server's response, because the
+ * handset has no way to know any of it and should not invent it.</p>
+ */
+class ActivationViewModel(private val sessionRepository: SessionRepository) {
+
+    private val _state = MutableStateFlow(ActivationUiState())
+    val state: StateFlow<ActivationUiState> = _state.asStateFlow()
+
+    fun onCodeChanged(code: String) {
+        _state.value = _state.value.copy(code = code, error = null)
+    }
+
+    suspend fun submit(): Boolean {
+        val current = _state.value
+        if (!current.canSubmit) return false
+
+        _state.value = current.copy(isSubmitting = true, error = null)
+
+        return when (val result = sessionRepository.activate(current.code)) {
+            is ActivationResult.Success -> {
+                // The code is dropped from state the moment it is spent. It is single use and
+                // there is no reason for it to survive in memory.
+                _state.value = ActivationUiState(activated = result.identity)
+                true
+            }
+
+            ActivationResult.CodeNotValid -> failWith(current, ActivationError.CODE_NOT_VALID)
+            ActivationResult.AlreadyActivated -> failWith(current, ActivationError.ALREADY_ACTIVATED)
+            is ActivationResult.RateLimited -> failWith(current, ActivationError.RATE_LIMITED)
+            ActivationResult.NetworkUnavailable -> failWith(current, ActivationError.NETWORK_UNAVAILABLE)
+            is ActivationResult.ServerError -> failWith(current, ActivationError.SERVER_ERROR)
+        }
+    }
+
+    private fun failWith(current: ActivationUiState, error: ActivationError): Boolean {
+        // The code is kept on a failure, unlike on success: a mistyped character is the most
+        // likely cause and clearing the field would make the worker type all of it again.
         _state.value = current.copy(isSubmitting = false, error = error)
         return false
     }

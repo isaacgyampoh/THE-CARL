@@ -57,6 +57,15 @@ interface ZaziApi {
      */
     @POST("api/v1/devices/enrol")
     suspend fun enrolDevice(@Body request: EnrolDeviceRequest): Response<DeviceEnrolledResponse>
+
+    /**
+     * Activates this handset from an owner-issued code, with no prior authentication.
+     *
+     * <p>The only call in this interface that carries no token. The code is the credential,
+     * and the response is a real session — the same one login returns.</p>
+     */
+    @POST("api/v1/devices/activate")
+    suspend fun activateDevice(@Body request: ActivateDeviceRequest): Response<DeviceActivationResponse>
 }
 
 /**
@@ -117,6 +126,36 @@ data class DeviceEnrolledResponse(
     val enrolledAtUtc: String
 )
 
+/**
+ * Activation request.
+ *
+ * <p>Deliberately identical in shape to [EnrolDeviceRequest] minus nothing — and carrying no
+ * organization, branch or role, because the server reads those from the code. A handset that
+ * could name its own scope could join another business.</p>
+ */
+@Serializable
+data class ActivateDeviceRequest(
+    val code: String,
+    val deviceIdentifier: String,
+    val name: String,
+    val platform: String,
+    val network: String,
+    val appVersion: String,
+    val osVersion: String
+)
+
+/** What the server tells a freshly activated handset: a session, and who it belongs to. */
+@Serializable
+data class DeviceActivationResponse(
+    val session: AuthTokenResponse,
+    val deviceId: String,
+    val deviceName: String,
+    val branchId: String,
+    val branchName: String,
+    val organizationName: String,
+    val workerName: String
+)
+
 @Serializable
 data class RefreshTokenRequest(val refreshToken: String)
 
@@ -133,7 +172,14 @@ data class AuthUserResponse(
     val id: String,
     val organizationId: String,
     val branchId: String? = null,
-    val email: String,
+    /**
+     * Null for a worker activated by code, who has no account of their own.
+     *
+     * <p>This was non-nullable, and activation failed on it: the server legitimately sends
+     * null for such a worker, deserialization threw, and the catch-all turned it into an
+     * opaque ServerError(0). A required field is a contract, and the contract changed.</p>
+     */
+    val email: String? = null,
     val fullName: String,
     val roles: List<String> = emptyList()
 )

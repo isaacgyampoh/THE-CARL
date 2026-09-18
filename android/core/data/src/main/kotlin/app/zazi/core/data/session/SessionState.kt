@@ -99,3 +99,40 @@ sealed interface EnrolmentResult {
     data object NetworkUnavailable : EnrolmentResult
     data class ServerError(val status: Int) : EnrolmentResult
 }
+
+/**
+ * Who the server says this handset belongs to, shown on the confirmation screen.
+ *
+ * <p>Every field comes from the activation response. Nothing here is composed on the device:
+ * the worker is told who the server thinks they are, which is the only version that matters.</p>
+ */
+data class ActivatedIdentity(
+    val workerName: String,
+    val organizationName: String,
+    val branchName: String
+)
+
+/**
+ * Outcome of redeeming an activation code.
+ *
+ * <p>Separate from [EnrolmentResult] because the two differ in what they can fail at.
+ * Enrolment happens inside an existing session and can report an expired one; activation has
+ * no session yet, and its failures are all about the code.</p>
+ */
+sealed interface ActivationResult {
+    data class Success(val identity: ActivatedIdentity, val device: DeviceContext) : ActivationResult
+
+    /**
+     * The server's single answer for invalid, expired, revoked, already-used, attempt-limited
+     * and worker-disabled. It does not distinguish them, deliberately — telling a caller
+     * which codes exist is an oracle — so neither does this.
+     */
+    data object CodeNotValid : ActivationResult
+
+    /** This handset is already registered to a device record. */
+    data object AlreadyActivated : ActivationResult
+
+    data class RateLimited(val retryAfterSeconds: Long?) : ActivationResult
+    data object NetworkUnavailable : ActivationResult
+    data class ServerError(val status: Int) : ActivationResult
+}

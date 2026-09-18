@@ -3,6 +3,7 @@ package app.zazi.ui.state
 import app.zazi.core.data.database.OutboxItemEntity
 import app.zazi.core.data.session.DeviceContext
 import java.math.BigDecimal
+import app.zazi.core.data.session.ActivatedIdentity
 
 /**
  * Presentation state for the sign-in screen.
@@ -350,4 +351,47 @@ object MoneyFormat {
     }
 
     fun format(amount: BigDecimal): String = "₵${amount.setScale(2)}"
+}
+
+/**
+ * The worker's first screen: one field, one button.
+ *
+ * <p>No email, no password, no registration. A worker is given a code by the person who
+ * employs them and types it in — that is the whole of first-time setup.</p>
+ */
+data class ActivationUiState(
+    val code: String = "",
+    val isSubmitting: Boolean = false,
+    val error: ActivationError? = null,
+    /** Set once the server has confirmed who this handset belongs to. */
+    val activated: ActivatedIdentity? = null
+) {
+    val canSubmit: Boolean get() = !isSubmitting && code.isNotBlank()
+}
+
+enum class ActivationError {
+    CODE_NOT_VALID,
+    ALREADY_ACTIVATED,
+    RATE_LIMITED,
+    NETWORK_UNAVAILABLE,
+    SERVER_ERROR;
+
+    val message: String
+        get() = when (this) {
+            // One message for invalid, expired, revoked, already-used, attempt-limited and
+            // worker-disabled, because the server deliberately does not distinguish them.
+            // Saying "expired" when the real cause was revocation would be a guess, and
+            // distinguishing them properly would tell an attacker which codes exist. It names
+            // the recovery instead, which is the same in every case.
+            CODE_NOT_VALID ->
+                "That activation code cannot be used. Ask your business owner for a new one."
+            ALREADY_ACTIVATED ->
+                "This phone is already set up for Zazi. Ask your business owner to reset it."
+            RATE_LIMITED ->
+                "Too many attempts. Wait a moment and try again."
+            NETWORK_UNAVAILABLE ->
+                "No connection. Activation needs the internet — check your network and try again."
+            SERVER_ERROR ->
+                "Activation is unavailable right now. Please try again shortly."
+        }
 }
