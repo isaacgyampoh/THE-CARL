@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.session.SessionState
 import app.zazi.core.data.sync.SyncWorker
 import app.zazi.ui.CaptureScreen
@@ -44,6 +45,8 @@ import app.zazi.ui.viewmodel.EnrolmentViewModel
 import app.zazi.ui.theme.ZaziTheme
 import app.zazi.ui.viewmodel.LoginViewModel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -138,31 +141,14 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 }
             },
             transactionDetail = { clientTransactionId ->
-                container.dashboardRepository.findDetail(clientTransactionId)?.let { row ->
-                    val state = row.outboxState
-                    TransactionDetail(
-                        clientTransactionId = row.transaction.clientTransactionId,
-                        label = CaptureTransactionType.entries
-                            .firstOrNull { it.name == row.transaction.transactionType }
-                            ?.label
-                            ?: row.transaction.transactionType.lowercase().replace('_', ' ')
-                                .replaceFirstChar { it.uppercase() },
-                        provider = row.transaction.provider,
-                        amountMinor = row.transaction.amountMinor,
-                        cashDeltaMinor = row.transaction.cashDeltaMinor,
-                        atUtcMillis = row.transaction.transactionAtUtcMillis,
-                        customerPhone = row.transaction.customerPhoneNumber,
-                        reference = row.transaction.reference,
-                        capturedAutomatically = row.transaction.sourceType == "SMS",
-                        delivery = ActivityDelivery.fromOutboxState(state),
-                        attemptCount = row.attemptCount ?: 0,
-                        lastReasonCode = row.lastReasonCode,
-                        // Only a dead letter. A conflict means the server disagreed, which
-                        // re-sending cannot resolve — the DAO enforces the same boundary, so
-                        // this decides what to offer rather than what is permitted.
-                        isRetryable = state == "DEAD_LETTER"
-                    )
-                }
+                container.dashboardRepository.findDetail(clientTransactionId)?.toDetail()
+            },
+            // The same row, observed. A screen left open follows the record as sync moves it
+            // instead of holding the snapshot it was opened with.
+            transactionDetailStream = { clientTransactionId ->
+                container.dashboardRepository
+                    .observeDetail(clientTransactionId)
+                    .map { row -> row?.toDetail() }
             },
             retryTransaction = { clientTransactionId ->
                 val requeued = container.dashboardRepository
@@ -176,7 +162,11 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     }
 
     var screen by remember { mutableStateOf(AuthenticatedScreen.DASHBOARD) }
-    var selectedTransaction by remember { mutableStateOf<TransactionDetail?>(null) }
+    // The id is what the screen owns; the detail itself comes from the database so it stays
+    // current. openedWith is the snapshot the row was tapped with, used only as the stream's
+    // initial value so the screen never flashes empty before Room's first emission.
+    var selectedTransactionId by remember { mutableStateOf<String?>(null) }
+    var openedWith by remember { mutableStateOf<TransactionDetail?>(null) }
     var isRetrying by remember { mutableStateOf(false) }
 
     when (val state = sessionState) {
@@ -254,10 +244,11 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         },
                         onActivitySelected = { item ->
                             scope.launch {
-                                // Loaded before navigating, so the screen never appears empty
+                                // Read before navigating, so the screen never appears empty
                                 // and then fills in.
-                                selectedTransaction =
+                                openedWith =
                                     dashboardViewModel.detailFor(item.clientTransactionId)
+                                selectedTransactionId = item.clientTransactionId
                                 screen = AuthenticatedScreen.TRANSACTION
                             }
                         },
@@ -275,34 +266,48 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 }
 
                 AuthenticatedScreen.TRANSACTION -> {
-                    // Back returns to the list rather than leaving the app, for the same
-                    // reason capture does: an agent reaching for "go back" after checking a
-                    // figure should land where they came from.
-                    BackHandler {
-                        selectedTransaction = null
+                    val transactionId = selectedTransactionId
+
+                    // Follows the stored row for as long as this screen is on top. Collected
+                    // with lifecycle awareness so it stops while the app is backgrounded
+                    // rather than keeping a query alive behind a locked phone. Room emits on
+                    // writes to either joined table, so a retry re-queueing the outbox row
+                    // and the engine later marking it synced both arrive here — no polling,
+                    // and no request of its own.
+                    val detail by remember(transactionId) {
+                        if (transactionId == null) {
+                            flowOf(null)
+                        } else {
+                            dashboardViewModel.observeDetail(transactionId)
+                        }
+                    }.collectAsStateWithLifecycle(initialValue = openedWith)
+
+                    fun leave() {
+                        selectedTransactionId = null
+                        openedWith = null
                         screen = AuthenticatedScreen.DASHBOARD
                     }
 
+                    // Back returns to the list rather than leaving the app, for the same
+                    // reason capture does: an agent reaching for "go back" after checking a
+                    // figure should land where they came from.
+                    BackHandler { leave() }
+
                     TransactionDetailScreen(
-                        detail = selectedTransaction,
+                        detail = detail,
                         isRetrying = isRetrying,
                         onRetry = {
-                            val target = selectedTransaction ?: return@TransactionDetailScreen
+                            val target = transactionId ?: return@TransactionDetailScreen
                             scope.launch {
                                 isRetrying = true
-                                dashboardViewModel.retry(target.clientTransactionId, isOnline)
-                                // Re-read rather than assume: a retry may have been refused
-                                // because the item was delivered in the meantime, and the
-                                // screen should show what is now true.
-                                selectedTransaction =
-                                    dashboardViewModel.detailFor(target.clientTransactionId)
+                                // The re-read that used to follow this is gone: the stream
+                                // above reports what is now true, including a retry refused
+                                // because the item had already been delivered.
+                                dashboardViewModel.retry(target, isOnline)
                                 isRetrying = false
                             }
                         },
-                        onBack = {
-                            selectedTransaction = null
-                            screen = AuthenticatedScreen.DASHBOARD
-                        }
+                        onBack = { leave() }
                     )
                 }
 
@@ -343,6 +348,39 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
             }
         }
     }
+}
+
+/**
+ * Presentation model for one transaction.
+ *
+ * <p>One mapping, used by both the read that opens the screen and the stream that keeps it
+ * current, so the two cannot disagree about what a row means.</p>
+ */
+private fun TransactionDetailRow.toDetail(): TransactionDetail {
+    val state = outboxState
+
+    return TransactionDetail(
+        clientTransactionId = transaction.clientTransactionId,
+        label = CaptureTransactionType.entries
+            .firstOrNull { it.name == transaction.transactionType }
+            ?.label
+            ?: transaction.transactionType.lowercase().replace('_', ' ')
+                .replaceFirstChar { it.uppercase() },
+        provider = transaction.provider,
+        amountMinor = transaction.amountMinor,
+        cashDeltaMinor = transaction.cashDeltaMinor,
+        atUtcMillis = transaction.transactionAtUtcMillis,
+        customerPhone = transaction.customerPhoneNumber,
+        reference = transaction.reference,
+        capturedAutomatically = transaction.sourceType == "SMS",
+        delivery = ActivityDelivery.fromOutboxState(state),
+        attemptCount = attemptCount ?: 0,
+        lastReasonCode = lastReasonCode,
+        // Only a dead letter. A conflict means the server disagreed, which re-sending cannot
+        // resolve — the DAO enforces the same boundary, so this decides what to offer rather
+        // than what is permitted.
+        isRetryable = state == "DEAD_LETTER"
+    )
 }
 
 private const val DAY_MILLIS = 24 * 60 * 60 * 1000L

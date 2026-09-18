@@ -26,6 +26,8 @@ import app.zazi.ui.state.EnrolmentUiState
 import app.zazi.ui.state.LoginError
 import app.zazi.ui.state.LoginUiState
 import java.math.BigDecimal
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -142,6 +144,11 @@ class DashboardViewModel(
     private val recentActivity: suspend (ActivityFilter) -> List<ActivityItem> = { emptyList() },
     /** Detail for one transaction, or null if it has gone. */
     private val transactionDetail: suspend (String) -> TransactionDetail? = { null },
+    /**
+     * The same detail as a stream, for a screen that stays open while the row changes.
+     * Defaulted to empty so existing callers and tests are unaffected.
+     */
+    private val transactionDetailStream: (String) -> Flow<TransactionDetail?> = { emptyFlow() },
     /** Returns whether the item was actually re-queued. */
     private val retryTransaction: suspend (String) -> Boolean = { false }
 ) {
@@ -164,6 +171,17 @@ class DashboardViewModel(
      */
     suspend fun detailFor(clientTransactionId: String): TransactionDetail? =
         runCatching { transactionDetail(clientTransactionId) }.getOrNull()
+
+    /**
+     * Follows one transaction while a screen is showing it.
+     *
+     * <p>The detail screen used to hold the snapshot it was opened with, so an item retried
+     * from that screen stayed on "Sending" after the sync engine had delivered it — the row
+     * had moved on and nothing re-read it. This observes the same persisted row the list
+     * reads, so the screen follows the record rather than a copy of it.</p>
+     */
+    fun observeDetail(clientTransactionId: String): Flow<TransactionDetail?> =
+        transactionDetailStream(clientTransactionId)
 
     /**
      * Puts a stopped transaction back in the queue at the agent's request.

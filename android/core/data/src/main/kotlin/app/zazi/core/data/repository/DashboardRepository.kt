@@ -57,6 +57,10 @@ class DashboardRepository(private val database: ZaziDatabase) {
     suspend fun findDetail(clientTransactionId: String): TransactionDetailRow? =
         database.localTransactionDao().findDetail(clientTransactionId)
 
+    /** The same detail, followed while a screen is showing it. */
+    fun observeDetail(clientTransactionId: String): Flow<TransactionDetailRow?> =
+        database.localTransactionDao().observeDetail(clientTransactionId)
+
     /**
      * Returns a dead-lettered transaction to the queue.
      *

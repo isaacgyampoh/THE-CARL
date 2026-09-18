@@ -147,6 +147,29 @@ interface LocalTransactionDao {
     )
     suspend fun findDetail(clientTransactionId: String): TransactionDetailRow?
 
+    /**
+     * The same row, observed.
+     *
+     * <p>Identical SQL to [findDetail], returned as a Flow so a screen showing one
+     * transaction follows it as sync moves it — waiting, sending, sent — instead of holding
+     * whatever was true when it opened. Room invalidates on writes to either joined table,
+     * so a retry re-queueing the outbox row and the engine later marking it synced both
+     * reach an open screen without anything polling.</p>
+     */
+    @Query(
+        """
+        SELECT t.*,
+               o.state             AS outboxState,
+               o.attemptCount      AS attemptCount,
+               o.lastReasonCode    AS lastReasonCode,
+               o.lastAttemptAtUtcMillis AS lastAttemptAtUtcMillis
+        FROM local_transactions t
+        LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        WHERE t.clientTransactionId = :clientTransactionId
+        """
+    )
+    fun observeDetail(clientTransactionId: String): Flow<TransactionDetailRow?>
+
     @Query(
         """
         SELECT * FROM local_transactions
