@@ -362,6 +362,16 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             device.Id, organizationId, device.BranchId, device.Name, device.Role, device.Status, now);
     }
 
+    /// <summary>
+    /// Whether a device has been taken out of service and its identifier may be reclaimed.
+    /// </summary>
+    /// <remarks>
+    /// Quarantined is deliberately absent: it means "under suspicion", not "retired", and
+    /// letting a suspect handset clear itself by activating again would defeat the point.
+    /// </remarks>
+    private static bool IsRetired(Device device) =>
+        device.IsRevoked || device.Status == DeviceStatus.Revoked;
+
     public async Task<DeviceActivationResult> ActivateAsync(
         ActivateDeviceRequest request,
         CancellationToken cancellationToken = default)
@@ -440,14 +450,29 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
                      && x.DeviceIdentifier == request.DeviceIdentifier,
                 cancellationToken);
 
-        if (existingDevice is not null)
+        // A handset that is still active is simply already set up, and re-running activation
+        // on it would silently move a working device between workers.
+        if (existingDevice is not null && !IsRetired(existingDevice))
         {
-            // Re-activating a known identifier would re-admit a revoked handset and make
-            // revocation a formality. Same rule as enrolment.
             throw new ConflictException("A device with this identifier is already registered.");
         }
 
-        var device = new Device
+        // A retired handset is a different case, and refusing it was a defect rather than a
+        // control. The installation id survives a sign-out — it lives outside the credential
+        // store — so a worker who tapped "Sign out" could never activate that phone again,
+        // and neither could a returned handset after the owner revoked it. There was no
+        // recovery path at all: not for the worker, and not for the owner either.
+        //
+        // Re-admission is safe here because it is not silent. It requires a fresh,
+        // single-use, expiring code that the owner deliberately issued and bound to a named
+        // worker — the same act that authorises any activation. What revocation must prevent
+        // is a revoked phone letting itself back in, and it still cannot.
+        var reactivating = existingDevice is not null;
+
+        // The same row, so transactions already attributed to this handset keep pointing at
+        // the device that recorded them. A second row for one identifier would split an
+        // agent's history in two and break the unique index besides.
+        var device = existingDevice ?? new Device
         {
             OrganizationId = code.OrganizationId,
             BranchId = code.BranchId,
@@ -463,6 +488,28 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             OsVersion = request.OsVersion,
             LastSeenAt = now
         };
+
+        if (reactivating)
+        {
+            // Every scoped value is re-read from the new code rather than inherited. The
+            // worker, branch or role may all have changed since the handset was retired, and
+            // carrying the old ones over would quietly grant whatever it had before.
+            device.BranchId = code.BranchId;
+            device.Role = code.DeviceRole;
+            device.Status = DeviceStatus.Active;
+            device.IsRevoked = false;
+            device.Platform = string.IsNullOrWhiteSpace(request.Platform) ? "Android" : request.Platform;
+            device.DeviceType = DeviceTypeMapping.FromPlatformString(request.Platform);
+            device.AppVersion = request.AppVersion;
+            device.OsVersion = request.OsVersion;
+            device.LastSeenAt = now;
+            device.UpdatedAt = now;
+
+            if (!string.IsNullOrWhiteSpace(request.Name))
+            {
+                device.Name = request.Name.Trim();
+            }
+        }
 
         // One transaction across the claim, the device and the session. Without it a crash
         // between claiming the code and issuing the session would burn the code and leave the
@@ -501,15 +548,21 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             code.UpdatedAt = now;
         }
 
-        _dbContext.Devices.Add(device);
+        if (!reactivating)
+        {
+            _dbContext.Devices.Add(device);
+        }
+
         _dbContext.AuditLogs.Add(new AuditLogEntry
         {
             OrganizationId = code.OrganizationId,
             UserId = worker.Id,
             DeviceId = device.Id,
-            Action = "DEVICE_ACTIVATED",
-            Details = $"Device activated into branch {code.BranchId} as {code.DeviceRole} " +
-                      $"using code {code.CodePrefix}….",
+            // Recorded distinctly. A handset coming back after being revoked is worth seeing
+            // in an audit trail as its own event, not as an ordinary first activation.
+            Action = reactivating ? "DEVICE_REACTIVATED" : "DEVICE_ACTIVATED",
+            Details = $"Device {(reactivating ? "re-" : "")}activated into branch {code.BranchId} " +
+                      $"as {code.DeviceRole} using code {code.CodePrefix}….",
             ActorType = "User"
         });
 

@@ -653,21 +653,76 @@ public class WorkerActivationTests : IDisposable
     }
 
     [SkippableFact]
-    public async Task ARevokedDeviceCannotBeReActivatedWithANewCode()
+    public async Task ARevokedHandsetComesBackWithAFreshCode()
     {
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
         var tenant = await SeedAsync();
         var worker = await CreateWorkerAsync(tenant, "Returning");
         var identifier = "handset-" + Guid.NewGuid().ToString("N");
-        var activated = await ActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
+        var first = await ActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
 
-        await ManagerClient(tenant).PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+        await ManagerClient(tenant).PostAsync($"/api/v1/devices/{first.DeviceId}/revoke", null);
 
-        // A fresh code on the same handset. Re-admitting it would make revocation a
-        // formality, so the identifier stays taken until the owner clears the device record.
+        // This used to be refused, and that was a defect rather than a control. The
+        // installation id survives a sign-out — it lives outside the credential store — so
+        // without this a worker who tapped "Sign out" could never use that phone again, and
+        // neither could a handset the owner revoked and got back. There was no recovery path
+        // for anyone.
+        //
+        // It is safe because it is not silent: it takes a fresh, single-use, expiring code
+        // that the owner deliberately issued to a named worker.
+        var second = await ActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
+
+        // The same device row, so transactions already attributed to this handset still point
+        // at the device that recorded them.
+        Assert.Equal(first.DeviceId, second.DeviceId);
+
+        await using var db = _postgres.CreateContext();
+        var device = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == second.DeviceId);
+        Assert.Equal(DeviceStatus.Active, device.Status);
+        Assert.False(device.IsRevoked);
+
+        // And exactly one row for the identifier, not a second history alongside the first.
+        Assert.Equal(1, await db.Devices.AsNoTracking()
+            .CountAsync(x => x.OrganizationId == tenant.OrganizationId && x.DeviceIdentifier == identifier));
+    }
+
+    [SkippableFact]
+    public async Task AWorkingHandsetIsStillRefusedASecondActivation()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "In Service");
+        var identifier = "handset-" + Guid.NewGuid().ToString("N");
+        await ActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
+
+        // Nothing was revoked, so this phone is simply already set up. Letting a second code
+        // take it over would silently move a working device between workers.
         var response = await RawActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task AReturningHandsetTakesItsScopeFromTheNewCodeNotTheOld()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var otherBranch = await CreateBranchAsync(tenant.OrganizationId);
+        var identifier = "handset-" + Guid.NewGuid().ToString("N");
+
+        var first = await CreateWorkerAsync(tenant, "First Owner");
+        var activated = await ActivateAsync((await IssueAsync(tenant, first.Id)).Code, identifier);
+        await ManagerClient(tenant).PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+
+        // Reassigned to a worker in another branch. Inheriting the old branch would quietly
+        // leave the handset with access it was no longer issued.
+        var second = await CreateWorkerInBranchAsync(tenant, "Second Owner", otherBranch);
+        var result = await ActivateAsync(
+            (await IssueAsync(tenant, second.Id, branchId: otherBranch)).Code, identifier);
+
+        Assert.Equal(otherBranch, result.BranchId);
+        Assert.Equal("Second Owner", result.WorkerName);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────

@@ -16,7 +16,15 @@ data class StoredCredentials(
     /** Server-assigned device id. An identifier, never a credential in its own right. */
     val deviceId: String?,
     /** Stable installation id used to derive ClientTransactionId device tags. */
-    val deviceInstallationId: String
+    val deviceInstallationId: String,
+    /**
+     * True when this session began with an activation code rather than a password.
+     *
+     * <p>Not a permission — the server decides those — but the client genuinely needs it to
+     * tell the truth. A worker activated by code has no account to sign back into, so an
+     * unqualified "Sign out" offers them something that does not exist.</p>
+     */
+    val isActivationOnly: Boolean = false
 ) {
     /**
      * Whether the access token is past, or close to, expiry.

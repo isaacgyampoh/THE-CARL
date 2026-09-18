@@ -194,7 +194,10 @@ class SessionRepository(
                 branchId = body.user.branchId,
                 // Preserved across logins so a re-login does not orphan an enrolled device.
                 deviceId = existing?.deviceId,
-                deviceInstallationId = deviceInstallationId
+                deviceInstallationId = deviceInstallationId,
+                // This session came from an email and a password, so there is an account to
+                // sign back into.
+                isActivationOnly = false
             )
         )
 
@@ -276,7 +279,8 @@ class SessionRepository(
                 // Assigned by the server during activation, so unlike login there is no
                 // earlier value to preserve.
                 deviceId = body.deviceId,
-                deviceInstallationId = deviceInstallationId
+                deviceInstallationId = deviceInstallationId,
+                isActivationOnly = true
             )
         )
 
@@ -455,7 +459,8 @@ class SessionRepository(
         branchId = branchId,
         email = "",
         fullName = "",
-        roles = emptyList()
+        roles = emptyList(),
+        isActivationOnly = isActivationOnly
     )
 
     private fun update(next: SessionState): SessionState {

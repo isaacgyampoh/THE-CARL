@@ -35,6 +35,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -194,8 +196,48 @@ fun DashboardScreen(
     onActivitySelected: (ActivityItem) -> Unit = {},
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
-    onRequestSmsPermission: () -> Unit = {}
+    onRequestSmsPermission: () -> Unit = {},
+    /**
+     * True when this session began with an activation code. Changes what signing out costs,
+     * and therefore what the confirmation is allowed to say.
+     */
+    isActivationOnly: Boolean = false
 ) {
+    // Signing out is destructive for a code-activated worker in a way it is not for an
+    // account holder: there is nothing to sign back into, and getting the phone working again
+    // takes their owner revoking the device and issuing a fresh code. One stray tap in the
+    // top bar should not cost somebody the rest of their shift.
+    var confirmingSignOut by rememberSaveable { mutableStateOf(false) }
+
+    if (confirmingSignOut) {
+        AlertDialog(
+            onDismissRequest = { confirmingSignOut = false },
+            title = { Text(if (isActivationOnly) "Sign out of Zazi?" else "Sign out?") },
+            text = {
+                Text(
+                    if (isActivationOnly) {
+                        // Named precisely, because it is not recoverable on the handset alone.
+                        "You will need a new activation code from your business owner to use " +
+                            "Zazi on this phone again. Anything you have recorded is kept and " +
+                            "will sync once you are back."
+                    } else {
+                        "You can sign back in with your email and password. Anything you have " +
+                            "recorded is kept and will sync once you are back."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingSignOut = false
+                    onLogout()
+                }) { Text("Sign out") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingSignOut = false }) { Text("Stay signed in") }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -203,7 +245,7 @@ fun DashboardScreen(
                 actions = {
                     ConnectionChip(isOnline = state.isOnline)
                     Spacer(Modifier.width(Spacing.tight))
-                    TextButton(onClick = onLogout) { Text("Sign out") }
+                    TextButton(onClick = { confirmingSignOut = true }) { Text("Sign out") }
                 }
             )
         },

@@ -97,17 +97,20 @@ class KeystoreCredentialStore(
         val organizationId: String,
         val branchId: String? = null,
         val deviceId: String? = null,
-        val deviceInstallationId: String
+        val deviceInstallationId: String,
+        // Defaulted, so a credential blob written before this field existed still decodes
+        // rather than signing the user out on upgrade.
+        val isActivationOnly: Boolean = false
     )
 
     private fun StoredCredentials.toPayload() = CredentialPayload(
         accessToken, refreshToken, accessTokenExpiresAtUtcMillis,
-        userId, organizationId, branchId, deviceId, deviceInstallationId
+        userId, organizationId, branchId, deviceId, deviceInstallationId, isActivationOnly
     )
 
     private fun CredentialPayload.toCredentials() = StoredCredentials(
         accessToken, refreshToken, accessTokenExpiresAtUtcMillis,
-        userId, organizationId, branchId, deviceId, deviceInstallationId
+        userId, organizationId, branchId, deviceId, deviceInstallationId, isActivationOnly
     )
 
     companion object {

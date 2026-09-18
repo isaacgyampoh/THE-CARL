@@ -391,6 +391,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         // never calls the sync API directly.
                         onSyncNow = { SyncWorker.enqueue(application) },
                         onLogout = { scope.launch { container.sessionRepository.logout() } },
+                        // Decides what the sign-out confirmation is allowed to promise.
+                        isActivationOnly = state.user.isActivationOnly,
                         smsPermissionGranted = smsPermissionGranted,
                         // Asked for only when the agent taps, never on launch: a permission
                         // prompt before any explanation is how people learn to decline.

@@ -46,7 +46,14 @@ data class AuthenticatedUser(
     val branchId: String?,
     val email: String,
     val fullName: String,
-    val roles: List<String>
+    val roles: List<String>,
+    /**
+     * True when this session began with an activation code rather than a password.
+     *
+     * <p>The UI needs it to be truthful about what signing out costs: a worker activated by
+     * code has no account to return to, and needs a fresh code from their owner.</p>
+     */
+    val isActivationOnly: Boolean = false
 )
 
 /**

@@ -519,6 +519,46 @@ class SessionRepositoryTest {
         assertThat(database.outboxDao().count()).isEqualTo(1)
     }
 
+    @Test
+    fun `an activated session remembers it has no account to return to`() = runTest {
+        server.enqueue(activationResponse())
+        server.enqueue(deviceSelfResponse())
+
+        session.activate("ZAZI-ABCD-EFGH-JKMN-PQRS")
+
+        // The handset has to know this to tell the truth about signing out: a worker
+        // activated by code cannot sign back in, and getting the phone working again needs
+        // their owner. Saying "sign out" unqualified offers them something that is not there.
+        assertThat(credentialStore.read()!!.isActivationOnly).isTrue()
+
+        val active = session.state.value as SessionState.Active
+        assertThat(active.user.isActivationOnly).isTrue()
+    }
+
+    @Test
+    fun `a password session knows it can sign back in`() = runTest {
+        server.enqueue(loginResponse())
+        server.enqueue(deviceSelfResponse())
+
+        session.login("agent@carl.test", "correct-horse")
+
+        assertThat(credentialStore.read()!!.isActivationOnly).isFalse()
+    }
+
+    @Test
+    fun `the flag survives a restart`() = runTest {
+        server.enqueue(activationResponse())
+        server.enqueue(deviceSelfResponse())
+        session.activate("ZAZI-ABCD-EFGH-JKMN-PQRS")
+
+        // Restored from storage rather than held in memory, so the confirmation is still
+        // truthful the next morning.
+        server.enqueue(deviceSelfResponse())
+        val restored = session.restore()
+
+        assertThat((restored as SessionState.Active).user.isActivationOnly).isTrue()
+    }
+
     private fun activationResponse() = MockResponse()
         .setResponseCode(200)
         .setHeader("Content-Type", "application/json")
