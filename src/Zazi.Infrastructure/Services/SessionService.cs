@@ -15,14 +15,20 @@ public class SessionService : ISessionService
 
     public async Task<SessionDto> OpenSessionAsync(CreateSessionRequest request, CancellationToken cancellationToken = default)
     {
+        // Rounded once, here, and every row below is written from these. Letting each table
+        // round on insert is how a session's opening cash and its own cash balance came to
+        // disagree: the balance column was numeric(18,4) and the session's was not.
+        var openingCash = LedgerPolicy.RoundToCurrency(request.OpeningCash);
+        var openingFloat = LedgerPolicy.RoundToCurrency(request.OpeningFloat);
+
         var session = new Session
         {
             OrganizationId = request.OrganizationId,
             BranchId = request.BranchId,
             UserId = request.UserId,
             DeviceId = request.DeviceId,
-            OpeningCash = request.OpeningCash,
-            OpeningFloat = request.OpeningFloat,
+            OpeningCash = openingCash,
+            OpeningFloat = openingFloat,
             IsClosed = false,
             OpenedAt = DateTimeOffset.UtcNow
         };
@@ -32,16 +38,16 @@ public class SessionService : ISessionService
         {
             OrganizationId = request.OrganizationId,
             BranchId = request.BranchId,
-            OpeningCash = request.OpeningCash,
-            CurrentCash = request.OpeningCash
+            OpeningCash = openingCash,
+            CurrentCash = openingCash
         });
         _dbContext.FloatBalances.Add(new FloatBalance
         {
             OrganizationId = request.OrganizationId,
             BranchId = request.BranchId,
             Network = "MTN",
-            OpeningFloat = request.OpeningFloat,
-            CurrentFloat = request.OpeningFloat,
+            OpeningFloat = openingFloat,
+            CurrentFloat = openingFloat,
             Threshold = 0m
         });
 

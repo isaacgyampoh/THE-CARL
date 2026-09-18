@@ -38,6 +38,7 @@ import app.zazi.ui.design.rememberReducedMotion
 import app.zazi.ui.ActivatedScreen
 import app.zazi.ui.ActivationScreen
 import app.zazi.ui.CaptureScreen
+import app.zazi.ui.DataLostNotice
 import app.zazi.ui.DashboardScreen
 import app.zazi.ui.DeviceRevokedScreen
 import app.zazi.ui.EnrolmentScreen
@@ -245,6 +246,24 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
     val activationState by activationViewModel.state.collectAsState()
     val justActivated = activationState.activated
+
+    // Read once per process. Local data that could not be decrypted is gone, and what was in
+    // it was the agent's own unsynced captures — so this is said plainly rather than left for
+    // them to notice as missing work.
+    var orphanedAt by rememberSaveable { mutableStateOf<Long?>(null) }
+    var orphanNoticeChecked by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!orphanNoticeChecked) {
+            orphanNoticeChecked = true
+            orphanedAt = container.takeOrphanedDatabaseNotice()
+        }
+    }
+
+    if (orphanedAt != null) {
+        DataLostNotice(onDismiss = { orphanedAt = null })
+        return
+    }
 
     // Where the app goes is decided by EntryNavigator, not inline here. The two decisions it
     // owns are the two that have already gone wrong: whether a signed-out worker sees the code

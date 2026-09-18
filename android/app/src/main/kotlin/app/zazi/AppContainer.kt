@@ -66,7 +66,10 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     private val databaseKeyProvider by lazy {
         KeystoreDatabaseKeyProvider(
             context.getSharedPreferences(KeystoreDatabaseKeyProvider.PREFERENCES_NAME, Context.MODE_PRIVATE),
-            cryptoBox
+            cryptoBox,
+            // Supplied so a database that can no longer be decrypted is moved aside rather
+            // than left in place, where SQLCipher would fail to open it on every launch.
+            context.getDatabasePath(ZaziDatabase.DATABASE_NAME)
         )
     }
 
@@ -88,6 +91,15 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     // ─── Persistence ─────────────────────────────────────────────────────────
 
     val database: ZaziDatabase by lazy { ZaziDatabase.encrypted(context, databaseKeyProvider) }
+
+    /**
+     * Reports, once, that local data was lost because its key could no longer be unwrapped.
+     *
+     * <p>Rare — a device restored from backup, or an invalidated Keystore — and the agent has
+     * to be told, because what was lost is transactions they captured and never synced. They
+     * would otherwise find a day's work simply absent.</p>
+     */
+    fun takeOrphanedDatabaseNotice(): Long? = databaseKeyProvider.takeOrphanedDatabaseNotice()
 
     val outboxRepository: OutboxRepository by lazy { OutboxRepository(database) }
 

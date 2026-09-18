@@ -1080,3 +1080,51 @@ fun LoadingScreen() {
         )
     }
 }
+
+/**
+ * Shown once when local data could not be decrypted and had to be set aside.
+ *
+ * <p>Deliberately blunt about the consequence. What was lost is transactions this agent
+ * captured and had not yet synced, and the honest thing is to say so rather than let them
+ * discover a gap in their own records later and doubt themselves.</p>
+ */
+@Composable
+fun DataLostNotice(onDismiss: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(Spacing.medium),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "Saved records could not be opened",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(Modifier.height(Spacing.small))
+
+        Text(
+            "This phone could not unlock the records stored on it. This can happen after a " +
+                "phone is restored from a backup or its security keys are reset.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(Modifier.height(Spacing.small))
+
+        Text(
+            // The part that matters to them, stated without hedging.
+            "Any transactions that had not yet been sent may be lost. Transactions already " +
+                "sent are safe on the server. Please check your records for today and " +
+                "re-enter anything missing.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(Modifier.height(Spacing.large))
+
+        ZaziPrimaryButton(text = "Continue", onClick = onDismiss)
+    }
+}

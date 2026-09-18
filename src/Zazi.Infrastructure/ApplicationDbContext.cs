@@ -260,6 +260,15 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.UserId).IsRequired();
             builder.HasIndex(x => x.UserId);
             builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.OpenedAt });
+
+            // Opening balances were unconstrained numeric while the CashBalance and
+            // FloatBalance rows written from the very same request value were numeric(18,4).
+            // A client sending more than four decimal places made a session and its own
+            // balances disagree about the same figure from the moment they were created.
+            builder.Property(x => x.OpeningCash)
+                .HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.OpeningFloat)
+                .HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
         });
 
         modelBuilder.Entity<FinancialTransaction>(builder =>
@@ -454,6 +463,14 @@ public class ApplicationDbContext : DbContext
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Status).IsRequired().HasMaxLength(40);
             builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.SessionId }).IsUnique();
+
+            // These are the numbers an operator acts on when a till does not balance. The
+            // service already rounds them; the column now refuses to store anything else.
+            foreach (var money in new[] { "OpeningCash", "CashInflow", "CashOutflow", "ExpectedCash", "ActualCash", "Difference" })
+            {
+                builder.Property<decimal>(money)
+                    .HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            }
         });
 
         modelBuilder.Entity<FloatBalance>(builder =>
@@ -463,6 +480,7 @@ public class ApplicationDbContext : DbContext
             builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.Network }).IsUnique();
             builder.Property(x => x.CurrentFloat).HasPrecision(18, 4);
             builder.Property(x => x.Threshold).HasPrecision(18, 4);
+            builder.Property(x => x.OpeningFloat).HasPrecision(18, 4);
         });
 
         modelBuilder.Entity<CashBalance>(builder =>
@@ -470,6 +488,7 @@ public class ApplicationDbContext : DbContext
             builder.HasKey(x => x.Id);
             builder.HasIndex(x => new { x.OrganizationId, x.BranchId }).IsUnique();
             builder.Property(x => x.CurrentCash).HasPrecision(18, 4);
+            builder.Property(x => x.OpeningCash).HasPrecision(18, 4);
         });
 
         modelBuilder.Entity<AlertRecord>(builder =>
