@@ -55,7 +55,8 @@ fun ZaziPrimaryButton(
         onClick = onClick,
         enabled = enabled && !busy,
         shape = Radius.control,
-        modifier = modifier.fillMaxWidth().height(Sizing.primaryAction)
+        // heightIn, not height: at a large font scale a fixed height clips its own label.
+        modifier = modifier.fillMaxWidth().heightIn(min = Sizing.primaryAction)
     ) {
         if (busy) {
             CircularProgressIndicator(
@@ -250,7 +251,10 @@ fun SegmentedFilter(
                             label,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1
+                            textAlign = TextAlign.Center
+                            // Not capped to one line: at a large font scale "Last 7 days"
+                            // truncated to "Last 7", which is a different period. Wrapping
+                            // keeps the option honest about what it selects.
                         )
                     }
                 }

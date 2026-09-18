@@ -82,16 +82,16 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            // A minimum height so the weighted spacers have something to divide even inside a
-            // scrolling parent; the scroll then only engages when the keyboard shortens the
-            // available space.
-            .heightIn(min = 640.dp)
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 24.dp),
+        // Centred when the content fits, scrolled from the top when it does not — which is
+        // what happens in landscape, on a small screen and at a large font scale.
+        verticalArrangement = Arrangement.Center
     ) {
-        // Weighted rather than centred: dead centre leaves the brand floating low with a void
-        // above it. Slightly above the midline is where the eye expects the top of a form,
-        // and the weights keep that true on a tall phone and a short one alike.
-        Spacer(Modifier.weight(0.8f))
+        // Fixed leading space rather than a weight. A weighted spacer inside a scrolling
+        // column needs a height to divide, and the 640dp floor that gave it was a number
+        // invented for one phone: in landscape, on a small screen, or at a large font scale
+        // it forced a scroll through empty space before the form appeared.
+        Spacer(Modifier.height(Spacing.section))
 
         Column(
             modifier = Modifier
@@ -166,7 +166,7 @@ fun LoginScreen(
             busy = state.isSubmitting
         )
 
-        Spacer(Modifier.weight(1.2f))
+        Spacer(Modifier.height(Spacing.section))
     }
 }
 

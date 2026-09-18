@@ -56,6 +56,7 @@ import app.zazi.ui.state.EnrolmentError
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.zazi.ui.design.AnchoredActionBar
@@ -160,7 +161,7 @@ fun EnrolmentScreen(
         Button(
             onClick = onSubmit,
             enabled = state.canSubmit,
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
         ) {
             if (state.isSubmitting) {
                 CircularProgressIndicator(
@@ -300,19 +301,37 @@ private fun ConnectionChip(isOnline: Boolean) {
  */
 @Composable
 private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
+    // Two columns share the width comfortably at ordinary text sizes. Past roughly 130% they
+    // do not: each figure gets half a screen and a full amount wraps mid-number. Stacking
+    // gives each the whole width, which is the difference between a readable figure and one
+    // an agent has to reassemble.
+    val stacked = LocalDensity.current.fontScale > 1.3f
+
     ZaziPanel(
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer
     ) {
-        Row(Modifier.fillMaxWidth().padding(Spacing.large)) {
-            PositionFigure("Cash", cashMinor, Modifier.weight(1f))
-            // A hairline rather than a gap: the two are read together and move in opposite
-            // directions, so they should look like one statement, not two panels.
-            VerticalDivider(
-                modifier = Modifier.height(52.dp),
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
-            )
-            PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
+        if (stacked) {
+            Column(Modifier.fillMaxWidth().padding(Spacing.large)) {
+                PositionFigure("Cash", cashMinor)
+                Spacer(Modifier.height(Spacing.medium))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
+                )
+                Spacer(Modifier.height(Spacing.medium))
+                PositionFigure("Float", floatMinor)
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().padding(Spacing.large)) {
+                PositionFigure("Cash", cashMinor, Modifier.weight(1f))
+                // A hairline rather than a gap: the two are read together and move in
+                // opposite directions, so they should look like one statement, not two panels.
+                VerticalDivider(
+                    modifier = Modifier.heightIn(min = Sizing.secondaryAction),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
+                )
+                PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
+            }
         }
     }
 }
@@ -325,8 +344,10 @@ private fun PositionFigure(label: String, minor: Long?, modifier: Modifier = Mod
         Text(
             minor?.let { MoneyFormat.format(it) } ?: "—",
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            fontWeight = FontWeight.SemiBold
+            // Deliberately not capped to one line. At a large font scale on a narrow screen
+            // a capped figure ellipsises, and a truncated balance is not untidy — it is a
+            // different number. Wrapping is the honest failure.
         )
     }
 }
@@ -486,6 +507,7 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
                 (if (incoming) "+" else "−") + MoneyFormat.format(item.amountMinor),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
+                // Same reason as the balance: an amount may wrap, never truncate.
                 // Money in is tinted; money out stays ordinary ink. The sign is still there,
                 // so colour adds emphasis rather than carrying the meaning.
                 color = if (incoming) {
@@ -600,7 +622,7 @@ fun CaptureScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp, vertical = 12.dp)
-                            .height(56.dp)
+                            .heightIn(min = Sizing.primaryAction)
                     ) {
                         if (state.isSubmitting) {
                             CircularProgressIndicator(
@@ -792,7 +814,7 @@ private fun ConfirmationCard(confirmation: CaptureConfirmation, onDone: () -> Un
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = onDone,
-                modifier = Modifier.fillMaxWidth().height(52.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
             ) {
                 Text("Done")
             }
@@ -905,7 +927,7 @@ fun TransactionDetailScreen(
                         Button(
                             onClick = onRetry,
                             enabled = !isRetrying,
-                            modifier = Modifier.fillMaxWidth().height(52.dp)
+                            modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
                         ) {
                             if (isRetrying) {
                                 CircularProgressIndicator(
@@ -987,7 +1009,7 @@ fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
         }
 
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+        Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)) {
             Text("Sign in again")
         }
     }

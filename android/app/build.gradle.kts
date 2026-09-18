@@ -12,8 +12,11 @@ android {
         applicationId = "app.zazi"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // The release this build actually is. It had stayed at the first-commit values while
+        // the product was verified and reported as v2, which is the kind of drift that ends
+        // with two different builds claiming the same version in a support conversation.
+        versionCode = 2
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a
