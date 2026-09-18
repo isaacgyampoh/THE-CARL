@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Surface
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -22,12 +23,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.session.SessionState
 import app.zazi.core.data.sync.SyncWorker
+import app.zazi.ui.brand.BrandIntroGate
+import app.zazi.ui.brand.LaunchState
+import app.zazi.ui.brand.ZaziBrandIntro
+import app.zazi.ui.design.rememberReducedMotion
 import app.zazi.ui.CaptureScreen
 import app.zazi.ui.DashboardScreen
 import app.zazi.ui.DeviceRevokedScreen
@@ -72,18 +79,67 @@ class MainActivity : ComponentActivity() {
                 // imePadding for the same reason: the activity is adjustResize, but nothing
                 // was insetting for the keyboard, so on a short handset it covered whatever
                 // was at the bottom of the screen — including the sign-in button.
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .systemBarsPadding()
-                        .imePadding()
-                ) {
-                    ZaziApp(container, application as ZaziApplication)
+                // The introduction overlays the app rather than replacing it, so the real
+                // work of starting up — restoring the session, opening the database, the
+                // first screen composing — happens underneath it and is already finished
+                // when it lifts. Branching instead would have made the brand cost the user
+                // time rather than occupy time they were spending anyway.
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .systemBarsPadding()
+                            .imePadding()
+                    ) {
+                        ZaziApp(container, application as ZaziApplication)
+                    }
+
+                    val sessionState by container.sessionRepository.state
+                        .collectAsStateWithLifecycle()
+
+                    // Survives configuration change, which is what stops a rotation during
+                    // launch — or the system recreating the activity — from replaying the
+                    // animation at somebody who has already watched it.
+                    var launch by rememberSaveable(stateSaver = LaunchStateSaver) {
+                        mutableStateOf(LaunchState())
+                    }
+
+                    LaunchedEffect(sessionState) {
+                        launch = BrandIntroGate.onSessionResolved(
+                            launch,
+                            sessionState !is SessionState.Initialising
+                        )
+                    }
+
+                    if (BrandIntroGate.isVisible(launch)) {
+                        // Drawn outside the system-bar padding on purpose: the introduction
+                        // is full bleed, continuous with the system splash it takes over
+                        // from, so a strip of app background at the top would give away the
+                        // handover.
+                        ZaziBrandIntro(
+                            reducedMotion = rememberReducedMotion(),
+                            onFinished = {
+                                launch = BrandIntroGate.onAnimationFinished(launch)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * Persists the launch gate across configuration change.
+ *
+ * <p>Only the three flags matter, and they are booleans, so a list saver is enough — the
+ * alternative, making [LaunchState] parcelable, would put an Android type into a class whose
+ * whole point is being testable without one.</p>
+ */
+private val LaunchStateSaver = listSaver<LaunchState, Boolean>(
+    save = { listOf(it.animationFinished, it.sessionResolved, it.introCompleted) },
+    restore = { LaunchState(it[0], it[1], it[2]) }
+)
 
 /** Screen currently shown within the authenticated part of the app. */
 private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION }

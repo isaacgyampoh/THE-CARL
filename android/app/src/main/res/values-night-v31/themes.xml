@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Dark counterpart; see values-v31. The splash colour is the same in both, by design.
+
+      Android 12 replaced the launch window with a real splash screen API, and it ignores
+      windowBackground. Without this the platform falls back to the theme's background — an
+      off-white card in light mode — and the user sees white, then deep green, then the app:
+      two transitions where there should be none.
+
+      Scoped to -v31 rather than declared in the base theme because these attributes do not
+      exist before API 31. Pre-31 devices have no splash API at all; there the launch window
+      is windowBackground, and the brand introduction is the first branded frame.
+
+      The icon is the launcher icon — lime on deep green, which is the brand's own pairing —
+      and it hands over to ZaziBrandIntro on the same colour.
+    -->
+    <style name="Theme.Zazi" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:windowSplashScreenBackground">@color/brand_splash_background</item>
+    </style>
+</resources>

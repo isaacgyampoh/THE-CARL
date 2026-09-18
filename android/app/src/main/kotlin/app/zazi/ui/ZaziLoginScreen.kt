@@ -36,6 +36,7 @@ import app.zazi.ui.brand.ZaziWordmark
 import app.zazi.ui.design.ErrorNotice
 import app.zazi.ui.design.Radius
 import app.zazi.ui.design.Spacing
+import app.zazi.ui.design.rememberReducedMotion
 import app.zazi.ui.design.ZaziPrimaryButton
 import app.zazi.ui.state.LoginUiState
 
@@ -170,16 +171,3 @@ fun LoginScreen(
     }
 }
 
-/** Whether the system has asked for less movement. */
-@Composable
-private fun rememberReducedMotion(): Boolean {
-    val context = LocalContext.current
-
-    return remember(context) {
-        android.provider.Settings.Global.getFloat(
-            context.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f
-        ) == 0f
-    }
-}
