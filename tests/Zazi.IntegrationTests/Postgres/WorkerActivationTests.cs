@@ -436,6 +436,89 @@ public class WorkerActivationTests : IDisposable
             WithoutCorrelationId(await unknown.Content.ReadAsStringAsync()));
     }
 
+    // ─── Revocation ──────────────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task RevokingADeviceKillsTheSessionItIssued()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Departing");
+        var issued = await IssueAsync(tenant, worker.Id);
+        var activated = await ActivateAsync(issued.Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        var revoke = await ManagerClient(tenant)
+            .PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+        Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+
+        // Marking the device is not enough on its own — the handset still holds a refresh
+        // token. If this passes, revoking a stolen phone means it stops working at its next
+        // contact rather than whenever its token happens to age out.
+        var refresh = await _factory!.CreateClient().PostAsJsonAsync(
+            "/api/v1/auth/refresh", new { refreshToken = activated.Session.RefreshToken });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task ARevokedDeviceIsMarkedRevokedNotMerelyDeactivated()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Marked");
+        var issued = await IssueAsync(tenant, worker.Id);
+        var activated = await ActivateAsync(issued.Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        await ManagerClient(tenant).PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+
+        await using var db = _postgres.CreateContext();
+        var device = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == activated.DeviceId);
+
+        // The handset reads this through /devices/me to decide it has been cut off, so both
+        // the flag and the status have to say so.
+        Assert.True(device.IsRevoked);
+        Assert.Equal(DeviceStatus.Revoked, device.Status);
+    }
+
+    [SkippableFact]
+    public async Task OneBusinessCannotRevokeAnothersDevice()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var intruder = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Not Yours");
+        var issued = await IssueAsync(tenant, worker.Id);
+        var activated = await ActivateAsync(issued.Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        // A manager in a different business, holding a perfectly valid token of their own.
+        var response = await ManagerClient(intruder)
+            .PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        await using var db = _postgres.CreateContext();
+        var device = await db.Devices.AsNoTracking().SingleAsync(x => x.Id == activated.DeviceId);
+        Assert.NotEqual(DeviceStatus.Revoked, device.Status);
+    }
+
+    [SkippableFact]
+    public async Task ARevokedDeviceCannotBeReActivatedWithANewCode()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Returning");
+        var identifier = "handset-" + Guid.NewGuid().ToString("N");
+        var activated = await ActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
+
+        await ManagerClient(tenant).PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+
+        // A fresh code on the same handset. Re-admitting it would make revocation a
+        // formality, so the identifier stays taken until the owner clears the device record.
+        var response = await RawActivateAsync((await IssueAsync(tenant, worker.Id)).Code, identifier);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private Task<TenantSeed> SeedAsync() => TenantSeedFactory.CreateAsync(_postgres);

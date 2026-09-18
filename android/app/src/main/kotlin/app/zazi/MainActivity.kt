@@ -159,6 +159,13 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     // the server changes — so it lives here rather than in SessionState, which stays the
     // single description of what the server believes about this handset.
     var showLogin by rememberSaveable { mutableStateOf(false) }
+
+    // Whether the worker has dismissed the confirmation screen. Activation moves SessionState
+    // straight to Active, so without this the "You're connected" screen is unreachable: the
+    // session exists before the worker has been told whose it is. Not saved across process
+    // death on purpose — a worker returning to an already-activated app should land in the
+    // workspace, not be congratulated again.
+    var activationAcknowledged by remember { mutableStateOf(false) }
     val enrolmentViewModel = remember { EnrolmentViewModel(container.sessionRepository) }
 
     val captureViewModel = remember {
@@ -234,12 +241,26 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     var openedWith by remember { mutableStateOf<TransactionDetail?>(null) }
     var isRetrying by remember { mutableStateOf(false) }
 
-    when (val state = sessionState) {
+    val activationState by activationViewModel.state.collectAsState()
+    val justActivated = activationState.activated
+
+    // The one screen that has to outlive the state change that caused it. Activation issues a
+    // real session, so SessionState is already Active by the time the server replies — and a
+    // worker who never sees this goes straight from typing a code to a dashboard, never told
+    // which business they just joined or under whose name they are about to record money. For
+    // a financial product that is the wrong first impression, so it gates the workspace until
+    // dismissed.
+    if (sessionState is SessionState.Active && justActivated != null && !activationAcknowledged) {
+        ActivatedScreen(
+            workerName = justActivated.workerName,
+            organizationName = justActivated.organizationName,
+            branchName = justActivated.branchName,
+            onContinue = { activationAcknowledged = true }
+        )
+    } else when (val state = sessionState) {
         SessionState.Initialising -> LoadingScreen()
 
         SessionState.SignedOut -> {
-            val activationState by activationViewModel.state.collectAsState()
-
             // Activation is the front door, not one of two equal options. This is the app a
             // worker uses on a business phone; the owner works in the web portal. Presenting
             // a choice would make every worker stop and decide which kind of person they are,
@@ -247,19 +268,7 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
             //
             // Sign-in is still reachable, and is what an owner or manager with an existing
             // account gets. Nothing about that path changed.
-            val identity = activationState.activated
-
             when {
-                identity != null && !showLogin -> ActivatedScreen(
-                    workerName = identity.workerName,
-                    organizationName = identity.organizationName,
-                    branchName = identity.branchName,
-                    // The session already exists by this point — the server issued it during
-                    // activation. This only dismisses the confirmation; SessionState has
-                    // already moved to Active underneath it.
-                    onContinue = { /* state observation takes over */ }
-                )
-
                 showLogin -> {
                     val loginState by loginViewModel.state.collectAsState()
 
@@ -313,7 +322,16 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
         is SessionState.DeviceRevoked -> DeviceRevokedScreen(
             queuedWorkCount = state.queuedWorkCount,
-            onSignIn = { scope.launch { container.sessionRepository.logout() } }
+            onStartOver = {
+                scope.launch {
+                    // Clears the dead session and returns to activation. logout() deliberately
+                    // leaves the outbox alone: those transactions are the agent's own record
+                    // of work and outlive any authorisation decision made about the handset.
+                    container.sessionRepository.logout()
+                    showLogin = false
+                    activationAcknowledged = false
+                }
+            }
         )
 
         is SessionState.Active -> {

@@ -172,6 +172,32 @@ public class DevicesController : ControllerBase
     }
 
     /// <summary>
+    /// Revokes a device, immediately and remotely.
+    /// </summary>
+    /// <remarks>
+    /// The answer to a lost or stolen handset, and to a worker who has left. The owner does
+    /// not need the phone in their hand: the device is marked revoked and every session bound
+    /// to it is killed, so its next contact with the server fails and its refresh token stops
+    /// working.
+    /// <para>
+    /// It cannot reach a phone that is switched off or out of signal. Such a handset keeps
+    /// capturing into its own outbox and discovers the revocation when it reconnects — which
+    /// is the honest limit of remote revocation, not a gap to paper over.
+    /// </para>
+    /// </remarks>
+    [HttpPost("{deviceId:guid}/revoke")]
+    [Authorize(Policy = ZaziPolicies.DeviceManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevokeDevice(Guid deviceId, CancellationToken cancellationToken)
+    {
+        await _deviceService.RevokeDeviceAsync(
+            deviceId, _currentUser.OrganizationId, _currentUser.UserId, cancellationToken);
+
+        return NoContent();
+    }
+
+    /// <summary>
     /// Activates a handset from an owner-issued code, with no prior authentication.
     /// </summary>
     /// <remarks>

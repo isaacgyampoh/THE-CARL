@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Zazi.Application;
+using Zazi.Application.Security;
 using Zazi.Domain;
 
 namespace Zazi.Infrastructure.Services;
@@ -7,10 +8,48 @@ namespace Zazi.Infrastructure.Services;
 public class DeviceService : IDeviceService
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IIdentityRevocationService _revocation;
 
-    public DeviceService(ApplicationDbContext dbContext)
+    public DeviceService(ApplicationDbContext dbContext, IIdentityRevocationService revocation)
     {
         _dbContext = dbContext;
+        _revocation = revocation;
+    }
+
+    public async Task RevokeDeviceAsync(
+        Guid deviceId,
+        Guid organizationId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default)
+    {
+        // Scoped to the caller's organization, so one business cannot revoke another's
+        // handset by guessing an id.
+        var device = await _dbContext.Devices
+            .SingleOrDefaultAsync(
+                x => x.Id == deviceId && x.OrganizationId == organizationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Device was not found.");
+
+        device.IsRevoked = true;
+        device.Status = DeviceStatus.Revoked;
+        device.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Marking the device is not enough on its own: the handset already holds a refresh
+        // token, and without this it would keep minting access tokens until that token aged
+        // out. Revoking a stolen phone has to mean it stops working at its next server
+        // contact, not eventually.
+        await _revocation.RevokeDeviceSessionsAsync(deviceId, actorUserId, cancellationToken);
+
+        _dbContext.AuditLogs.Add(new AuditLogEntry
+        {
+            OrganizationId = organizationId,
+            UserId = actorUserId,
+            DeviceId = deviceId,
+            Action = "DEVICE_REVOKED",
+            Details = "Device revoked by an administrator; bound sessions terminated.",
+            ActorType = "User"
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<DeviceDto> RegisterDeviceAsync(CreateDeviceRequest request, CancellationToken cancellationToken = default)

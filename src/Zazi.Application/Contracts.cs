@@ -426,6 +426,20 @@ public interface IDeviceService
 {
     Task<DeviceDto> RegisterDeviceAsync(CreateDeviceRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DeviceDto>> GetDevicesAsync(Guid organizationId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Revokes a device and kills every session bound to it.
+    /// </summary>
+    /// <remarks>
+    /// Both halves matter. Marking the device revoked stops it starting a new session; killing
+    /// its sessions stops the one it already has from being refreshed. Doing only the first
+    /// would leave a stolen handset working until its refresh token expired on its own.
+    /// </remarks>
+    Task RevokeDeviceAsync(
+        Guid deviceId,
+        Guid organizationId,
+        Guid actorUserId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

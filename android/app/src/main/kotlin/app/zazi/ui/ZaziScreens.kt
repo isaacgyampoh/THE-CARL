@@ -969,9 +969,15 @@ private fun formatStamp(utcMillis: Long): String =
     DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
         .format(Instant.ofEpochMilli(utcMillis).atZone(ZoneId.systemDefault()))
 
-/** Shown when the server no longer trusts this device. */
+/**
+ * Shown when the server no longer trusts this device.
+ *
+ * <p>The way back is a new activation code, not a sign-in. A worker activated by code has no
+ * account to sign in with, and telling them to sign in would send them looking for
+ * credentials that do not exist. Only the owner can restore access, and the copy says so.</p>
+ */
 @Composable
-fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
+fun DeviceRevokedScreen(queuedWorkCount: Int, onStartOver: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center
@@ -980,8 +986,8 @@ fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         Text(
-            "This device is no longer registered. Contact your manager or administrator to " +
-                "register it again.",
+            "This device is no longer registered. Ask your business owner to authorise it " +
+                "again and give you a new activation code.",
             style = MaterialTheme.typography.bodyMedium
         )
 
@@ -1009,8 +1015,8 @@ fun DeviceRevokedScreen(queuedWorkCount: Int, onSignIn: () -> Unit) {
         }
 
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)) {
-            Text("Sign in again")
+        Button(onClick = onStartOver, modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)) {
+            Text("Enter a new activation code")
         }
     }
 }
