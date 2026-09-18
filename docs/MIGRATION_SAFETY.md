@@ -94,8 +94,29 @@ Before any migration reaches an environment holding real records:
 7. **Row counts before and after** for every table touched.
 8. **Additive first.** Expand → migrate → contract, across separate releases, so a rollback
    never needs the dropped column back.
-9. **Long locks.** `ALTER TABLE` on a large table takes an `ACCESS EXCLUSIVE` lock; add
-   indexes with `CREATE INDEX CONCURRENTLY` outside the migration where necessary.
+9. **Long locks.** `ALTER TABLE` on a large table takes an `ACCESS EXCLUSIVE` lock. A plain
+   `CREATE INDEX` is not much better: it blocks `INSERT` for the duration, and the writers on
+   these tables are agents' handsets syncing captured transactions.
+
+   Build indexes concurrently, and do it **inside** the migration rather than as a manual step
+   beside it, so the change stays versioned and repeatable. EF allows this with
+   `suppressTransaction`, which `CREATE INDEX CONCURRENTLY` requires because it cannot run in
+   a transaction block. `TransactionOrganizationDateIndex` is the worked example:
+
+   ```csharp
+   migrationBuilder.Sql(
+       """
+       CREATE INDEX CONCURRENTLY IF NOT EXISTS "IX_..." ON "Transactions" (...);
+       """,
+       suppressTransaction: true);
+   ```
+
+   A concurrent build that fails leaves the index behind marked `INVALID`, where no query uses
+   it — which looks exactly like success. Check after any index migration:
+
+   ```sql
+   SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
+   ```
 10. **Never `EnsureCreated`.** It bypasses migrations and leaves the database unmigratable.
     Program.cs calls `MigrateAsync` for relational providers for exactly this reason.
 

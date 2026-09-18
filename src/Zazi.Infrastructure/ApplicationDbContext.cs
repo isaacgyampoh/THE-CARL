@@ -289,6 +289,15 @@ public class ApplicationDbContext : DbContext
             builder.HasIndex(x => x.SessionId);
             builder.HasIndex(x => x.EvidenceId);
             builder.HasIndex(x => x.TransactionAtUtc);
+
+            // Both hot read paths filter by organization *and* a date range: the dashboard's
+            // "today" aggregate, and the paged transaction list, which then sorts by the same
+            // column. With only single-column indexes PostgreSQL has to scan a day across
+            // every tenant and discard the rest, and sort the survivors. Leading with
+            // OrganizationId keeps a tenant's rows contiguous, and the trailing date supplies
+            // the range and the ordering without a sort.
+            builder.HasIndex(x => new { x.OrganizationId, x.TransactionAtUtc });
+
             builder.HasIndex(x => x.ReversesTransactionId);
             builder.HasIndex(x => x.AdjustsTransactionId);
 
