@@ -436,6 +436,33 @@ public class WorkerActivationTests : IDisposable
             WithoutCorrelationId(await unknown.Content.ReadAsStringAsync()));
     }
 
+    // ─── Shape ───────────────────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task ACodeHasTheShapeTheHandsetShowsAsAPlaceholder()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Typist");
+
+        var issued = await IssueAsync(tenant, worker.Id);
+
+        // The Android field shows ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX. It showed one group fewer
+        // than the server generates, which would have a worker believe they had finished
+        // early. Nothing else connects those two strings, so this does.
+        var groups = issued.Code.Split('-');
+
+        Assert.Equal("ZAZI", groups[0]);
+        Assert.Equal(6, groups.Length);
+        Assert.All(groups.Skip(1), g => Assert.Equal(4, g.Length));
+
+        // Crockford base32 omits I, L, O and U so a handwritten code cannot be misread.
+        Assert.DoesNotContain(issued.Code, "I", StringComparison.Ordinal);
+        Assert.DoesNotContain(issued.Code, "L", StringComparison.Ordinal);
+        Assert.DoesNotContain(issued.Code, "O", StringComparison.Ordinal);
+        Assert.DoesNotContain(issued.Code, "U", StringComparison.Ordinal);
+    }
+
     // ─── Brute force ─────────────────────────────────────────────────────────
 
     [SkippableFact]
@@ -573,6 +600,38 @@ public class WorkerActivationTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task ABranchManagerCannotRevokeADeviceInAnotherBranch()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var otherBranch = await CreateBranchAsync(tenant.OrganizationId);
+        var worker = await CreateWorkerAsync(tenant, "Elsewhere");
+        var activated = await ActivateAsync(
+            (await IssueAsync(tenant, worker.Id)).Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        // Move the device into a branch this manager does not run. They still hold
+        // device.manage — that permission is organization-wide — so nothing but the branch
+        // constraint stands between them and another branch's handset.
+        await using (var db = _postgres.CreateContext())
+        {
+            var device = await db.Devices.SingleAsync(x => x.Id == activated.DeviceId);
+            device.BranchId = otherBranch;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await ManagerClient(tenant)
+            .PostAsync($"/api/v1/devices/{activated.DeviceId}/revoke", null);
+
+        // Not found rather than forbidden: a device the caller may not touch should be
+        // indistinguishable from one that does not exist.
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        await using var check = _postgres.CreateContext();
+        var stored = await check.Devices.AsNoTracking().SingleAsync(x => x.Id == activated.DeviceId);
+        Assert.NotEqual(DeviceStatus.Revoked, stored.Status);
+    }
+
+    [SkippableFact]
     public async Task OneBusinessCannotRevokeAnothersDevice()
     {
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
@@ -635,11 +694,19 @@ public class WorkerActivationTests : IDisposable
         _factory!.CreateClient().Authenticated(
             TestTokens.Create(tenant.UserId, tenant.OrganizationId, tenant.BranchId, ZaziRoles.BranchManager));
 
-    private async Task<UserDto> CreateWorkerAsync(TenantSeed tenant, string fullName)
+    private Task<UserDto> CreateWorkerAsync(TenantSeed tenant, string fullName) =>
+        CreateWorkerInBranchAsync(tenant, fullName, tenant.BranchId);
+
+    private async Task<UserDto> CreateWorkerInBranchAsync(
+        TenantSeed tenant, string fullName, Guid branch)
     {
-        var response = await ManagerClient(tenant).PostAsJsonAsync(WorkersPath, new
+        // An owner when placing someone outside the manager's own branch, because the tenant
+        // guard refuses a branch manager that before the rule under test is reached.
+        var client = branch == tenant.BranchId ? ManagerClient(tenant) : OwnerClient(tenant);
+
+        var response = await client.PostAsJsonAsync(WorkersPath, new
         {
-            branchId = tenant.BranchId,
+            branchId = branch,
             fullName,
             roles = new[] { ZaziRoles.Agent }
         });

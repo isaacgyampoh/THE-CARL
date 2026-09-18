@@ -186,7 +186,13 @@ public class DevicesController : ControllerBase
     public async Task<IActionResult> RevokeDevice(Guid deviceId, CancellationToken cancellationToken)
     {
         await _deviceService.RevokeDeviceAsync(
-            deviceId, _currentUser.OrganizationId, _currentUser.UserId, cancellationToken);
+            deviceId,
+            _currentUser.OrganizationId,
+            _currentUser.UserId,
+            // Null for an owner, their own branch for a manager. Same helper the listings use,
+            // so what a caller may revoke matches what they can see.
+            _currentUser.VisibleBranchId(),
+            cancellationToken);
 
         return NoContent();
     }

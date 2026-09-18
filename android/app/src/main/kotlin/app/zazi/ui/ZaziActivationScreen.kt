@@ -83,7 +83,9 @@ fun ActivationScreen(
             value = state.code,
             onValueChange = onCodeChanged,
             label = { Text("Activation code") },
-            placeholder = { Text("ZAZI-XXXX-XXXX-XXXX-XXXX") },
+            // Five groups, matching what the server actually generates. It showed four, which
+            // would have a worker believe they had finished typing a group early.
+            placeholder = { Text("ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX") },
             singleLine = true,
             enabled = !state.isSubmitting,
             isError = state.error != null,

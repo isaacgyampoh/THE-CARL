@@ -20,13 +20,19 @@ public class DeviceService : IDeviceService
         Guid deviceId,
         Guid organizationId,
         Guid actorUserId,
+        Guid? requiredBranchId = null,
         CancellationToken cancellationToken = default)
     {
         // Scoped to the caller's organization, so one business cannot revoke another's
-        // handset by guessing an id.
+        // handset by guessing an id — and, when the caller is branch-scoped, to that branch
+        // too. Both conditions are in the query rather than checked afterwards, so a device
+        // the caller may not touch is indistinguishable from one that does not exist.
         var device = await _dbContext.Devices
             .SingleOrDefaultAsync(
-                x => x.Id == deviceId && x.OrganizationId == organizationId, cancellationToken)
+                x => x.Id == deviceId
+                     && x.OrganizationId == organizationId
+                     && (requiredBranchId == null || x.BranchId == requiredBranchId),
+                cancellationToken)
             ?? throw new KeyNotFoundException("Device was not found.");
 
         device.IsRevoked = true;

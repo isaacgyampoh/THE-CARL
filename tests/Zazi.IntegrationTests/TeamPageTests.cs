@@ -37,6 +37,9 @@ public class TeamPageTests : TestContext
     private static readonly Guid OwnerId = Guid.NewGuid();
     private static readonly Guid DeviceId = Guid.NewGuid();
     private static readonly Guid WorkerId = Guid.NewGuid();
+    private static readonly Guid OtherBranchId = Guid.NewGuid();
+    private static readonly Guid OtherDeviceId = Guid.NewGuid();
+    private static readonly Guid OtherWorkerId = Guid.NewGuid();
 
     public TeamPageTests()
     {
@@ -44,7 +47,7 @@ public class TeamPageTests : TestContext
         Services.AddSingleton<IAuthService>(_auth);
         Services.AddSingleton<IDeviceEnrollmentService>(_enrollment);
         Services.AddSingleton<IOrganizationService>(new StubOrganizations());
-        Services.AddSingleton<ICurrentUserContext>(new StubCurrentUser());
+        Services.AddSingleton<ICurrentUserContext>(new StubCurrentUser(organizationWide: true));
         this.AddTestAuthorization().SetAuthorized("Kwame Mensah");
     }
 
@@ -96,6 +99,26 @@ public class TeamPageTests : TestContext
         // The page must never let the caller's tenant be anything but their own.
         Assert.Equal(OrganizationId, _devices.LastOrganizationId);
         Assert.Equal(OwnerId, _devices.LastActorId);
+
+        // Null here because this caller is an owner. For a branch manager it would be their
+        // branch, which is what stops the portal revoking a handset it does not even list.
+        Assert.Null(_devices.LastRequiredBranchId);
+    }
+
+    [Fact]
+    public void ABranchManagerRevokingPassesTheirBranchAsAConstraint()
+    {
+        // Hiding another branch's device from the listing is not an authorisation control —
+        // the service acts on whatever id it is handed. The page has to say which branch this
+        // caller may act in, so the service can refuse rather than trust the id.
+        Services.AddSingleton<ICurrentUserContext>(
+            new StubCurrentUser(organizationWide: false, branchId: BranchId));
+
+        var page = RenderComponent<Team>();
+        page.FindAll("button").First(b => b.TextContent.Contains("Revoke")).Click();
+        page.FindAll("button").First(b => b.TextContent.Contains("Yes, revoke")).Click();
+
+        Assert.Equal(BranchId, _devices.LastRequiredBranchId);
     }
 
     // ─── Activation codes ────────────────────────────────────────────────────
@@ -147,6 +170,48 @@ public class TeamPageTests : TestContext
         Assert.Contains("next time that phone reaches Zazi", page.Markup);
     }
 
+    // ─── Branch scoping ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnOwnerSeesEveryBranch()
+    {
+        var page = RenderComponent<Team>();
+
+        Assert.Contains("Ama Mensah", page.Markup);
+        Assert.Contains("Kojo Antwi", page.Markup);
+    }
+
+    [Fact]
+    public void ABranchManagerSeesOnlyTheirOwnBranchsWorkersAndDevices()
+    {
+        // The defect this catches: the branch filter lived in the API controllers, and this
+        // page calls the services directly, so it skipped the filter entirely and showed a
+        // branch manager the whole business.
+        Services.AddSingleton<ICurrentUserContext>(
+            new StubCurrentUser(organizationWide: false, branchId: BranchId));
+
+        var page = RenderComponent<Team>();
+
+        Assert.Contains("Ama Mensah", page.Markup);
+        Assert.DoesNotContain("Kojo Antwi", page.Markup);
+        Assert.Contains("Ama's phone", page.Markup);
+        Assert.DoesNotContain("Kumasi phone", page.Markup);
+    }
+
+    [Fact]
+    public void ABranchManagerIsOnlyOfferedBranchesTheyCanWriteTo()
+    {
+        Services.AddSingleton<ICurrentUserContext>(
+            new StubCurrentUser(organizationWide: false, branchId: BranchId));
+
+        var page = RenderComponent<Team>();
+
+        // Offering the others would let them fill in a form the tenant guard then rejects.
+        var options = page.FindAll("option").Select(o => o.TextContent).ToList();
+        Assert.Contains("Accra Central", options);
+        Assert.DoesNotContain("Kumasi", options);
+    }
+
     // ─── Stubs ───────────────────────────────────────────────────────────────
 
     private sealed class RecordingDevices : IDeviceService
@@ -159,19 +224,31 @@ public class TeamPageTests : TestContext
             throw new NotSupportedException();
 
         public Task<IReadOnlyList<DeviceDto>> GetDevicesAsync(Guid organizationId, CancellationToken ct = default) =>
+            // Deliberately unfiltered, exactly as the real service is: the branch rule is the
+            // caller's to apply, and the whole point of these tests is whether the page
+            // applies it.
             Task.FromResult<IReadOnlyList<DeviceDto>>(new[]
             {
                 new DeviceDto(
                     DeviceId, OrganizationId, BranchId, "Ama's phone", "installation-1",
                     "Android", "MTN", DeviceRole.TransactionDevice, DeviceStatus.Active,
+                    "2.0.0", "37", DateTimeOffset.UtcNow),
+                new DeviceDto(
+                    OtherDeviceId, OrganizationId, OtherBranchId, "Kumasi phone", "installation-2",
+                    "Android", "MTN", DeviceRole.TransactionDevice, DeviceStatus.Active,
                     "2.0.0", "37", DateTimeOffset.UtcNow)
             });
 
-        public Task RevokeDeviceAsync(Guid deviceId, Guid organizationId, Guid actorUserId, CancellationToken ct = default)
+        public Guid? LastRequiredBranchId { get; private set; }
+
+        public Task RevokeDeviceAsync(
+            Guid deviceId, Guid organizationId, Guid actorUserId,
+            Guid? requiredBranchId = null, CancellationToken ct = default)
         {
             Revoked.Add(deviceId);
             LastOrganizationId = organizationId;
             LastActorId = actorUserId;
+            LastRequiredBranchId = requiredBranchId;
             return Task.CompletedTask;
         }
     }
@@ -194,10 +271,15 @@ public class TeamPageTests : TestContext
             Task.FromResult(Worker());
 
         public Task<IReadOnlyList<UserDto>> GetUsersAsync(Guid organizationId, CancellationToken ct = default) =>
-            Task.FromResult<IReadOnlyList<UserDto>>(new[] { Worker() });
+            Task.FromResult<IReadOnlyList<UserDto>>(new[] { Worker(), OtherBranchWorker() });
 
         private static UserDto Worker() => new(
             WorkerId, OrganizationId, BranchId, "Ama Mensah", null, null,
+            true, false, false, DateTimeOffset.UtcNow,
+            UserCredentialType.ActivationOnly, new[] { "AGENT" });
+
+        private static UserDto OtherBranchWorker() => new(
+            OtherWorkerId, OrganizationId, OtherBranchId, "Kojo Antwi", null, null,
             true, false, false, DateTimeOffset.UtcNow,
             UserCredentialType.ActivationOnly, new[] { "AGENT" });
     }
@@ -249,18 +331,29 @@ public class TeamPageTests : TestContext
             Task.FromResult<IReadOnlyList<BranchDto>>(new[]
             {
                 new BranchDto(BranchId, OrganizationId, "Accra Central", null,
+                    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+                new BranchDto(OtherBranchId, OrganizationId, "Kumasi", null,
                     DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
             });
     }
 
     private sealed class StubCurrentUser : ICurrentUserContext
     {
+        private readonly bool _organizationWide;
+        private readonly Guid? _branchId;
+
+        public StubCurrentUser(bool organizationWide = true, Guid? branchId = null)
+        {
+            _organizationWide = organizationWide;
+            _branchId = branchId;
+        }
+
         public bool IsAuthenticated => true;
         public Guid UserId => OwnerId;
         public Guid OrganizationId => TeamPageTests.OrganizationId;
-        public Guid? BranchId => null;
-        public IReadOnlyCollection<string> Roles => new[] { "OWNER" };
-        public bool HasOrganizationWideScope => true;
+        public Guid? BranchId => _branchId;
+        public IReadOnlyCollection<string> Roles => _organizationWide ? new[] { "OWNER" } : new[] { "BRANCH_MANAGER" };
+        public bool HasOrganizationWideScope => _organizationWide;
         public string? SecurityStamp => "stamp";
         public string CorrelationId => "test-correlation";
 
@@ -269,7 +362,7 @@ public class TeamPageTests : TestContext
         // An owner sees their whole business, so these are permissive here. The real
         // enforcement is server-side and is covered by the tenant-isolation suites; this stub
         // exists only so the page can render.
-        public bool CanAccessBranch(Guid branchId) => true;
+        public bool CanAccessBranch(Guid branchId) => _organizationWide || branchId == _branchId;
 
         public void EnsureBranchAccess(Guid branchId) { }
 

@@ -437,10 +437,18 @@ public interface IDeviceService
     /// its sessions stops the one it already has from being refreshed. Doing only the first
     /// would leave a stolen handset working until its refresh token expired on its own.
     /// </remarks>
+    /// <param name="requiredBranchId">
+    /// The one branch the caller may act in, or <c>null</c> when they legitimately act across
+    /// the whole organization. A branch-scoped caller holds <c>device.manage</c> too, so
+    /// organization scoping alone would let them revoke any handset in the business — the
+    /// listing hides such a device from them, but hiding an id is not an authorisation
+    /// control, and the endpoint takes whatever id it is given.
+    /// </param>
     Task RevokeDeviceAsync(
         Guid deviceId,
         Guid organizationId,
         Guid actorUserId,
+        Guid? requiredBranchId = null,
         CancellationToken cancellationToken = default);
 }
 

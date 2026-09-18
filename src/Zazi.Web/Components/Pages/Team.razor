@@ -107,7 +107,7 @@ else
         <label for="worker-branch">Branch</label>
         <InputSelect id="worker-branch" @bind-Value="_newWorker.BranchId">
             <option value="">Choose a branch…</option>
-            @foreach (var branch in _branches ?? new List<BranchDto>())
+            @foreach (var branch in SelectableBranches())
             {
                 <option value="@branch.Id">@branch.Name</option>
             }
@@ -220,8 +220,15 @@ else
         {
             var organizationId = CurrentUser.OrganizationId;
             _branches = await Organizations.GetBranchesAsync(organizationId);
-            _users = await Auth.GetUsersAsync(organizationId);
-            _devices = await Devices.GetDevicesAsync(organizationId);
+
+            // Scoped with the same rule the API endpoints use. Calling the services directly
+            // skips the controllers, and the controllers were where this filtering used to
+            // live — so without this a branch manager saw every worker and every device in
+            // the business.
+            _users = CurrentUser.LimitToVisibleBranch(
+                await Auth.GetUsersAsync(organizationId), u => u.BranchId);
+            _devices = CurrentUser.LimitToVisibleBranch(
+                await Devices.GetDevicesAsync(organizationId), d => d.BranchId);
         }
         catch (Exception)
         {
@@ -318,7 +325,13 @@ else
         _error = null;
         try
         {
-            await Devices.RevokeDeviceAsync(device.Id, CurrentUser.OrganizationId, CurrentUser.UserId);
+            await Devices.RevokeDeviceAsync(
+                device.Id,
+                CurrentUser.OrganizationId,
+                CurrentUser.UserId,
+                // The same scope the listing above uses, so a branch manager cannot revoke a
+                // handset this page would never have shown them.
+                CurrentUser.VisibleBranchId());
             _confirmingRevokeOf = null;
             await LoadAsync();
         }
@@ -331,6 +344,12 @@ else
             _busy = false;
         }
     }
+
+    // A branch manager may only create workers in the branch they run. Offering them the
+    // others would produce a rejection from the tenant guard after they had filled the form.
+    private IEnumerable<BranchDto> SelectableBranches() =>
+        (_branches ?? new List<BranchDto>())
+            .Where(b => CurrentUser.CanAccessBranch(b.Id));
 
     private string BranchName(Guid? branchId) =>
         branchId is { } id
