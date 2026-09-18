@@ -219,6 +219,25 @@ dependencies {
 //
 // Required to be HTTPS because release sets usesCleartextTraffic=false: an http:// URL here
 // produces an APK blocked by its own manifest.
+// Addresses that are syntactically fine and cannot serve a real handset.
+//
+// Checked because the scheme check alone let https://localhost/ and https://api.example.com/
+// through, which fail in exactly the way the emulator default did: silently, at run time, on
+// somebody else's phone.
+val nonProductionHosts = listOf(
+    "localhost",
+    "127.0.0.1",
+    "0.0.0.0",
+    "[::1]",
+    // The emulator's alias for the host loopback.
+    "10.0.2.2",
+    // Reserved by RFC 2606 and RFC 6761 precisely so they cannot be real.
+    "example.com", "example.net", "example.org",
+    ".invalid", ".test", ".localhost",
+    // Multicast DNS. Resolves on a LAN and nowhere else.
+    ".local"
+)
+
 // Resolved to a plain message at configuration time. Only a String crosses into the task:
 // referencing a script-level value from inside doFirst captures the build script itself,
 // which the configuration cache cannot serialize.
@@ -234,6 +253,14 @@ val releaseUrlProblem: String? = (project.findProperty("apiBaseUrl") as String?)
             "The release API base URL must be https. Got: $supplied\n" +
                 "Release builds set usesCleartextTraffic=false, so a cleartext URL produces " +
                 "an APK blocked by its own manifest."
+
+        // https alone is not enough. https://localhost/ and https://api.example.com/ are
+        // well-formed, pass a scheme check, and produce an app that reaches nothing — the
+        // same class of failure as the emulator address, arriving by a different route.
+        nonProductionHosts.any { supplied.contains(it, ignoreCase = true) } ->
+            "The release API base URL is not a production address. Got: $supplied\n" +
+                "Loopback, emulator and reserved-example hosts cannot be reached from a " +
+                "handset. Supply the real API hostname, e.g. https://api.yourdomain/."
 
         else -> null
     }

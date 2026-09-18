@@ -54,195 +54,238 @@ batches, so it is not sensitive to round-trip latency. Do not pick a US region.
 
 ## Architecture
 
-Put TLS in front, terminate it there, and speak plain HTTP to the two processes on loopback:
+Cloudflare fronts the domain. Caddy terminates TLS on the server and speaks plain HTTP to
+the two processes on loopback. Nothing else is exposed.
 
 ```
-            ┌──────────── TLS (Let's Encrypt) ────────────┐
-Android ────┤  api.yourdomain   → 127.0.0.1:5055  Zazi.Api │
-Browser ────┤  app.yourdomain   → 127.0.0.1:5056  Zazi.Web │
-            └─────────────────────────────────────────────┘
-                                   │
-                            PostgreSQL (loopback only)
+                     Cloudflare (DNS, TLS, WAF, proxy)
+                                  │
+                        ┌─────────┴─────────┐
+                        │   Caddy on the VM │  ports 80/443, Cloudflare IPs only
+                        └─────────┬─────────┘
+             api.<DOMAIN> ────────┤──────── 127.0.0.1:5055   Zazi.Api
+             app.<DOMAIN> ────────┘──────── 127.0.0.1:5056   Zazi.Web
+                                  │
+                           PostgreSQL, loopback only
 ```
 
-Both processes must then be told TLS is terminated ahead of them:
+`<DOMAIN>` is yours and appears in exactly one place on the server, `/etc/default/caddy`.
+The Caddyfile reads it as `{$ZAZI_DOMAIN}`, so nothing in this repository names your domain.
 
-```
-Zazi__BehindTlsProxy=true
-```
+### Three things about this shape that are easy to get wrong
 
-Without it they refuse to start, because from their own point of view they are serving
-cleartext and they cannot tell the difference between "behind a proxy" and "exposed". With
-it they also trust `X-Forwarded-For`, which the per-IP login rate limiter needs — otherwise
-every request appears to come from the proxy and all users share one bucket, so one attacker
-can lock out everybody.
+**The client IP.** With Cloudflare in front there are two proxies, not one. Caddy appends
+the address it received from — a Cloudflare edge server — to `X-Forwarded-For`, and Zazi
+trusts one hop and takes the last entry. Left alone it would treat the Cloudflare edge as
+the client, and Zazi rate limits sign-in and device activation *per IP*. Every agent behind
+the same Cloudflare point of presence would share one bucket of ten attempts a minute: one
+person mistyping a password locks out a whole city.
 
-**The proxy must set `X-Forwarded-For` and `X-Forwarded-Proto`, and must not be reachable
-except through itself.** Bind both application processes to `127.0.0.1`, never `0.0.0.0`.
+`deploy/Caddyfile` fixes this with `trusted_proxies` and `client_ip_headers CF-Connecting-IP`,
+so Caddy resolves the real client and passes that. The firewall rule below is what makes
+that header trustworthy — a header is only as good as the guarantee about who can set it.
 
-## Configuration
+**The SSL mode.** Cloudflare must be **Full (strict)**. On *Flexible*, Cloudflare speaks
+plain HTTP to the origin, Zazi sees `X-Forwarded-Proto: http`, redirects to HTTPS, and
+Cloudflare requests over HTTP again — an endless redirect that looks like an application
+bug and is not one.
 
-Secrets go in the environment, never in `appsettings.json` and never in git.
+**The WebSocket.** The dashboard is Blazor Server and holds a SignalR connection open for
+the life of a session. Caddy upgrades WebSockets without configuration, but the default
+read timeout cuts an idle stream, and a dashboard left open on a desk is idle for long
+stretches. The Caddyfile disables that timeout for the dashboard only. The symptom if you
+skip it is a page that reconnects every few minutes and reads as a flaky network.
 
-### Zazi.Api
+## The server
 
-```sh
-ASPNETCORE_ENVIRONMENT=Production
-ASPNETCORE_URLS=http://127.0.0.1:5055
-Zazi__BehindTlsProxy=true
-ConnectionStrings__DefaultConnection="Host=127.0.0.1;Port=5432;Database=zazi;Username=zazi;Password=…"
-ZAZI_JWT_KEY="…"          # at least 32 random bytes; the API will not start without it
-```
+The smallest sensible production server for the current workload:
 
-### Zazi.Web
+| | Minimum | Why |
+|---|---|---|
+| **OS** | Ubuntu 24.04 LTS | `install.sh` targets it. Any current Debian-family release works with minor changes. |
+| **CPU** | 2 vCPU | Two .NET processes and PostgreSQL. One vCPU works until a sync batch and a dashboard render coincide. |
+| **RAM** | 2 GB | ~250 MB per .NET process, ~256 MB PostgreSQL shared buffers, the rest headroom. 1 GB survives until the first large batch sync, then the OOM killer takes PostgreSQL. |
+| **Disk** | 25 GB SSD | OS ~8 GB, runtime ~1 GB, database small for a long time. Sized for logs and 14 days of local backups, not for the data. |
+| **Region** | Europe | Agents are in Ghana; Europe is ~100–150 ms away. Fine — the app is offline-first and syncs in batches. Do not pick a US region. |
 
-```sh
-ASPNETCORE_ENVIRONMENT=Production
-ASPNETCORE_URLS=http://127.0.0.1:5056
-Zazi__BehindTlsProxy=true
-ConnectionStrings__DefaultConnection="…"   # the same database as the API
-ZAZI_JWT_KEY="…"                           # the same key as the API
-Zazi__DataProtectionKeyPath=/var/lib/zazi/keys
-```
+A 100-agent pilot fits comfortably. Grow RAM before CPU: PostgreSQL benefits first.
 
-`Zazi__DataProtectionKeyPath` is required and must survive restarts. It holds the keys that
-encrypt the session cookie and antiforgery tokens. Point it at a container's ephemeral
-filesystem and every deploy signs every agent out mid-shift; run two instances without
-sharing it and sign-in works intermittently, which is far harder to diagnose than it sounds.
+**Required ports.** Inbound 443 and 80 from Cloudflare's ranges only, and 22 for you.
+Nothing else. **5055 and 5056 are never opened** — the services bind to `127.0.0.1` and the
+firewall would refuse regardless. Both, because one of them will eventually be wrong.
 
-### The variable name that has cost hours before
-
-It is `ConnectionStrings__DefaultConnection` — two underscores, and `DefaultConnection`, not
-`Default`. `ConnectionStrings__Default` is silently ignored. Outside Development the API now
-refuses to start rather than falling back to an in-memory store, so this fails loudly instead
-of accepting real transactions and discarding them, but the name is still worth getting right
-the first time.
+**Packages, accounts, directories** — all created by `deploy/install.sh`:
+`aspnetcore-runtime-8.0`, `postgresql`, `caddy` (≥ 2.7, from Caddy's own repository — the
+distribution package lags and `trusted_proxies` needs 2.7), `ufw`. A `zazi` system account
+with no shell and no home. `/opt/zazi` (application, root-owned), `/etc/zazi` (secrets, mode
+600), `/var/lib/zazi/keys` (data-protection key ring, owned by `zazi`, mode 700),
+`/var/log/caddy`.
 
 ## Database
 
-Use a real PostgreSQL 16 installation, not the standalone binaries under `~/.zazi-testdb` —
-those exist so tests can run on a laptop without Docker or root.
+**PostgreSQL 16** (what Ubuntu 24.04 ships; the test suite runs against 16.2). No extensions
+are required — Zazi uses plain relational features, `numeric`, and partial unique indexes.
 
-The ledger depends on two PostgreSQL behaviours, which is why SQLite is not an alternative:
-partial unique indexes make submissions idempotent, and `INSERT … ON CONFLICT DO UPDATE`
-keeps balances correct when several devices sync at once.
+**On the same VM**, not a managed database, at this size. The application and database are
+the only tenants, loopback is faster and simpler than TLS to a remote host, and a managed
+instance adds monthly cost and a network hop for no benefit until you outgrow one machine.
+Revisit when you run more than one API process.
 
-### Migrations
+**Migrations** apply automatically at startup (`Database__MigrateOnStartup`, default true
+outside Development). Leave it. Set it to false only if you ever run more than one API
+process, where two instances migrating concurrently is a race — then apply them yourself
+before rolling out. There is no destructive fallback anywhere: a migration that cannot
+apply stops the service rather than dropping anything. See `MIGRATION_SAFETY.md`.
 
-Migrations do **not** run automatically outside Development. This is deliberate: a deploy
-meant only to ship code should not silently alter a schema holding financial records.
+**SSL to the database** is unnecessary on loopback and adds nothing. Add `SSL Mode=Require`
+only if you move PostgreSQL to another host.
 
-**Follow `MIGRATION_SAFETY.md`** — it is the authority here, and it requires generating the
-idempotent SQL and reading it before anything touches the database. The short version is: back
-up first, generate the script, review it, then apply it.
+**Connection pooling** is Npgsql's default and is appropriate; do not add PgBouncer at this
+size.
 
-```sh
-scripts/backup-database.sh /var/backups/zazi
-dotnet ef migrations script --idempotent \
-  --project src/Zazi.Infrastructure --startup-project src/Zazi.Api --output migrate.sql
-# read migrate.sql, then apply it
+## Backups
+
+`deploy/backup.sh`, from a cron entry or systemd timer, **daily**. It backs up three things
+because the database alone is the backup people take and the other two are what they wish
+they had taken:
+
+| What | Why |
+|---|---|
+| The database | The transactions. `pg_dump`, custom format, no outage. |
+| `/etc/zazi` | Connection string and JWT signing key. Restore a database without the key and every session issued before is void. |
+| `/var/lib/zazi/keys` | Data-protection key ring. Lose it and every signed-in owner is signed out. |
+
+Keeps 14 days locally. Set `ZAZI_BACKUP_REMOTE` to an rsync destination for offsite copies —
+a backup on the same machine protects against a mistake, not against losing the machine.
+
+**Restore-test one.** A backup nobody has restored is a hope, not a backup.
+
+## Health endpoints
+
+| Endpoint | Says |
+|---|---|
+| `https://api.<DOMAIN>/health` | The process is up. |
+| `https://api.<DOMAIN>/ready` | **The process can reach its database.** 503 when it cannot. |
+| `https://api.<DOMAIN>/api/v1/status` | Service name only — no version, no backing-store detail. |
+
+**`/ready` is the one that matters.** A process answering `/health` while its database is
+gone is the failure people actually hit, and it looks exactly like health. Point your uptime
+monitor at `/ready`.
+
+## Deployment runbook
+
+Steps marked **you** need a person — an account, a payment, a decision, or a device.
+Steps marked **prepared** are already written in this repository.
+
+| # | Step | Who |
+|---|---|---|
+| 1 | Provision the VM (spec above) | **you** — provider dashboard |
+| 2 | Add the domain to Cloudflare | **you** — Cloudflare dashboard |
+| 3 | DNS records, see below | **you** — Cloudflare dashboard |
+| 4 | Install runtime, PostgreSQL, Caddy, firewall | **prepared** — `deploy/install.sh` |
+| 5 | Create database and role | **prepared** — same script |
+| 6 | Write `/etc/zazi/api.env` | **prepared** — same script, secrets generated on the server |
+| 7 | Write `/etc/zazi/web.env` | **prepared** — same script |
+| 8 | Install systemd units | **prepared** — same script |
+| 9 | Configure Caddy | **prepared** — same script |
+| 10 | Publish the application to the VM | **you** — one command, below |
+| 11 | Start the services | **you** — one command, below |
+| 12 | Verify `/health` | **you** — browser |
+| 13 | Verify `/ready` — proves the database | **you** — browser |
+| 14 | Verify the dashboard signs in | **you** — browser |
+| 15 | Verify HTTPS and Cloudflare | **you** — browser |
+| 16 | Build the Android release with the real URL | **prepared** — command below |
+| 17 | Physical Pixel test | **you** — device required |
+| 18 | Production signing | **you** — keystore required |
+| 19 | Release | **you** |
+
+### The commands you cannot avoid
+
+There are three. Everything else is a dashboard.
+
+**On the VM, once** — installs everything and stops before starting anything:
+
+```bash
+sudo ZAZI_DOMAIN=<your-domain> bash install.sh
 ```
 
-`dotnet ef` spawns further `dotnet` processes resolved from `PATH`, so a system-wide SDK can
-shadow the one pinned in `global.json`. If it reports the wrong SDK version, put the pinned
-SDK's directory first on `PATH` — `scripts/start-stack.sh` does this and is worth copying.
+**From your machine** — publishes the built application to the server:
 
-If the schema is behind, the API refuses to start and names the first missing migration.
-
-### Backups
-
-`scripts/backup-database.sh` takes a cold copy, because the standalone distribution ships no
-`pg_dump`. **On a real PostgreSQL installation, use `pg_dump` instead** — it does not require
-stopping the database. Whichever you use, restore it somewhere else and sign in before you
-trust it. An untested backup is not a backup.
-
-Send them off the machine:
-
-```sh
-ZAZI_BACKUP_REMOTE=backups@offsite.example:/srv/zazi scripts/backup-database.sh /var/backups/zazi
+```bash
+scripts/dotnet.sh publish src/Zazi.Api -c Release -o /tmp/zazi-api
+scripts/dotnet.sh publish src/Zazi.Web -c Release -o /tmp/zazi-web
+rsync -a /tmp/zazi-api/ root@<server>:/opt/zazi/api/
+rsync -a /tmp/zazi-web/ root@<server>:/opt/zazi/web/
+rsync -a scripts/healthcheck.sh deploy/backup.sh root@<server>:/opt/zazi/scripts/
 ```
 
-The offsite copy runs after the local one is complete, so a network failure never costs you
-the backup you just took — but the script says so loudly and exits non-zero, because a copy
-that has quietly stopped working is worse than none: it is one people are relying on.
+**On the VM** — start everything:
 
-## Building the release APK
-
-The keystore lives outside the repository and its passwords are passed on the command line or
-set in `~/.gradle/gradle.properties`. They must not go in `android/gradle.properties`, which
-is tracked by git — the build fails if they do.
-
-```sh
-cd android
-./gradlew assembleRelease \
-  -PapiBaseUrl=https://api.yourdomain/ \
-  -PzaziKeystore=/secure/path/zazi-release.keystore \
-  -PzaziKeystorePassword=… -PzaziKeyAlias=… -PzaziKeyPassword=…
-```
-
-Verify what you are about to distribute:
-
-```sh
-apksigner verify --print-certs -v app/build/outputs/apk/release/app-release.apk
-```
-
-`apiBaseUrl` **must be `https://`**. The release build declares
-`android:usesCleartextTraffic="false"`, so an `http://` address produces an app that installs,
-opens, and fails every request.
-
-Never distribute a `pilot` build. It is minified and signed exactly like release but permits
-cleartext for any host, which exists so a trial can run on office wifi.
-
-## Putting it on a VM
-
-`deploy/` holds the files this refers to. Roughly, on a fresh Debian or Ubuntu server:
-
-```sh
-# 1. Runtime, database, proxy
-sudo apt install -y dotnet-runtime-8.0 aspnetcore-runtime-8.0 postgresql caddy
-
-# 2. A service account that owns nothing else
-sudo useradd --system --home /opt/zazi --shell /usr/sbin/nologin zazi
-
-# 3. Publish from your machine, copy the output up
-dotnet publish src/Zazi.Api -c Release -o out/api
-dotnet publish src/Zazi.Web -c Release -o out/web
-rsync -a out/api/ server:/opt/zazi/api/
-rsync -a out/web/ server:/opt/zazi/web/
-
-# 4. Secrets, readable only by root
-sudo install -d -m 700 /etc/zazi
-sudo cp deploy/api.env.example /etc/zazi/api.env    # edit, then chmod 600
-sudo cp deploy/web.env.example /etc/zazi/web.env    # edit, then chmod 600
-
-# 5. Services
-sudo cp deploy/zazi-api.service deploy/zazi-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now zazi-api zazi-web
-
-# 6. TLS. Edit the two domain names first.
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+```bash
+sudo systemctl enable --now zazi-api zazi-web zazi-healthcheck.timer
 sudo systemctl reload caddy
 ```
 
-Then apply migrations as described above — they do not run on their own — and create the
-first owner with `Zazi.Bootstrap`.
+Then open `https://api.<your-domain>/ready` in a browser. A `200` with
+`{"status":"ready"}` means the API is up, TLS works, Cloudflare is proxying and the database
+is reachable. That single page is the deployment test.
 
-If a service does not come up, `journalctl -u zazi-api -n 50` will usually say exactly why:
-the startup guards refuse with a message naming the missing setting rather than failing
-obscurely.
+## Cloudflare configuration
 
-> These files are written for Debian/Ubuntu with systemd and have not been run on a server
-> from here — this repository is developed on macOS, which has no systemd. Expect to adjust
-> paths for your distribution.
+Two A records, both **PROXIED (orange cloud)**:
+
+| Type | Name | Content | Proxy |
+|---|---|---|---|
+| A | `api` | your VM's public IPv4 | **Proxied** |
+| A | `app` | your VM's public IPv4 | **Proxied** |
+
+**Why proxied rather than DNS-only.** Proxied is what gives you the WAF, DDoS absorption and
+a hidden origin address, and it is what makes the firewall rule possible: with the origin
+reachable only from Cloudflare's ranges, nobody can bypass those protections by connecting
+to the IP directly. It is also what populates `CF-Connecting-IP`, which is how Zazi sees the
+real client and rate limits per agent rather than per point of presence.
+
+Grey-cloud both records and three things break at once: the origin is publicly addressable,
+the firewall blocks the traffic anyway, and `CF-Connecting-IP` is absent.
+
+**SSL/TLS mode: Full (strict).** Not Flexible — see the architecture note above. Caddy holds
+a real Let's Encrypt certificate, so strict validation succeeds.
+
+**Leave these alone:** Cloudflare's Rocket Loader and Auto Minify can interfere with Blazor's
+SignalR negotiation. Zazi's own rate limiting is per-IP and sufficient; Cloudflare rate
+limiting rules on top are optional and not required by this deployment.
+
+## Android release build
+
+Once `https://api.<your-domain>/ready` answers:
+
+```bash
+cd android
+./gradlew :app:assembleRelease -PapiBaseUrl=https://api.<your-domain>/
+```
+
+The build **refuses to produce an artifact** without an explicit HTTPS URL. It rejects a
+missing URL, any `http://` URL, and by extension the emulator address that used to be the
+silent default. Nothing is written to `outputs/` when it refuses — an earlier version failed
+the build but left a complete APK behind carrying the rejected URL, which is worse than no
+guard.
+
+Signing is separate and needs the production keystore. Without it the APK is unsigned and
+cannot be distributed.
 
 ## Before you let real agents on
 
-- [ ] `https://api.yourdomain/health` and `/ready` both return 200
-- [ ] `https://app.yourdomain` serves the sign-in page and sign-in works
+- [ ] `https://api.<DOMAIN>/health` and `/ready` both return 200
+- [ ] `https://app.<DOMAIN>` serves the sign-in page and sign-in works
 - [ ] Plain `http://` redirects to `https://` rather than serving anything
 - [ ] Both processes are bound to `127.0.0.1` — check with `ss -tlnp`
 - [ ] PostgreSQL is not reachable from outside the server
+- [ ] Both DNS records are **proxied** (orange cloud), not DNS-only
+- [ ] Cloudflare SSL/TLS mode is **Full (strict)** — Flexible causes an endless redirect
+- [ ] The VM's IP is *not* reachable on 443 from anywhere but Cloudflare
+- [ ] Two sign-in failures from two different devices do not share a rate-limit budget —
+      the quickest check that `CF-Connecting-IP` is reaching the application
+- [ ] The dashboard stays connected when left open for ten minutes (SignalR timeout)
 - [ ] `scripts/healthcheck.sh` passes against the real URLs
 - [ ] The health-check timer is enabled and `OnFailure=` points at something that reaches you
 - [ ] A backup has been taken *and restored somewhere else*
@@ -250,6 +293,7 @@ obscurely.
 - [ ] The keystore is backed up off the server
 - [ ] The first owner account exists (`Zazi.Bootstrap`; it refuses if an organization already exists)
 - [ ] A signed release APK installs on a real handset and captures one real SMS end to end
+- [ ] A worker activates on that handset with a code from the owner portal
 
 That last item is the one that cannot be skipped. Everything above can pass while the app
 still fails on a real carrier message.
