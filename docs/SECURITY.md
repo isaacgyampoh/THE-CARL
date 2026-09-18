@@ -25,6 +25,31 @@ evidence-based accounting data.
 | Signing key | Implemented | No fallback key exists. The API refuses to start without `Jwt:Key` / `ZAZI_JWT_KEY` (≥32 bytes) outside Development |
 | MFA | **Not implemented** | Architecture groundwork only — no second factor is enforced |
 | Security-stamp revocation | **Partial** | The stamp is issued as a claim but is not yet re-checked per request, so an issued access token stays valid until it expires |
+| Worker activation | Implemented | A worker holds no password. `POST /devices/activate` is anonymous and takes an owner-issued code as the sole bootstrap credential — see below |
+| Credential-less accounts | Implemented | Two independent guards refuse them at login, each asserted without the other: `CredentialType` excludes them from the candidate set, and `VerifyPassword` refuses a blank hash or salt |
+
+#### Worker activation
+
+The only anonymous endpoint that can produce a session, so its controls are listed rather
+than inferred from the enrolment path it sits beside.
+
+| Control | Status | Detail |
+|---|---|---|
+| Code entropy | Implemented | 80 bits, Crockford base32 in five groups of four. Omits I, L, O and U so a handwritten code cannot be misread |
+| Code storage | Implemented | SHA-256 only. The plaintext is returned once at issue and cannot be recovered |
+| Single use | Implemented | Claimed by a conditional `UPDATE`, so two handsets racing on one code produce exactly one device |
+| Expiry | Implemented | 24 hours by default, 1–168 permitted. A code that never expires is a standing backdoor |
+| Per-code attempts | Implemented | 10 failures locks the code. Bounds effort against one code; does nothing against many, which is why the next row exists |
+| Per-IP rate limit | Implemented | 10/min. With no caller identity this is the only control against an attacker trying many different codes |
+| Scope binding | Implemented | Organization, branch, role and worker are fixed at issue and read from the code. The request carries none of them |
+| Branch consistency | Implemented | The code's branch must match the worker's own, enforced at issue and again at redemption |
+| Uniform rejection | Implemented | Invalid, expired, revoked, spent, attempt-limited, worker-disabled and branch-mismatched share one status and one body, so the endpoint is not an oracle for which codes exist |
+| Secret logging | Implemented | The submitted code is never logged; audit entries carry only the non-secret display prefix |
+
+**Accepted reduction.** This path does not require an authenticated caller, unlike
+`POST /devices/enrol`. That is a real weakening relative to that endpoint, accepted because
+requiring every worker to hold an account is the obstacle activation exists to remove. It is
+recorded here rather than glossed.
 
 ### Authorization
 
