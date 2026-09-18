@@ -132,7 +132,6 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         amountMinor = row.amountMinor,
                         cashDeltaMinor = row.cashDeltaMinor,
                         atUtcMillis = row.transactionAtUtcMillis,
-                        reference = row.reference,
                         capturedAutomatically = row.sourceType == "SMS",
                         delivery = ActivityDelivery.fromOutboxState(row.outboxState)
                     )

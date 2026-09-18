@@ -329,6 +329,44 @@ class by class rather than as a blanket `-keep class app.zazi.** { *; }`: a blan
 preserve every `@Serializable` DTO too, and a missing serialization keep rule is precisely the
 defect this build type exists to find.
 
+## Verifying on a physical handset
+
+The emulator reaches the host at `10.0.2.2`. A real phone cannot, and the debug build will
+not talk to an arbitrary address: `src/debug/res/xml/network_security_config.xml` permits
+cleartext to **`10.0.2.2` and `localhost` only**, and refuses everything else. Pointing a
+build at a LAN address or at `127.0.0.1` produces "No connection. Check your network and try
+again." with nothing in the logs to explain it — the config is doing its job, and `localhost`
+and `127.0.0.1` are not the same entry to Android's matcher.
+
+Use a reverse tunnel and the name `localhost`:
+
+```bash
+adb -s <serial> reverse tcp:5060 tcp:5060
+./gradlew :app:assembleDebug -PapiBaseUrl=http://localhost:5060/
+```
+
+The tunnel survives app restarts but not a device reconnect; re-add it if the app suddenly
+reports no connection.
+
+### Driving a transaction into a dead letter or a conflict
+
+Neither state can be reached by using the app normally, which is the point of them. Both are
+reached by failing the sync endpoint in front of a healthy backend, so nothing about the
+server, its data or the build under test is changed:
+
+- **Dead letter.** Answer `POST /api/v1/sync/*` with `413` or `400`. `TransportFailurePolicy`
+  treats both as permanently invalid and dead-letters on the first attempt. Ten consecutive
+  `5xx` responses reach the same state through budget exhaustion instead, which takes about
+  seventeen minutes of real backoff — `DeadLetterRetryTest` covers that path with a supplied
+  clock rather than the wait.
+- **Conflict.** A conflict is not a status code. It is a `200` batch response whose per-item
+  result carries `"status":"Conflict"`, so an injecting proxy has to read the submitted
+  `clientTransactionId` values out of the request's `transactions` array and answer each one.
+
+Expect "Try again" on the dead letter and no such button on the conflict. That difference is
+deliberate and is enforced in the `UPDATE`'s `WHERE` clause, not in the screen — see
+`DeadLetterRetryTest`.
+
 ## Web dashboard
 
 `Zazi.Web` is a Blazor Server application that reads the same PostgreSQL database through the

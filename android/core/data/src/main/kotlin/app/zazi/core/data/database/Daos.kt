@@ -87,7 +87,6 @@ interface LocalTransactionDao {
                t.amountMinor         AS amountMinor,
                t.cashDeltaMinor      AS cashDeltaMinor,
                t.transactionAtUtcMillis AS transactionAtUtcMillis,
-               t.reference           AS reference,
                t.sourceType          AS sourceType,
                o.state               AS outboxState
         FROM local_transactions t
@@ -112,7 +111,6 @@ interface LocalTransactionDao {
                t.amountMinor         AS amountMinor,
                t.cashDeltaMinor      AS cashDeltaMinor,
                t.transactionAtUtcMillis AS transactionAtUtcMillis,
-               t.reference           AS reference,
                t.sourceType          AS sourceType,
                o.state               AS outboxState
         FROM local_transactions t

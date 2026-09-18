@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.SocketPolicy
@@ -193,7 +194,7 @@ class TelemetryTest {
                 .url(server.url("/api/v1/auth/login?email=agent@example.test"))
                 .header("Authorization", "Bearer super-secret-token")
                 .header("Cookie", "session=secret-cookie")
-                .post(okhttp3.RequestBody.create(null, """{"password":"hunter2"}"""))
+                .post("""{"password":"hunter2"}""".toRequestBody())
                 .build()
         ).execute().close()
 

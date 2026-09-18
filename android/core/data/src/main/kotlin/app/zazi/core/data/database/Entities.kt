@@ -259,7 +259,6 @@ data class RecentTransactionRow(
     val amountMinor: Long,
     val cashDeltaMinor: Long,
     val transactionAtUtcMillis: Long,
-    val reference: String?,
     val sourceType: String,
     val outboxState: String?
 )

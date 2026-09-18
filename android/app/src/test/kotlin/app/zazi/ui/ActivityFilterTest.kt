@@ -66,12 +66,27 @@ class ActivityFilterTest {
     }
 
     @Test
+    fun `the attempt count reads naturally at one and at many`() {
+        val once = detail(ActivityDelivery.NEEDS_REVIEW, retryable = true, attempts = 1)
+        val several = detail(ActivityDelivery.NEEDS_REVIEW, retryable = true, attempts = 10)
+
+        // "after 1 attempts" reads as a bug to the person holding the phone, which
+        // undermines the rest of what this screen is telling them.
+        assertThat(once.guidance).contains("after 1 attempt.")
+        assertThat(several.guidance).contains("after 10 attempts.")
+    }
+
+    @Test
     fun `a delivered or in-flight transaction asks nothing of the agent`() {
         assertThat(detail(ActivityDelivery.SENT, retryable = false).guidance).isNull()
         assertThat(detail(ActivityDelivery.SENDING, retryable = false).guidance).isNull()
     }
 
-    private fun detail(delivery: ActivityDelivery, retryable: Boolean) = TransactionDetail(
+    private fun detail(
+        delivery: ActivityDelivery,
+        retryable: Boolean,
+        attempts: Int = 5
+    ) = TransactionDetail(
         clientTransactionId = "client-transaction-0001",
         label = "Cash in",
         provider = "MTN",
@@ -82,7 +97,7 @@ class ActivityFilterTest {
         reference = null,
         capturedAutomatically = false,
         delivery = delivery,
-        attemptCount = 5,
+        attemptCount = attempts,
         lastReasonCode = null,
         isRetryable = retryable
     )

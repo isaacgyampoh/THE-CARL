@@ -198,6 +198,10 @@ data class CaptureConfirmation(
  * — pending, syncing, retrying — are all the same fact to the person holding the phone: it is
  * on its way and nothing is required of them. The states that do require something, a
  * conflict or an exhausted retry, are kept separate precisely because they need a person.</p>
+ *
+ * <p>Deliberately narrow. This model is rebuilt on every refresh while sync progresses, so it
+ * carries only what a row draws — no customer number, and not the provider reference, which
+ * only the detail screen shows and which is read on demand when it does.</p>
  */
 data class ActivityItem(
     val clientTransactionId: String,
@@ -207,7 +211,6 @@ data class ActivityItem(
     /** Signed cash movement, so the list shows direction without re-deriving it. */
     val cashDeltaMinor: Long,
     val atUtcMillis: Long,
-    val reference: String?,
     val capturedAutomatically: Boolean,
     val delivery: ActivityDelivery
 ) {
@@ -309,7 +312,13 @@ data class TransactionDetail(
         get() = when {
             delivery == ActivityDelivery.SENT -> null
             delivery == ActivityDelivery.SENDING -> null
-            isRetryable -> "This stopped after $attemptCount attempts. You can try again."
+            // Pluralised, because the single-attempt case is the common one for a batch
+            // rejected outright and "after 1 attempts" reads as a bug to the person holding
+            // the phone — which undermines the rest of what this screen is telling them.
+            isRetryable -> {
+                val attempts = if (attemptCount == 1) "1 attempt" else "$attemptCount attempts"
+                "This stopped after $attempts. You can try again."
+            }
             else -> "The server did not accept this. Ask your manager to review it — " +
                 "sending it again would be refused the same way."
         }
