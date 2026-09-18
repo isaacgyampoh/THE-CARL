@@ -1,3 +1,10 @@
+// The tenancy, identity and device entities the rest of the domain hangs off:
+// Organization -> Branch -> User -> Device -> Session, plus the roles and tokens that
+// authorise them.
+//
+// This file was called Class1.cs — the name the project template generates — for long enough
+// that the most load-bearing types in the product were the hardest ones to find.
+
 namespace Zazi.Domain;
 
 // TransactionType now lives in Financial/TransactionType.cs, expanded to cover reversals,

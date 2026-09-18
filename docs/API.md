@@ -38,6 +38,28 @@ Cross-tenant access returns `403`, never `404`, so entity ids cannot be probed.
 | GET | `/api/v1/status` | Service name only — no version or backing-store detail |
 | POST | `/api/v1/auth/login` | Rate limited per IP (10/min) |
 | POST | `/api/v1/auth/refresh` | Rate limited per IP (10/min) |
+| POST | `/api/v1/devices/activate` | Worker activation. Rate limited per IP (10/min) |
+
+`POST /devices/activate` is the only anonymous endpoint that can create a session, so it is
+worth being precise about what it does and does not accept.
+
+It takes `{ code, deviceIdentifier, name, platform, network, appVersion, osVersion }` — facts
+the handset knows about itself, and nothing else. There is **no** organization, branch, role
+or user field, and that omission is the security property: the server reads all of them from
+the code, so a client that could name its own organization could join any tenant it liked.
+
+The code is looked up globally by SHA-256 hash rather than within a tenant, because there is
+no caller to take a tenant from. That is safe because the lookup key is a hash of eighty bits
+of entropy — there is nothing to enumerate — and every other check is the same one the
+authenticated enrolment path makes.
+
+On success it creates the device, marks the code redeemed and returns a real session — the
+same `AuthTokenResult` login returns — plus the worker's name, branch and business for the
+confirmation screen. It carries nothing about the code and nothing about other users.
+
+`401` covers invalid, expired, revoked, already-used, attempt-limited, worker-disabled and
+branch-mismatched alike, with an identical body. Distinguishing them would tell an
+unauthenticated caller which codes exist.
 
 ---
 
@@ -52,6 +74,7 @@ Authenticated traffic is rate limited per user (300/min).
 | GET | `/api/v1/auth/me` | any authenticated user |
 | GET | `/api/v1/auth/users` | `staff.manage` — branch managers see only their branch |
 | POST | `/api/v1/auth/staff` | `staff.manage` — cannot grant organization-wide roles unless the caller has them |
+| POST | `/api/v1/auth/workers` | `staff.manage` — creates a worker with no email and no password, who activates by code. Branch-scoped; organization-wide roles are refused |
 
 ### Organizations and branches
 

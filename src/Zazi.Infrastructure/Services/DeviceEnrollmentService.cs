@@ -88,12 +88,30 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
 
         if (request.IntendedUserId is { } intendedUserId)
         {
-            var userBelongs = await _dbContext.Users
-                .AnyAsync(x => x.Id == intendedUserId && x.OrganizationId == organizationId, cancellationToken);
+            var intended = await _dbContext.Users
+                .AsNoTracking()
+                .SingleOrDefaultAsync(
+                    x => x.Id == intendedUserId && x.OrganizationId == organizationId, cancellationToken);
 
-            if (!userBelongs)
+            if (intended is null)
             {
                 throw new ArgumentException("The intended user is not in this organization.", nameof(request));
+            }
+
+            // The code's branch and the worker's branch must be the same one.
+            //
+            // Both values are legitimate on their own — the worker really is in their branch,
+            // and an organization-wide issuer really may write to another — so nothing else
+            // compares them. Left unchecked, activation produces a worker whose access token
+            // claims one branch while the device recording their transactions sits in
+            // another, so their authorisation and their financial records disagree about
+            // where they work. Refused here so the owner finds out while issuing rather than
+            // when the worker cannot use the code.
+            if (intended.BranchId is { } workerBranch && workerBranch != branchId)
+            {
+                throw new ArgumentException(
+                    "The intended user belongs to a different branch. Issue the code for their own branch.",
+                    nameof(request));
             }
         }
 
@@ -403,7 +421,13 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
 
         // A disabled worker cannot activate, and a code outliving the worker it names is
         // refused rather than quietly reassigned.
-        if (worker is null || !worker.IsActive)
+        //
+        // The branch comparison is the enforcement rather than the convenience: IssueCodeAsync
+        // refuses to create a mismatched code, but a code issued before that rule existed is
+        // still in the database, and this is what stops it being redeemed into an
+        // inconsistent state.
+        if (worker is null || !worker.IsActive
+            || (worker.BranchId is { } workerBranch && workerBranch != code.BranchId))
         {
             code.FailedAttempts++;
             await _dbContext.SaveChangesAsync(cancellationToken);

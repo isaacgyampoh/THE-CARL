@@ -63,6 +63,37 @@ Note `device.manage` excludes `AGENT`. An agent cannot self-enrol — a manager 
 registers the handset. The Android flow must account for that rather than assuming an agent
 can complete setup alone.
 
+### Worker activation — the path a handset actually takes
+
+`POST /devices/activate` is **anonymous**, and it is what a worker uses. `POST /devices/enrol`
+requires a token and therefore an account, which is the obstacle activation exists to remove:
+a worker operating a business phone should not need credentials of their own.
+
+```
+{ code, deviceIdentifier, name, platform, network, appVersion, osVersion }
+```
+
+Send no organization, branch or role. The server reads them from the code. The response is a
+real session plus the worker's name, branch and business:
+
+```
+{ session: { accessToken, refreshToken, expiresAtUtc, user }, deviceId, deviceName,
+  branchId, branchName, organizationName, workerName }
+```
+
+Two client-side consequences that have already caused a defect:
+
+- **`user.email` is null for a worker.** They have no account, so the field is absent rather
+  than empty. A required-string deserialization here fails the whole activation and surfaces
+  as an opaque error with nothing pointing at the cause.
+- **Activation cannot work offline.** Only the server can say who a worker is. Everything
+  after activation keeps the existing offline behaviour; this one step does not.
+
+`401` means the code cannot be used and does not say why — invalid, expired, revoked, spent,
+attempt-limited and worker-disabled are deliberately indistinguishable. Show one message and
+name the recovery: ask the owner for a new code. `409` means this handset is already
+registered, which needs the owner to reset the device instead.
+
 ---
 
 ## Sync — the endpoint the engine is built around

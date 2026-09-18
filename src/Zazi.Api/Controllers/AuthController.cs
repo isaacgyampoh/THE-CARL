@@ -148,14 +148,10 @@ public class AuthController : ControllerBase
     {
         var users = await _authService.GetUsersAsync(_currentUser.OrganizationId, cancellationToken);
 
-        // Branch-scoped managers see only their own branch's staff.
-        if (!_currentUser.HasOrganizationWideScope)
-        {
-            var branchId = _currentUser.BranchId;
-            users = users.Where(u => u.BranchId == branchId).ToList();
-        }
-
-        return Ok(users);
+        // Branch-scoped managers see only their own branch's staff. The rule lives in
+        // BranchScoping so the owner portal, which calls the service directly, gets the same
+        // answer as this endpoint.
+        return Ok(_currentUser.LimitToVisibleBranch(users, u => u.BranchId));
     }
 
     [HttpGet("me")]

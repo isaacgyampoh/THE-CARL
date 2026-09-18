@@ -38,13 +38,7 @@ public class DevicesController : ControllerBase
     {
         var devices = await _deviceService.GetDevicesAsync(_currentUser.OrganizationId, cancellationToken);
 
-        if (!_currentUser.HasOrganizationWideScope)
-        {
-            var assigned = _currentUser.BranchId;
-            devices = devices.Where(d => d.BranchId == assigned).ToList();
-        }
-
-        return Ok(devices);
+        return Ok(_currentUser.LimitToVisibleBranch(devices, d => d.BranchId));
     }
 
     [HttpPost]

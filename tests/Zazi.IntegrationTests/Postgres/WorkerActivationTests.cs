@@ -436,6 +436,98 @@ public class WorkerActivationTests : IDisposable
             WithoutCorrelationId(await unknown.Content.ReadAsStringAsync()));
     }
 
+    // ─── Brute force ─────────────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task RepeatedGuessingIsRateLimited()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+
+        // The only anonymous endpoint in the product, so this limiter is doing more work here
+        // than anywhere else: with no caller identity there is nothing else between someone
+        // and a tenant except the code's own entropy and its per-code attempt counter. The
+        // per-code counter cannot help against an attacker trying many different codes, which
+        // is exactly what this bounds.
+        var statuses = new List<HttpStatusCode>();
+        for (var attempt = 0; attempt < 15; attempt++)
+        {
+            var response = await RawActivateAsync(
+                $"ZAZI-AAAA-BBBB-CCCC-{attempt:D4}", "handset-" + Guid.NewGuid().ToString("N"));
+            statuses.Add(response.StatusCode);
+        }
+
+        Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
+
+        // And the limit is reached well before a meaningful number of guesses. Asserting the
+        // shape rather than the exact count, so tuning the policy does not break this.
+        Assert.True(
+            statuses.IndexOf(HttpStatusCode.TooManyRequests) <= 12,
+            $"Rate limiting engaged only after {statuses.IndexOf(HttpStatusCode.TooManyRequests) + 1} attempts.");
+    }
+
+    // ─── Branch consistency ──────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task IssuingACodeForAWorkerInAnotherBranchIsRefused()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var otherBranch = await CreateBranchAsync(tenant.OrganizationId);
+        var worker = await CreateWorkerAsync(tenant, "Split Brain");
+
+        // Both values are legitimate on their own: the worker really is in their branch, and
+        // an organization-wide issuer really may write to the other one. Nothing compared
+        // them, and the result would be a worker whose token claims one branch while the
+        // device recording their transactions sits in another — authorisation and financial
+        // records disagreeing about where somebody works.
+        var response = await OwnerClient(tenant).PostAsJsonAsync(CodesPath, new
+        {
+            branchId = otherBranch,
+            intendedUserId = worker.Id
+        });
+
+        // Refused at issue, so the owner finds out now rather than when the worker cannot use
+        // the code they were handed.
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task AMismatchedCodeCannotBeActivatedEvenIfItExists()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var otherBranch = await CreateBranchAsync(tenant.OrganizationId);
+        var worker = await CreateWorkerAsync(tenant, "Legacy Code");
+        var issued = await IssueAsync(tenant, worker.Id);
+
+        // Moved after issue, standing in for a code created before the rule above existed.
+        // Those rows are still in the database, so the activation path has to be the actual
+        // boundary rather than trusting that nothing bad was ever issued.
+        await MutateCodeAsync(issued.Id, c => c.BranchId = otherBranch);
+
+        var response = await RawActivateAsync(issued.Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task AWorkersDeviceLandsInTheWorkersOwnBranch()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+        var worker = await CreateWorkerAsync(tenant, "Consistent");
+        var issued = await IssueAsync(tenant, worker.Id);
+
+        var result = await ActivateAsync(issued.Code, "handset-" + Guid.NewGuid().ToString("N"));
+
+        await using var db = _postgres.CreateContext();
+        var stored = await db.Users.AsNoTracking().SingleAsync(x => x.Id == worker.Id);
+
+        // The device's branch and the worker's branch are the same thing, and the token's
+        // branch claim comes from the latter.
+        Assert.Equal(stored.BranchId, result.BranchId);
+    }
+
     // ─── Revocation ──────────────────────────────────────────────────────────
 
     [SkippableFact]
@@ -526,6 +618,19 @@ public class WorkerActivationTests : IDisposable
     private static string WithoutCorrelationId(string body) =>
         System.Text.RegularExpressions.Regex.Replace(body, "\"correlationId\":\"[^\"]*\"", "");
 
+    private HttpClient OwnerClient(TenantSeed tenant) =>
+        _factory!.CreateClient().Authenticated(
+            TestTokens.Create(tenant.UserId, tenant.OrganizationId, null, ZaziRoles.Owner));
+
+    private async Task<Guid> CreateBranchAsync(Guid organizationId)
+    {
+        await using var db = _postgres.CreateContext();
+        var branch = new Branch { OrganizationId = organizationId, Name = $"Other {Guid.NewGuid():N}" };
+        db.Branches.Add(branch);
+        await db.SaveChangesAsync();
+        return branch.Id;
+    }
+
     private HttpClient ManagerClient(TenantSeed tenant) =>
         _factory!.CreateClient().Authenticated(
             TestTokens.Create(tenant.UserId, tenant.OrganizationId, tenant.BranchId, ZaziRoles.BranchManager));
@@ -543,11 +648,16 @@ public class WorkerActivationTests : IDisposable
         return (await response.Content.ReadFromJsonAsync<UserDto>())!;
     }
 
-    private async Task<EnrollmentCodeIssuedDto> IssueAsync(TenantSeed tenant, Guid? intendedUserId)
+    private async Task<EnrollmentCodeIssuedDto> IssueAsync(
+        TenantSeed tenant, Guid? intendedUserId, Guid? branchId = null)
     {
-        var response = await ManagerClient(tenant).PostAsJsonAsync(CodesPath, new
+        // An owner rather than a branch manager when writing to another branch, because a
+        // branch manager is refused one by the tenant guard before this rule is ever reached.
+        var client = branchId is null ? ManagerClient(tenant) : OwnerClient(tenant);
+
+        var response = await client.PostAsJsonAsync(CodesPath, new
         {
-            branchId = tenant.BranchId,
+            branchId = branchId ?? tenant.BranchId,
             intendedUserId
         });
 
