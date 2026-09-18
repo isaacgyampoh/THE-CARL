@@ -111,11 +111,22 @@ JWT_KEY="$(cat "$JWT_KEY_FILE")"
 CONN="Host=127.0.0.1;Port=5432;Database=zazi;Username=zazi;Password=${DB_PASSWORD}"
 
 # The same key in both files, deliberately: the dashboard validates what the API signs.
-for svc in api web; do
-    cat > "/etc/zazi/${svc}.env" <<ENVEOF
+cat > /etc/zazi/api.env <<ENVEOF
+ConnectionStrings__DefaultConnection=${CONN}
+ZAZI_JWT_KEY=${JWT_KEY}
+# Migrations default to OFF in production, and the API refuses to start while any are
+# pending. On a fresh database that is all of them, so without this the first start fails.
+# Safe here because this deployment runs one API process; the race the default guards
+# against needs two.
+Database__MigrateOnStartup=true
+ENVEOF
+
+cat > /etc/zazi/web.env <<ENVEOF
 ConnectionStrings__DefaultConnection=${CONN}
 ZAZI_JWT_KEY=${JWT_KEY}
 ENVEOF
+
+for svc in api web; do
     chown root:root "/etc/zazi/${svc}.env"
     chmod 600 "/etc/zazi/${svc}.env"
 done
@@ -147,6 +158,23 @@ say "Locking the firewall to Cloudflare"
 # SSH is left open to everywhere here because locking yourself out of a remote VM is a
 # worse first-day outcome than an exposed SSH port. Narrow it to your own address once
 # you are in: ufw allow from <your-ip> to any port 22 && ufw delete allow 22
+# Oracle Cloud images arrive with their own iptables ruleset — /etc/iptables/rules.v4,
+# managed by netfilter-persistent — which DROPs inbound traffic other than SSH. ufw does
+# not manage those rules and does not remove them, so a deployment can have textbook-correct
+# ufw output and still drop every request. It looks like a DNS or Cloudflare problem and is
+# neither.
+#
+# Removing the persistence package leaves the running rules in place until they are flushed,
+# which the ufw reset below then does.
+if dpkg -l netfilter-persistent 2>/dev/null | grep -q '^ii'; then
+    say "Removing Oracle's preinstalled iptables rules so ufw is the only firewall"
+    apt-get purge -y -qq netfilter-persistent iptables-persistent || true
+    iptables -F || true
+    iptables -P INPUT ACCEPT || true
+    ip6tables -F || true
+    ip6tables -P INPUT ACCEPT || true
+fi
+
 ufw --force reset >/dev/null
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
@@ -179,6 +207,13 @@ Still to do, in this order:
 
   2. Point DNS at this server in Cloudflare: A records for api and app, both
      PROXIED (orange cloud), SSL/TLS mode Full (strict).
+
+  2b. ON ORACLE CLOUD ONLY — open 80 and 443 in the VCN Security List, in the OCI
+      console. Oracle has a second firewall at the network level that this script
+      cannot reach, and it blocks everything by default. The host firewall above is
+      configured correctly and traffic still will not arrive until you do this.
+      Networking -> Virtual Cloud Networks -> your VCN -> Security Lists ->
+      Add Ingress Rules for TCP 80 and 443.
 
   3. Start everything:
         sudo systemctl enable --now zazi-api zazi-web zazi-healthcheck.timer

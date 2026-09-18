@@ -69,8 +69,13 @@ the two processes on loopback. Nothing else is exposed.
                            PostgreSQL, loopback only
 ```
 
-`<DOMAIN>` is yours and appears in exactly one place on the server, `/etc/default/caddy`.
-The Caddyfile reads it as `{$ZAZI_DOMAIN}`, so nothing in this repository names your domain.
+`<DOMAIN>` appears in exactly one place on the server, `/etc/default/caddy`. The Caddyfile
+reads it as `{$ZAZI_DOMAIN}`, so no deployment's domain is written into this repository.
+
+For the current deployment that value is `getzazi.com`, giving `api.getzazi.com` for the API
+and `app.getzazi.com` for the dashboard. `getzazi.com` itself is not served by Zazi — neither
+process answers on the apex, and pointing it at this server would return a certificate error
+rather than anything useful.
 
 ### Three things about this shape that are easy to get wrong
 
@@ -121,6 +126,34 @@ with no shell and no home. `/opt/zazi` (application, root-owned), `/etc/zazi` (s
 600), `/var/lib/zazi/keys` (data-protection key ring, owned by `zazi`, mode 700),
 `/var/log/caddy`.
 
+### On Oracle Cloud Always Free
+
+Always Free offers two shapes, and only one of them can run Zazi.
+
+| Shape | Verdict |
+|---|---|
+| **VM.Standard.A1.Flex** (Ampere, ARM) — up to 4 OCPU / 24 GB | **Use this.** Ask for 2 OCPU / 12 GB; it is free and comfortably above what Zazi needs. |
+| VM.Standard.E2.1.Micro (AMD, x86) — 1 OCPU / **1 GB** | Too small. Below the 2 GB minimum above: it survives until the first large batch sync, then the kernel kills PostgreSQL. |
+
+**ARM is fine.** `dotnet publish` without a runtime identifier produces framework-dependent
+output that runs on whatever architecture the installed runtime is, and Ubuntu ships
+`aspnetcore-runtime-8.0` for arm64. Nothing in Zazi is architecture-specific. Do not add
+`-r linux-arm64` — it would produce a self-contained build that then has to match.
+
+**Two firewalls, and this catches people.** Oracle filters at the network level with VCN
+Security Lists *and* ships images carrying their own `iptables` rules. Neither is ufw.
+
+- The **VCN Security List** is in the OCI console and `install.sh` cannot reach it. Open TCP
+  80 and 443 there: *Networking → Virtual Cloud Networks → your VCN → Security Lists → Add
+  Ingress Rules*. Until you do, traffic never arrives, however correct everything on the host
+  looks.
+- The **preinstalled `iptables` rules** DROP inbound traffic other than SSH and are not
+  managed by ufw, so ufw can report exactly the right rules while every request is still
+  dropped. `install.sh` removes them, because two firewalls disagreeing is worse than either.
+
+The symptom of missing either is identical and misleading: `https://api.getzazi.com` times
+out, and it reads as a DNS or Cloudflare problem.
+
 ## Database
 
 **PostgreSQL 16** (what Ubuntu 24.04 ships; the test suite runs against 16.2). No extensions
@@ -131,11 +164,27 @@ the only tenants, loopback is faster and simpler than TLS to a remote host, and 
 instance adds monthly cost and a network hop for no benefit until you outgrow one machine.
 Revisit when you run more than one API process.
 
-**Migrations** apply automatically at startup (`Database__MigrateOnStartup`, default true
-outside Development). Leave it. Set it to false only if you ever run more than one API
-process, where two instances migrating concurrently is a race — then apply them yourself
-before rolling out. There is no destructive fallback anywhere: a migration that cannot
-apply stops the service rather than dropping anything. See `MIGRATION_SAFETY.md`.
+**Migrations do not run by default in production.** `Database:MigrateOnStartup` defaults to
+*on* in Development and *off* everywhere else, because several instances rolling out together
+would race each other through the same migration, and a deployment that only meant to ship
+code would silently alter the schema with no step to review or gate.
+
+The API then **refuses to start** when migrations are pending, naming the first one. That is
+deliberate — serving traffic against a schema the code does not match surfaces as scattered
+column-not-found errors rather than one clear failure — but on a fresh server *every*
+migration is pending, so the first start fails unless you have chosen one of these:
+
+- **Single API process (this deployment).** Set `Database__MigrateOnStartup=true` in
+  `/etc/zazi/api.env`. `install.sh` writes it for you. The race the default guards against
+  cannot happen with one instance.
+- **More than one API process.** Leave it off and migrate as a deployment step before
+  rolling out:
+  ```bash
+  ConnectionStrings__DefaultConnection="…"     scripts/dotnet.sh ef database update --project src/Zazi.Infrastructure
+  ```
+
+There is no destructive fallback anywhere: a migration that cannot apply stops the service
+rather than dropping anything. See `MIGRATION_SAFETY.md`.
 
 **SSL to the database** is unnecessary on loopback and adds nothing. Add `SSL Mode=Require`
 only if you move PostgreSQL to another host.
@@ -182,6 +231,7 @@ Steps marked **prepared** are already written in this repository.
 | 1 | Provision the VM (spec above) | **you** — provider dashboard |
 | 2 | Add the domain to Cloudflare | **you** — Cloudflare dashboard |
 | 3 | DNS records, see below | **you** — Cloudflare dashboard |
+| 3b | **Oracle only:** open 80/443 in the VCN Security List | **you** — OCI console |
 | 4 | Install runtime, PostgreSQL, Caddy, firewall | **prepared** — `deploy/install.sh` |
 | 5 | Create database and role | **prepared** — same script |
 | 6 | Write `/etc/zazi/api.env` | **prepared** — same script, secrets generated on the server |
@@ -189,7 +239,7 @@ Steps marked **prepared** are already written in this repository.
 | 8 | Install systemd units | **prepared** — same script |
 | 9 | Configure Caddy | **prepared** — same script |
 | 10 | Publish the application to the VM | **you** — one command, below |
-| 11 | Start the services | **you** — one command, below |
+| 11 | Start the services (migrations run on first start) | **you** — one command, below |
 | 12 | Verify `/health` | **you** — browser |
 | 13 | Verify `/ready` — proves the database | **you** — browser |
 | 14 | Verify the dashboard signs in | **you** — browser |
