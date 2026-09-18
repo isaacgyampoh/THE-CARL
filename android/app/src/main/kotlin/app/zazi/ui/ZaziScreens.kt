@@ -214,10 +214,10 @@ fun EnrolmentScreen(
             value = state.code,
             onValueChange = { onCodeChanged(it.uppercase()) },
             label = { Text("Enrolment code") },
-            placeholder = { Text("ZAZI-XXXX-XXXX-…") },
+            placeholder = { Text("ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX") },
             textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-            minLines = 2,
-            maxLines = 3,
+            minLines = 1,
+            maxLines = 2,
             enabled = !state.isSubmitting,
             isError = state.error == EnrolmentError.INVALID_OR_EXPIRED,
             keyboardOptions = KeyboardOptions(

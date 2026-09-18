@@ -16,11 +16,29 @@ namespace Zazi.Infrastructure.Services;
 public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
 {
     /// <summary>
-    /// 160 bits of entropy, rendered as 32 Crockford base32 characters in five groups.
-    /// Sized so guessing is infeasible even without the attempt limit, and grouped so it can
-    /// be read down a phone line without transcription errors.
+    /// 80 bits of entropy, rendered as twenty Crockford base32 characters in five groups.
     /// </summary>
-    private const int CodeEntropyBytes = 20;
+    /// <remarks>
+    /// <para>
+    /// This was 160 bits, which produced a fifty-four character code. An agent is given that
+    /// code over the phone or in a message and types it into a handset, and a code that long
+    /// is transcribed wrongly often enough to matter — the cost of the extra entropy was paid
+    /// entirely by the person least able to absorb it.
+    /// </para>
+    /// <para>
+    /// 80 bits is still far beyond reach. Redeeming requires an already-authenticated caller,
+    /// the endpoint is rate limited to ten attempts a minute per address, a code is single
+    /// use, it expires, and failed attempts against a real code are counted. That caps
+    /// guessing at roughly fourteen thousand attempts a day against a space of 2^80, which
+    /// is not a contest. The limit on this code has never been its length.
+    /// </para>
+    /// <para>
+    /// Note that each byte yields two characters but only eight bits: the second character
+    /// mixes in the group index, so the encoding is deliberately not dense. The entropy
+    /// figure above is bytes times eight, not characters times five.
+    /// </para>
+    /// </remarks>
+    private const int CodeEntropyBytes = 10;
 
     private const string CodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     private const string CodePrefixMarker = "ZAZI";
@@ -443,7 +461,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>Crockford base32, grouped for readability: ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX.</summary>
+    /// <summary>Crockford base32, grouped for readability: ZAZI-XXXX-XXXX-XXXX-XXXX-XXXX.</summary>
     private static string GenerateCode()
     {
         var bytes = RandomNumberGenerator.GetBytes(CodeEntropyBytes);

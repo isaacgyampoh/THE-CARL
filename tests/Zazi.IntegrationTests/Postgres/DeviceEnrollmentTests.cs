@@ -352,6 +352,32 @@ public class DeviceEnrollmentTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task ACodeIsShortEnoughToTypeAndStillUnguessable()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+
+        var issued = await IssueAsync(tenant);
+
+        // ZAZI plus five groups of four: twenty-nine characters. This is asserted because the
+        // length is a deliberate trade, not an accident of the encoding. It was fifty-four,
+        // and an agent typing that from a phone call got it wrong often enough to matter.
+        Assert.Equal(29, issued.Code.Length);
+        Assert.Matches("^ZAZI(-[0-9A-HJKMNP-TV-Z]{4}){5}$", issued.Code);
+
+        // The other half of the trade: still unguessable. Distinctness across a sample is a
+        // weak check on its own, but a generator that had lost its entropy — a constant, a
+        // counter, a seeded PRNG — would collide here immediately.
+        var codes = new HashSet<string> { issued.Code };
+        for (var i = 0; i < 20; i++)
+        {
+            codes.Add((await IssueAsync(tenant)).Code);
+        }
+
+        Assert.Equal(21, codes.Count);
+    }
+
+    [SkippableFact]
     public async Task DeviceSelfCarriesTheBranchNameSoAHandsetNeedNotShowAUuid()
     {
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
