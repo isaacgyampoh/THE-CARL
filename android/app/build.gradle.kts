@@ -239,7 +239,26 @@ val releaseUrlProblem: String? = (project.findProperty("apiBaseUrl") as String?)
     }
 }
 
-tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+// Guarded at the point the URL is baked in, not at the end.
+//
+// Attaching this to assembleRelease was not enough: that task runs after its dependencies,
+// so a rejected build still left a complete APK in the output directory carrying the very
+// URL that had just been refused. A failing build that leaves a shippable artifact behind is
+// worse than no guard, because the failure is easy to miss and the file is easy to pick up.
+//
+// packageRelease is the task that writes the APK, and bundleRelease the AAB, so failing them
+// means no artifact is ever created. assembleRelease stays as a backstop.
+//
+// Deliberately NOT preReleaseBuild or generateReleaseBuildConfig, which looked like the
+// earliest possible point and broke `./gradlew test`: the release-variant unit tests depend
+// on them, and a guard about shipping has no business stopping anyone running tests.
+tasks.matching {
+    it.name in setOf(
+        "packageRelease",
+        "bundleRelease",
+        "assembleRelease"
+    )
+}.configureEach {
     val problem = releaseUrlProblem
     doFirst {
         if (problem != null) {
