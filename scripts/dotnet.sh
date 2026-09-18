@@ -58,8 +58,11 @@ for root in "${candidates[@]}"; do
     # An SDK in the right major band, not merely any SDK.
     if compgen -G "$root/sdk/$band.*" > /dev/null 2>&1; then
         export DOTNET_ROOT="$root"
-        # Keeps child processes (MSBuild node reuse, test hosts) on the same muxer.
-        export PATH="$root:$PATH"
+        # Keeps child processes (MSBuild node reuse, test hosts) on the same muxer, and puts
+        # global tools within reach. Without the tools directory, `dotnet ef` fails with
+        # "dotnet-ef does not exist" even though the tool is installed — the muxer resolves
+        # tool commands from PATH, not from the SDK root.
+        export PATH="$root:$root/tools:$HOME/.dotnet/tools:$PATH"
         # Telemetry is off by default here: a build tool should not phone home from a
         # financial project's developer machine without someone choosing that.
         export DOTNET_CLI_TELEMETRY_OPTOUT="${DOTNET_CLI_TELEMETRY_OPTOUT:-1}"

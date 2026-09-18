@@ -81,10 +81,17 @@ public static class AuthEndpoints
             {
                 new(ClaimTypes.NameIdentifier, result.User.Id.ToString()),
                 new(ClaimTypes.Name, result.User.FullName),
-                new(ClaimTypes.Email, result.User.Email),
                 new(ZaziClaimTypes.OrganizationId, result.User.OrganizationId.ToString()),
                 new(ZaziClaimTypes.SecurityStamp, securityStamp ?? string.Empty)
             };
+
+            // Only present when the account has an address. Portal sign-in is password-based,
+            // so in practice it always does; the guard is here so an activation-only identity
+            // can never produce a blank email claim on a cookie.
+            if (!string.IsNullOrWhiteSpace(result.User.Email))
+            {
+                claims.Add(new Claim(ClaimTypes.Email, result.User.Email));
+            }
 
             if (result.User.BranchId is { } branchId)
             {

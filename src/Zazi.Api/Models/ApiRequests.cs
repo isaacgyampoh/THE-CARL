@@ -126,3 +126,27 @@ public sealed record RedeemEnrollmentCodeApiRequest(
     [StringLength(50)] string? Network,
     [StringLength(50)] string? AppVersion,
     [StringLength(80)] string? OsVersion);
+
+/// <summary>
+/// A handset activating itself with an owner-issued code, before it has any identity.
+/// </summary>
+/// <remarks>
+/// There is no organization, branch, role or user field here, and that omission is the
+/// security property. All of those are read from the code server-side. A client that could
+/// name its own organization could join any tenant it liked.
+/// </remarks>
+public sealed record ActivateDeviceApiRequest(
+    string Code,
+    string DeviceIdentifier,
+    string? Name = null,
+    string? Platform = null,
+    string? Network = null,
+    string? AppVersion = null,
+    string? OsVersion = null);
+
+/// <summary>An owner creating a worker who will activate by code. No email, no password.</summary>
+public sealed record CreateWorkerApiRequest(
+    Guid BranchId,
+    string FullName,
+    string[] Roles,
+    string? PhoneNumber = null);

@@ -80,6 +80,41 @@ public class AuthController : ControllerBase
         return CreatedAtAction(nameof(GetUsers), null, user);
     }
 
+    /// <summary>
+    /// Creates a worker who authenticates by activation code rather than by password.
+    /// </summary>
+    /// <remarks>
+    /// The owner-facing half of worker activation. The worker gets a name, a branch and a
+    /// role — no address and no credential — and the owner then issues them an activation
+    /// code bound to this identity.
+    /// <para>
+    /// Branch-scoped by the same guard as staff registration, and organization-wide roles are
+    /// refused outright: a worker who could hold one would see the whole business rather than
+    /// their branch.
+    /// </para>
+    /// </remarks>
+    [HttpPost("workers")]
+    [Authorize(Policy = ZaziPolicies.StaffManage)]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status201Created)]
+    public async Task<ActionResult<UserDto>> CreateWorker(
+        [FromBody] CreateWorkerApiRequest request,
+        CancellationToken cancellationToken)
+    {
+        // A branch manager may only create workers in a branch they control.
+        await _tenantGuard.EnsureBranchInTenantAsync(request.BranchId, cancellationToken);
+
+        var worker = await _authService.CreateWorkerAsync(
+            new CreateWorkerRequest(
+                _currentUser.OrganizationId,
+                request.BranchId,
+                request.FullName,
+                request.Roles,
+                request.PhoneNumber),
+            cancellationToken);
+
+        return CreatedAtAction(nameof(GetUsers), null, worker);
+    }
+
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting(RateLimitPolicies.Authentication)]

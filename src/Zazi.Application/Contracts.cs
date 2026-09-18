@@ -137,7 +137,8 @@ public record UserDto(
     Guid OrganizationId,
     Guid? BranchId,
     string FullName,
-    string Email,
+    /// <summary>Null for a worker activated by code, who has no account of their own.</summary>
+    string? Email,
     string? PhoneNumber,
     bool IsActive,
     bool EmailVerified,
@@ -427,8 +428,48 @@ public interface IDeviceService
     Task<IReadOnlyList<DeviceDto>> GetDevicesAsync(Guid organizationId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// A handset redeeming an activation code. Anonymous: there is no caller identity yet.
+/// </summary>
+/// <remarks>
+/// Note what is absent. No organization, no branch, no role, no user. Those are read from the
+/// code server-side, because a client that could name its own organization could join any
+/// tenant. The handset supplies only facts about itself.
+/// </remarks>
+public record ActivateDeviceRequest(
+    string Code,
+    string DeviceIdentifier,
+    string? Name = null,
+    string? Platform = null,
+    string? Network = null,
+    string? AppVersion = null,
+    string? OsVersion = null);
+
+/// <summary>What the handset is told after a successful activation.</summary>
+/// <remarks>
+/// Carries the session and the worker's own context — their name, their branch, their
+/// business — because the first screen after activation shows it. It carries nothing about
+/// the code, nothing about other users, and no internal security state.
+/// </remarks>
+public record DeviceActivationResult(
+    AuthTokenResult Session,
+    Guid DeviceId,
+    string DeviceName,
+    Guid BranchId,
+    string BranchName,
+    string OrganizationName,
+    string WorkerName);
+
 public interface IDeviceEnrollmentService
 {
+    /// <summary>
+    /// Redeems an activation code with no prior authentication, creating the device and a
+    /// session for the worker the code was issued to.
+    /// </summary>
+    Task<DeviceActivationResult> ActivateAsync(
+        ActivateDeviceRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<EnrollmentCodeIssuedDto> IssueCodeAsync(
         IssueEnrollmentCodeRequest request,
         Guid organizationId,
@@ -522,9 +563,50 @@ public interface ILedgerService
     Task ApplyTransactionAsync(FinancialTransaction transaction, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// An owner creating a worker who will authenticate by activation code, not by password.
+/// </summary>
+/// <remarks>
+/// There is deliberately no email and no password here. A worker operates a business device;
+/// requiring them to invent and remember an account to do that is the obstacle this whole
+/// change exists to remove. Their identity is created by the owner and proven by redeeming a
+/// code on a handset.
+/// </remarks>
+public record CreateWorkerRequest(
+    Guid OrganizationId,
+    Guid BranchId,
+    string FullName,
+    string[] Roles,
+    string? PhoneNumber = null);
+
 public interface IAuthService
 {
     Task<UserDto> RegisterUserAsync(RegisterUserRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates a credential-less worker identity. See <see cref="CreateWorkerRequest"/>.</summary>
+    Task<UserDto> CreateWorkerAsync(CreateWorkerRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Issues a real session for a worker who has just redeemed an activation code.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This method performs no authentication.</b> It presumes the caller has already
+    /// proven the worker's identity by redeeming a valid, unexpired, unused, unrevoked code
+    /// and binding it to a device. It exists so activation produces the same
+    /// <c>AuthSession</c> and refresh family that login produces, rather than a parallel
+    /// "worker session" that the rest of the security model would not recognise.
+    /// </para>
+    /// <para>
+    /// It is deliberately not reachable over HTTP. The only caller is the activation path in
+    /// <c>IDeviceEnrollmentService</c>, which calls it inside the same transaction as the
+    /// code claim — so a session cannot exist without the code that authorised it.
+    /// </para>
+    /// </remarks>
+    Task<AuthTokenResult> IssueActivationSessionAsync(
+        Guid userId,
+        Guid deviceId,
+        CancellationToken cancellationToken = default);
     Task<AuthTokenResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
     Task<AuthTokenResult> RefreshTokenAsync(RefreshTokenRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<UserDto>> GetUsersAsync(Guid organizationId, CancellationToken cancellationToken = default);

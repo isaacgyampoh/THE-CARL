@@ -132,6 +132,86 @@ public class AuthService : IAuthService
         return MapUser(entity, canonicalRoles);
     }
 
+    public async Task<UserDto> CreateWorkerAsync(
+        CreateWorkerRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            throw new ArgumentException("Full name is required.", nameof(request));
+        }
+
+        // A worker is always branch-scoped. An organization-wide worker is a contradiction:
+        // the point of the role is that it sees one branch's data.
+        var branchBelongsToOrganization = await _dbContext.Branches
+            .AnyAsync(
+                x => x.Id == request.BranchId && x.OrganizationId == request.OrganizationId,
+                cancellationToken);
+        if (!branchBelongsToOrganization)
+        {
+            throw new ArgumentException("The branch does not belong to the organization.", nameof(request));
+        }
+
+        // Same normalisation and same rejection of unknown names as RegisterUserAsync. A typo
+        // must not quietly fall back to a default role.
+        var requestedRoles = request.Roles.Length == 0 ? [ZaziRoles.Agent] : request.Roles;
+        var canonicalRoles = new List<string>();
+        foreach (var supplied in requestedRoles)
+        {
+            var canonical = ZaziRoles.Normalize(supplied)
+                ?? throw new ArgumentException($"'{supplied}' is not a recognised role.", nameof(request));
+            if (!canonicalRoles.Contains(canonical, StringComparer.Ordinal))
+            {
+                canonicalRoles.Add(canonical);
+            }
+        }
+
+        // An organization-wide role would escape the branch scoping above and hand a worker
+        // the whole business.
+        if (canonicalRoles.Any(ZaziRoles.IsOrganizationWide))
+        {
+            throw new ArgumentException(
+                "A worker cannot hold an organization-wide role.", nameof(request));
+        }
+
+        var entity = new User
+        {
+            OrganizationId = request.OrganizationId,
+            BranchId = request.BranchId,
+            FullName = request.FullName.Trim(),
+            // No address, and no synthetic one. Null is the honest representation, and the
+            // unique index tolerates any number of them.
+            Email = null,
+            PhoneNumber = request.PhoneNumber,
+            CredentialType = UserCredentialType.ActivationOnly,
+            IsActive = true,
+            // Left empty deliberately. VerifyPassword refuses a blank hash, so this identity
+            // cannot be reached by the password route at all.
+            PasswordHash = string.Empty,
+            PasswordSalt = string.Empty,
+            SecurityStamp = NewSecurityStamp()
+        };
+
+        foreach (var roleName in canonicalRoles)
+        {
+            entity.Roles.Add(await EnsureRoleAsync(request.OrganizationId, roleName, cancellationToken));
+        }
+
+        _dbContext.Users.Add(entity);
+        _dbContext.AuditLogs.Add(new AuditLogEntry
+        {
+            OrganizationId = request.OrganizationId,
+            UserId = entity.Id,
+            Action = "WORKER_CREATED",
+            Details = $"Worker created in branch {request.BranchId} with roles " +
+                      $"{string.Join(", ", canonicalRoles)}. No password credential.",
+            ActorType = "User"
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return MapUser(entity, canonicalRoles);
+    }
+
     public async Task<AuthTokenResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
@@ -144,9 +224,14 @@ public class AuthService : IAuthService
         // Email is only unique per organization, so a bare email lookup is ambiguous and
         // previously threw when two tenants shared an address. Candidates are enumerated and
         // the password is checked against each, which also keeps the failure path uniform.
+        // Activation-only workers are excluded from the candidate set outright. They have no
+        // address to match and no credential to verify, but stating it here makes the rule
+        // explicit and independently testable rather than leaving it to emerge from an empty
+        // hash further down. VerifyPassword's refusal of a blank hash remains the security
+        // boundary; this is the second layer, and each is asserted on its own.
         var candidates = await _dbContext.Users
             .Include(x => x.Roles)
-            .Where(x => x.Email == normalizedEmail)
+            .Where(x => x.Email == normalizedEmail && x.CredentialType == UserCredentialType.Password)
             .ToListAsync(cancellationToken);
 
         var user = candidates.FirstOrDefault(x => VerifyPassword(request.Password, x.PasswordHash, x.PasswordSalt));
@@ -251,6 +336,78 @@ public class AuthService : IAuthService
             UserId = user.Id,
             Action = "LOGIN",
             Details = "User successfully authenticated.",
+            ActorType = "User"
+        });
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new AuthTokenResult(
+            accessToken,
+            refreshToken,
+            DateTimeOffset.UtcNow.AddMinutes(_jwtOptions.AccessTokenMinutes),
+            MapUser(user, roles));
+    }
+
+    public async Task<AuthTokenResult> IssueActivationSessionAsync(
+        Guid userId,
+        Guid deviceId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await _dbContext.Users
+            .Include(x => x.Roles)
+            .SingleOrDefaultAsync(x => x.Id == userId, cancellationToken)
+            ?? throw new UnauthorizedAccessException("The activation could not be completed.");
+
+        // Re-checked here even though the activation path checked it. This method issues a
+        // session and must not depend on a caller having been careful.
+        if (!user.IsActive)
+        {
+            throw new UnauthorizedAccessException("The activation could not be completed.");
+        }
+
+        var device = await _dbContext.Devices
+            .SingleOrDefaultAsync(
+                x => x.Id == deviceId && x.OrganizationId == user.OrganizationId, cancellationToken)
+            ?? throw new UnauthorizedAccessException("The activation could not be completed.");
+
+        if (device.IsRevoked || device.Status is DeviceStatus.Revoked or DeviceStatus.Quarantined)
+        {
+            throw new UnauthorizedAccessException("The activation could not be completed.");
+        }
+
+        var roles = ResolveCanonicalRoles(user);
+
+        // The same objects login produces. Nothing downstream — refresh, revocation, the
+        // security stamp check — needs to know this session began with a code rather than a
+        // password, which is the point: one security model, not two.
+        var authSession = new AuthSession
+        {
+            UserId = user.Id,
+            OrganizationId = user.OrganizationId,
+            DeviceId = device.Id,
+            FamilyId = Guid.NewGuid().ToString("N"),
+            Status = AuthSessionStatus.Active,
+            SecurityStampAtIssue = user.SecurityStamp,
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenDays),
+            LastSeenAtUtc = DateTimeOffset.UtcNow
+        };
+        _dbContext.AuthSessions.Add(authSession);
+
+        var accessToken = CreateAccessToken(user, roles);
+        var (refreshToken, refreshEntity) = CreateRefreshToken(user, authSession.FamilyId, authSession.Id);
+        _dbContext.RefreshTokens.Add(refreshEntity);
+
+        user.LastLoginAtUtc = DateTimeOffset.UtcNow;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        device.LastSeenAt = DateTimeOffset.UtcNow;
+
+        _dbContext.AuditLogs.Add(new AuditLogEntry
+        {
+            OrganizationId = user.OrganizationId,
+            UserId = user.Id,
+            DeviceId = device.Id,
+            Action = "WORKER_ACTIVATED",
+            Details = "Session issued by activation code redemption.",
             ActorType = "User"
         });
 
@@ -582,9 +739,16 @@ public class AuthService : IAuthService
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N")),
             new(ZaziClaimTypes.OrganizationId, user.OrganizationId.ToString()),
             new(ZaziClaimTypes.SecurityStamp, user.SecurityStamp),
-            new("email", user.Email),
             new("name", user.FullName)
         };
+
+        // Omitted entirely for an activation-only worker rather than emitted empty. A claim
+        // present but blank invites a consumer to treat "" as an identity; an absent claim
+        // cannot be misread. Nothing authorises on this claim — it is for display.
+        if (!string.IsNullOrWhiteSpace(user.Email))
+        {
+            claims.Add(new Claim("email", user.Email));
+        }
 
         if (user.BranchId is { } branchId)
         {

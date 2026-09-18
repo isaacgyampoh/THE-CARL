@@ -77,12 +77,42 @@ downstream needs to know the session began with a code.
 
 ### 3. `User` must tolerate a worker with no credentials
 
-`Email`, `PasswordHash` and `PasswordSalt` are currently non-nullable and effectively
-required. A worker created by an owner has none of them. They become optional, with a
-constraint that a user has **either** a credential pair **or** an activation-bound identity,
-never neither. Login must refuse a credential-less user explicitly rather than falling
-through a null check — that is the single most dangerous edge in this change and needs a
-test that asserts the refusal, not merely the absence of a crash.
+**Revised after inspecting the code.** The original draft of this ADR said credentials must
+become nullable and called it the most dangerous edge in the change. Inspection showed the
+premise was wrong, and the revision matters because it removes the risk rather than managing
+it.
+
+`VerifyPassword` already fails closed on a missing credential:
+
+```csharp
+if (string.IsNullOrWhiteSpace(salt) || string.IsNullOrWhiteSpace(passwordHash))
+{
+    return false;
+}
+```
+
+`PasswordHash` and `PasswordSalt` are non-nullable strings that default to empty, so a worker
+created without credentials already cannot authenticate by password — not incidentally, but
+because of an explicit existing guard. No migration is needed for either column, and the
+"null hash means success" failure mode this ADR warned about does not exist.
+
+What does block a credential-less worker is unrelated to passwords: `Email` is `IsRequired()`
+and carries a unique index on `(OrganizationId, Email)`. Two workers with no email would both
+store the empty string and collide on that index.
+
+So the schema change is narrower than planned, and is this:
+
+- `User.Email` becomes nullable. PostgreSQL treats nulls as distinct in a unique index, so
+  many credential-less workers coexist and the index still protects real addresses. Existing
+  rows are untouched.
+- `User.CredentialType` is added — `Password` or `ActivationOnly` — defaulting to `Password`,
+  so every existing account keeps its current meaning.
+
+`CredentialType` is not load-bearing for security; the empty-hash guard already is. It exists
+so the distinction between a password account and an activation-bound identity is stated in
+the model rather than inferred from an empty string, and so login can refuse an
+activation-only user explicitly. Defence in depth, and a test asserts both layers
+independently.
 
 ### 4. Owner authentication
 

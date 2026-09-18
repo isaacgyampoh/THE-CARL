@@ -26,11 +26,16 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
     /// entirely by the person least able to absorb it.
     /// </para>
     /// <para>
-    /// 80 bits is still far beyond reach. Redeeming requires an already-authenticated caller,
-    /// the endpoint is rate limited to ten attempts a minute per address, a code is single
-    /// use, it expires, and failed attempts against a real code are counted. That caps
-    /// guessing at roughly fourteen thousand attempts a day against a space of 2^80, which
-    /// is not a contest. The limit on this code has never been its length.
+    /// 80 bits is still far beyond reach. The authenticated enrolment path additionally
+    /// requires a caller identity; the anonymous activation path does not, and deliberately
+    /// leans on the remaining controls instead — rate limiting to ten attempts a minute per
+    /// address, single use, expiry, and a per-code failed-attempt counter. That caps guessing
+    /// at roughly fourteen thousand attempts a day against a space of 2^80, which is not a
+    /// contest. The limit on this code has never been its length.
+    ///
+    /// Losing the authentication requirement is a real reduction and is recorded as one. It
+    /// is accepted because the alternative — making every worker hold an account purely to
+    /// redeem a code — is the obstacle the activation flow exists to remove.
     /// </para>
     /// <para>
     /// Note that each byte yields two characters but only eight bits: the second character
@@ -47,15 +52,18 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
     private readonly ApplicationDbContext _dbContext;
     private readonly SyncOptions _syncOptions;
     private readonly ILogger<DeviceEnrollmentService> _logger;
+    private readonly IAuthService _authService;
 
     public DeviceEnrollmentService(
         ApplicationDbContext dbContext,
         IOptions<SyncOptions> syncOptions,
-        ILogger<DeviceEnrollmentService> logger)
+        ILogger<DeviceEnrollmentService> logger,
+        IAuthService authService)
     {
         _dbContext = dbContext;
         _syncOptions = syncOptions.Value;
         _logger = logger;
+        _authService = authService;
     }
 
     public async Task<EnrollmentCodeIssuedDto> IssueCodeAsync(
@@ -334,6 +342,199 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
 
         return new DeviceEnrolledDto(
             device.Id, organizationId, device.BranchId, device.Name, device.Role, device.Status, now);
+    }
+
+    public async Task<DeviceActivationResult> ActivateAsync(
+        ActivateDeviceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Code))
+        {
+            throw new ArgumentException("An activation code is required.", nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DeviceIdentifier))
+        {
+            throw new ArgumentException("A device identifier is required.", nameof(request));
+        }
+
+        var hash = HashCode(NormalizeCode(request.Code));
+        var now = DateTimeOffset.UtcNow;
+
+        // Looked up globally rather than within a tenant, because there is no caller to take
+        // a tenant from — that is the whole difference between this and RedeemAsync. It is
+        // safe because the lookup key is a SHA-256 of eighty bits of entropy: there is no
+        // space to enumerate, and a miss reveals only that this particular string is not a
+        // code. The organization is then read from the row, never from the request.
+        var code = await _dbContext.DeviceEnrollmentCodes
+            .SingleOrDefaultAsync(x => x.CodeHash == hash, cancellationToken);
+
+        if (code is null)
+        {
+            // Identical to every other rejection below. A distinct "no such code" would turn
+            // this endpoint into an oracle for which codes exist.
+            _logger.LogWarning("Activation attempt with an unrecognised code.");
+            throw new UnauthorizedAccessException("The activation code is not valid.");
+        }
+
+        if (!code.IsRedeemable(now))
+        {
+            code.FailedAttempts++;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedAccessException("The activation code is not valid.");
+        }
+
+        // Activation requires a code bound to a worker. A code without one carries no
+        // identity, so there is nobody to issue a session to; those codes remain valid on the
+        // authenticated enrolment path, where the caller supplies the identity instead.
+        if (code.IntendedUserId is not { } workerId)
+        {
+            code.FailedAttempts++;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogWarning(
+                "Activation attempted with code {CodePrefix}… which is not bound to a worker.",
+                code.CodePrefix);
+            throw new UnauthorizedAccessException("The activation code is not valid.");
+        }
+
+        var worker = await _dbContext.Users
+            .SingleOrDefaultAsync(
+                x => x.Id == workerId && x.OrganizationId == code.OrganizationId, cancellationToken);
+
+        // A disabled worker cannot activate, and a code outliving the worker it names is
+        // refused rather than quietly reassigned.
+        if (worker is null || !worker.IsActive)
+        {
+            code.FailedAttempts++;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            throw new UnauthorizedAccessException("The activation code is not valid.");
+        }
+
+        var existingDevice = await _dbContext.Devices
+            .SingleOrDefaultAsync(
+                x => x.OrganizationId == code.OrganizationId
+                     && x.DeviceIdentifier == request.DeviceIdentifier,
+                cancellationToken);
+
+        if (existingDevice is not null)
+        {
+            // Re-activating a known identifier would re-admit a revoked handset and make
+            // revocation a formality. Same rule as enrolment.
+            throw new ConflictException("A device with this identifier is already registered.");
+        }
+
+        var device = new Device
+        {
+            OrganizationId = code.OrganizationId,
+            BranchId = code.BranchId,
+            Name = string.IsNullOrWhiteSpace(request.Name) ? "Activated device" : request.Name.Trim(),
+            DeviceIdentifier = request.DeviceIdentifier.Trim(),
+            Platform = string.IsNullOrWhiteSpace(request.Platform) ? "Android" : request.Platform,
+            DeviceType = DeviceTypeMapping.FromPlatformString(request.Platform),
+            Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network,
+            // Every scoped value comes from the code. The handset describes only itself.
+            Role = code.DeviceRole,
+            Status = DeviceStatus.Active,
+            AppVersion = request.AppVersion,
+            OsVersion = request.OsVersion,
+            LastSeenAt = now
+        };
+
+        // One transaction across the claim, the device and the session. Without it a crash
+        // between claiming the code and issuing the session would burn the code and leave the
+        // worker unable to activate or retry.
+        await using var transaction = _dbContext.Database.IsRelational()
+            ? await _dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        // Exactly the guarantee RedeemAsync relies on: the checks above are advisory, and two
+        // handsets can both pass them before either commits. Only one caller can move the row
+        // out of Active, and the loser is refused.
+        if (_dbContext.Database.IsRelational())
+        {
+            var claimed = await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                 UPDATE "DeviceEnrollmentCodes"
+                 SET "Status" = 1, "RedeemedAtUtc" = {now}, "RedeemedByDeviceId" = {device.Id},
+                     "UpdatedAt" = {now}
+                 WHERE "Id" = {code.Id} AND "Status" = 0 AND "RedeemedAtUtc" IS NULL
+                 """,
+                cancellationToken);
+
+            if (claimed == 0)
+            {
+                _dbContext.ChangeTracker.Clear();
+                throw new UnauthorizedAccessException("The activation code is not valid.");
+            }
+
+            _dbContext.Entry(code).State = EntityState.Detached;
+        }
+        else
+        {
+            code.Status = DeviceEnrollmentCodeStatus.Redeemed;
+            code.RedeemedAtUtc = now;
+            code.RedeemedByDeviceId = device.Id;
+            code.UpdatedAt = now;
+        }
+
+        _dbContext.Devices.Add(device);
+        _dbContext.AuditLogs.Add(new AuditLogEntry
+        {
+            OrganizationId = code.OrganizationId,
+            UserId = worker.Id,
+            DeviceId = device.Id,
+            Action = "DEVICE_ACTIVATED",
+            Details = $"Device activated into branch {code.BranchId} as {code.DeviceRole} " +
+                      $"using code {code.CodePrefix}….",
+            ActorType = "User"
+        });
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            _dbContext.ChangeTracker.Clear();
+            throw new ConflictException(
+                "The activation could not be completed because the code or device identifier was already used.");
+        }
+
+        var session = await _authService.IssueActivationSessionAsync(worker.Id, device.Id, cancellationToken);
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        // Names for the confirmation screen. Read after the commit and never from the
+        // request: the worker is told who the server thinks they are.
+        var branchName = await _dbContext.Branches
+            .AsNoTracking()
+            .Where(x => x.Id == code.BranchId)
+            .Select(x => x.Name)
+            .SingleOrDefaultAsync(cancellationToken) ?? string.Empty;
+
+        var organizationName = await _dbContext.Organizations
+            .AsNoTracking()
+            .Where(x => x.Id == code.OrganizationId)
+            .Select(x => x.Name)
+            .SingleOrDefaultAsync(cancellationToken) ?? string.Empty;
+
+        // Never logs the code itself — only the non-secret display prefix.
+        _logger.LogInformation(
+            "Device {DeviceId} activated for worker {UserId} in organization {OrganizationId} " +
+            "branch {BranchId} via code {CodePrefix}",
+            device.Id, worker.Id, code.OrganizationId, code.BranchId, code.CodePrefix);
+
+        return new DeviceActivationResult(
+            session,
+            device.Id,
+            device.Name,
+            code.BranchId,
+            branchName,
+            organizationName,
+            worker.FullName);
     }
 
     public async Task<DeviceSelfDto?> GetDeviceSelfAsync(

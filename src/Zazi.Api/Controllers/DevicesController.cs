@@ -172,6 +172,52 @@ public class DevicesController : ControllerBase
     }
 
     /// <summary>
+    /// Activates a handset from an owner-issued code, with no prior authentication.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one anonymous endpoint in the product, and the reason it exists: a worker operates
+    /// a business device and should not have to hold an account to do so. The code is the
+    /// bootstrap credential — single use, expiring, attempt-limited and revocable — and it
+    /// carries the identity, so redeeming it establishes who the worker is, which business
+    /// and branch they belong to, and what role they hold.
+    /// </para>
+    /// <para>
+    /// Nothing scoped is accepted from the client. Compare <see cref="Enrol"/>, which takes
+    /// the organization and user from the caller's token; here both come from the code row.
+    /// </para>
+    /// <para>
+    /// Rate limited per address under the authentication policy. That limiter is load-bearing
+    /// here in a way it is not on the authenticated path, because it is the only thing
+    /// besides the code's own entropy and attempt counter standing between an anonymous
+    /// caller and a tenant.
+    /// </para>
+    /// </remarks>
+    [HttpPost("activate")]
+    [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
+    [ProducesResponseType(typeof(DeviceActivationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<DeviceActivationResult>> Activate(
+        [FromBody] ActivateDeviceApiRequest request,
+        CancellationToken cancellationToken)
+    {
+        var activated = await _enrollmentService.ActivateAsync(
+            new ActivateDeviceRequest(
+                request.Code,
+                request.DeviceIdentifier,
+                request.Name,
+                request.Platform ?? "Android",
+                request.Network ?? "MTN",
+                request.AppVersion ?? "unknown",
+                request.OsVersion ?? "unknown"),
+            cancellationToken);
+
+        return Ok(activated);
+    }
+
+    /// <summary>
     /// Reports this device's own live state.
     /// </summary>
     /// <remarks>

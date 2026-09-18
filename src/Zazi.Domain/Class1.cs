@@ -116,12 +116,40 @@ public sealed class Branch : AggregateRoot
     public List<Session> Sessions { get; set; } = new();
 }
 
+/// <summary>How a user proves who they are.</summary>
+public enum UserCredentialType
+{
+    /// <summary>Email and password. Owners, managers, and every account that predates activation.</summary>
+    Password = 0,
+
+    /// <summary>
+    /// A worker created by an owner, who authenticates by redeeming an activation code on a
+    /// device and thereafter by the session that produced.
+    /// </summary>
+    /// <remarks>
+    /// This is not what stops such a user signing in with a password — <c>VerifyPassword</c>
+    /// already refuses an empty hash or salt, and that guard is the security boundary. This
+    /// states the distinction in the model instead of leaving it to be inferred from an empty
+    /// string, and lets login refuse explicitly rather than by falling through a check.
+    /// </remarks>
+    ActivationOnly = 1
+}
+
 public sealed class User : AggregateRoot
 {
     public Guid OrganizationId { get; set; }
     public Guid? BranchId { get; set; }
     public string FullName { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Null for a worker activated by code, who has no account of their own. Unique per
+    /// organization when present; PostgreSQL treats nulls as distinct, so any number of
+    /// credential-less workers coexist without weakening that index for real addresses.
+    /// </summary>
+    public string? Email { get; set; }
+
+    /// <summary>Which authentication route this user is entitled to. See <see cref="UserCredentialType"/>.</summary>
+    public UserCredentialType CredentialType { get; set; } = UserCredentialType.Password;
     public string? PhoneNumber { get; set; }
     public bool IsActive { get; set; } = true;
     public bool EmailVerified { get; set; }
