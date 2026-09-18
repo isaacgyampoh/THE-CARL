@@ -125,6 +125,57 @@ class DatabaseKeyLossTest {
     }
 
     @Test
+    fun `nothing else in the database directory is touched`() {
+        // The remedy moves files, so the blast radius has to be exactly the database and its
+        // journals. A stray match here would move somebody else's data out from under them.
+        val unrelated = File(databaseFile.parentFile, "other-app.db").apply { writeText("not ours") }
+        val lookalike = File(databaseFile.parentFile, "zazi.db.backup").apply { writeText("not ours either") }
+        val prefix = File(databaseFile.parentFile, "zazi.db2").apply { writeText("different database") }
+
+        provider().databaseKey()
+        cryptoBox.failing = true
+        provider().databaseKey()
+
+        assertThat(unrelated.exists()).isTrue()
+        assertThat(lookalike.exists()).isTrue()
+        assertThat(prefix.exists()).isTrue()
+    }
+
+    @Test
+    fun `the database path is free afterwards so a new one can be created`() {
+        provider().databaseKey()
+        cryptoBox.failing = true
+
+        provider().databaseKey()
+
+        // The point of moving rather than leaving in place: SQLCipher can now create a fresh
+        // database at this path, which is what lets the app start at all.
+        assertThat(databaseFile.exists()).isFalse()
+        assertThat(databaseFile.parentFile!!.canWrite()).isTrue()
+
+        databaseFile.writeText("new encrypted database")
+        assertThat(databaseFile.exists()).isTrue()
+    }
+
+    @Test
+    fun `a second key loss does not overwrite the first orphan`() {
+        // Two restores in a row must not have the second wipe out the first agent's
+        // unrecoverable work - the whole reason these files are kept.
+        provider().databaseKey()
+        cryptoBox.failing = true
+        provider { 1_700_000_000_000L }.databaseKey()
+
+        databaseFile.writeText("second database")
+        cryptoBox.failing = false
+        provider().databaseKey()
+        cryptoBox.failing = true
+        provider { 1_700_000_999_000L }.databaseKey()
+
+        assertThat(File(databaseFile.parentFile, "zazi.db.orphaned-1700000000000").exists()).isTrue()
+        assertThat(File(databaseFile.parentFile, "zazi.db.orphaned-1700000999000").exists()).isTrue()
+    }
+
+    @Test
     fun `a first run is not mistaken for key loss`() {
         // No wrapped key was ever stored, so there is nothing to have lost — and no reason to
         // move aside a database this installation has not written yet.

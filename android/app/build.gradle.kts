@@ -27,6 +27,13 @@ android {
         //
         // Port 5055 avoids macOS AirPlay Receiver, which occupies 5000 and answers 403.
         // No credential or secret is ever a build-config value.
+        // The emulator default is a development convenience and must never leave with a
+        // release. It did: a release APK built without -PapiBaseUrl carried
+        // http://10.0.2.2:5055/, which is the emulator's alias for the host loopback and
+        // resolves to nothing on a handset — and is cleartext besides, which the release
+        // manifest forbids. The build looked fine and the app could not reach a server.
+        //
+        // assembleRelease now refuses to run without an explicit URL. See the guard below.
         val apiBaseUrl = (project.findProperty("apiBaseUrl") as String?)
             ?: "http://10.0.2.2:5055/"
 
@@ -197,4 +204,46 @@ dependencies {
     // specific outbox rows, so it needs the type on its own classpath. Adding a lookup to
     // OutboxRepository purely to serve a test would put test shape into production API.
     androidTestImplementation(libs.androidx.room.runtime)
+}
+
+// A release must name the server it talks to.
+//
+// Without this, assembleRelease silently inherited the emulator's loopback address — a URL
+// that cannot resolve on a phone, over a scheme the release manifest refuses. The failure
+// surfaced only as an app that could not reach anything, long after the build was called
+// green.
+//
+// The property is read here, at configuration time, and only the resulting value crosses
+// into the task. Reading `project` inside doFirst is unsupported with the configuration
+// cache, and doing so made this guard reject a URL that had in fact been supplied.
+//
+// Required to be HTTPS because release sets usesCleartextTraffic=false: an http:// URL here
+// produces an APK blocked by its own manifest.
+// Resolved to a plain message at configuration time. Only a String crosses into the task:
+// referencing a script-level value from inside doFirst captures the build script itself,
+// which the configuration cache cannot serialize.
+val releaseUrlProblem: String? = (project.findProperty("apiBaseUrl") as String?).let { supplied ->
+    when {
+        supplied == null ->
+            "A release build needs the production API base URL. Supply it explicitly:\n" +
+                "  ./gradlew assembleRelease -PapiBaseUrl=https://api.example.com/\n" +
+                "Without it the build would inherit the emulator address " +
+                "http://10.0.2.2:5055/, which resolves to nothing on a handset and is cleartext."
+
+        !supplied.startsWith("https://") ->
+            "The release API base URL must be https. Got: $supplied\n" +
+                "Release builds set usesCleartextTraffic=false, so a cleartext URL produces " +
+                "an APK blocked by its own manifest."
+
+        else -> null
+    }
+}
+
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    val problem = releaseUrlProblem
+    doFirst {
+        if (problem != null) {
+            throw GradleException(problem)
+        }
+    }
 }
