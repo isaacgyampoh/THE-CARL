@@ -282,13 +282,22 @@ interface OutboxDao {
      * recovered. Recovering unconditionally would snatch rows from a worker that is
      * legitimately mid-request right now and cause a concurrent double submission — which
      * the server would deduplicate, but which wastes an entire batch round trip.</p>
+     *
+     * <p>The comparison is inclusive, and that matters at exactly one caller: the first pass
+     * after process start passes a lease of zero, meaning "nothing in this process is in
+     * flight, so take everything". With a strict comparison that promise quietly excluded any
+     * row whose last attempt landed in the same millisecond as the pass — which is reachable
+     * on a fast device restarting straight after a capture. Such a row stayed SYNCING, and
+     * because claimBatch deliberately skips SYNCING it could not be re-claimed either, so an
+     * agent's transaction sat stranded for the full five-minute lease after a crash. That is
+     * the precise failure the zero-lease pass exists to prevent.</p>
      */
     @Query(
         """
         UPDATE outbox_items
         SET state = 'PENDING', nextAttemptAtUtcMillis = :nowUtcMillis, updatedAtUtcMillis = :nowUtcMillis
         WHERE state = 'SYNCING'
-          AND (lastAttemptAtUtcMillis IS NULL OR lastAttemptAtUtcMillis < :leaseExpiredBeforeUtcMillis)
+          AND (lastAttemptAtUtcMillis IS NULL OR lastAttemptAtUtcMillis <= :leaseExpiredBeforeUtcMillis)
         """
     )
     suspend fun recoverStrandedInFlight(nowUtcMillis: Long, leaseExpiredBeforeUtcMillis: Long): Int

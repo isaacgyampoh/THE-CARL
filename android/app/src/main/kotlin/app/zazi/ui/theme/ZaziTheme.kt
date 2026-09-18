@@ -39,7 +39,12 @@ private val DeepGreen = Color(0xFF1E3A12)
 private val MoneyIn = Color(0xFF3F6B14)
 private val MoneyInDark = Color(0xFFB8E86A)
 
-private val LightColours = lightColorScheme(
+/**
+ * Visible to tests so contrast can be asserted rather than assumed. The palette is the one
+ * part of the design system where a wrong value is invisible to whoever chose it and decisive
+ * for whoever cannot read it.
+ */
+internal val LightColours = lightColorScheme(
     // Deep green carries the primary actions; the lime is the highlight it sits against.
     primary = DeepGreen,
     onPrimary = Color(0xFFFFFFFF),
@@ -84,7 +89,10 @@ private val LightColours = lightColorScheme(
     inversePrimary = Lime,
     // The dashboard's "muted": labels and secondary lines, still readable rather than faint.
     onSurfaceVariant = Color(0xFF5F6B52),
-    outline = Color(0xFFC3CDB4),
+    // 3.71:1 against surface. The previous value was 1.65:1: WCAG asks 3:1 for the boundary
+    // of a control, and below that the user cannot see where the field ends — which on a
+    // login form means not knowing where to tap. Enforced by PaletteContrastTest.
+    outline = Color(0xFF7A8A68),
     outlineVariant = Color(0xFFE3E9D6),
     error = Color(0xFFB3261E),
     onError = Color(0xFFFFFFFF),
@@ -92,7 +100,8 @@ private val LightColours = lightColorScheme(
     onErrorContainer = Color(0xFF5C1512)
 )
 
-private val DarkColours = darkColorScheme(
+/** Dark counterpart; see [LightColours] for why this is not private. */
+internal val DarkColours = darkColorScheme(
     // The lime becomes the primary on dark, because deep green on a dark surface is
     // unreadable — and text drawn on it darkens to match.
     primary = Lime,
@@ -126,7 +135,9 @@ private val DarkColours = darkColorScheme(
     inverseOnSurface = Color(0xFF2D3327),
     inversePrimary = DeepGreen,
     onSurfaceVariant = Color(0xFFA8B79A),
-    outline = Color(0xFF4A5A3C),
+    // 3.94:1 against surface, up from 2.29:1. Dark-mode borders are the first thing to
+    // disappear in bright ambient light, which is the condition this product is used in.
+    outline = Color(0xFF6E7F5C),
     outlineVariant = Color(0xFF2E3A24),
     error = Color(0xFFFF8A80),
     onError = Color(0xFF3A1D1C),

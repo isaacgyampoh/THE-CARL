@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -128,7 +129,7 @@ fun ZaziBrandIntro(
         BrandIntroTiming.LETTER_MILLIS
     val taglinePhase = phase(taglineStart, BrandIntroTiming.TAGLINE_MILLIS)
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(background)
@@ -138,6 +139,14 @@ fun ZaziBrandIntro(
             .alpha(1f - exit.value),
         contentAlignment = Alignment.Center
     ) {
+        // Sized from the screen, not from a number that happened to look right on one phone.
+        // The shortest edge is what constrains a centred lockup — in landscape that is the
+        // height — so using it keeps the brand the same visual weight in both orientations
+        // instead of letting it swell until it collides with the tagline.
+        val scale = (minOf(maxWidth, maxHeight) / 360.dp).coerceIn(0.85f, 1.45f)
+        val markSize = 46.dp * scale
+        val letterSize = 52.sp * scale
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 32.dp)
@@ -145,7 +154,7 @@ fun ZaziBrandIntro(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Canvas(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(markSize)
                         .alpha(markPhase)
                         // Settles into place rather than zooming at the viewer.
                         .scale(0.88f + 0.12f * markPhase)
@@ -153,7 +162,7 @@ fun ZaziBrandIntro(
                     drawZaziMark(mark)
                 }
 
-                Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(16.dp * scale))
 
                 // Letter by letter, left to right, each one rising a little as it arrives.
                 "Zazi".forEachIndexed { index, character ->
@@ -166,7 +175,7 @@ fun ZaziBrandIntro(
                     Text(
                         character.toString(),
                         style = TextStyle(
-                            fontSize = 46.sp,
+                            fontSize = letterSize,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-1).sp
                         ),
@@ -178,13 +187,15 @@ fun ZaziBrandIntro(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
 
             Text(
                 // What Zazi is, in words the product can stand behind. It observes and
                 // reconciles transactions; it does not move money, and the line must not
                 // imply that it does.
                 "Every transaction, accounted for.",
+                // Left in sp, unlike the lockup above: this is prose, so it follows the
+                // user's font-size setting. The wordmark is a mark and does not.
                 style = TextStyle(fontSize = 15.sp),
                 color = BrandColours.onDeepGreenMuted,
                 textAlign = TextAlign.Center,

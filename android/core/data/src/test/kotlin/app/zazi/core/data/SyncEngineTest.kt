@@ -357,6 +357,50 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `a zero lease recovers an item claimed in the same millisecond`() {
+        // The regression that produced the inclusive comparison in recoverStrandedInFlight.
+        //
+        // A frozen clock is the point: it forces the claim and the recovery pass to share a
+        // timestamp, which on a real device happens when a process restarts immediately after
+        // a capture. With a strict comparison the row was skipped, stayed SYNCING, and could
+        // not be re-claimed — so a captured transaction sat stranded for the full lease. The
+        // wall clock hid it, because a spare millisecond usually elapsed.
+        kotlinx.coroutines.test.runTest {
+            val queued = queue("8.00")
+            // Frozen just past the row's scheduled attempt, so it is eligible — and frozen,
+            // so the claim and the recovery pass share one timestamp, which is the whole
+            // point of the test.
+            val instant = System.currentTimeMillis() + 1_000L
+            val frozen = OutboxRepository(database, now = { instant })
+
+            frozen.claimBatch(10)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.SYNCING.name)
+
+            assertThat(frozen.recoverStrandedItems(leaseMillis = 0L)).isEqualTo(1)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.PENDING.name)
+        }
+    }
+
+    @Test
+    fun `a live lease still protects an item claimed in the same millisecond`() {
+        // The other half of the boundary: making the comparison inclusive must not let an
+        // ordinary pass snatch a row from a worker that is genuinely mid-request.
+        kotlinx.coroutines.test.runTest {
+            val queued = queue("8.00")
+            // Frozen just past the row's scheduled attempt, so it is eligible — and frozen,
+            // so the claim and the recovery pass share one timestamp, which is the whole
+            // point of the test.
+            val instant = System.currentTimeMillis() + 1_000L
+            val frozen = OutboxRepository(database, now = { instant })
+
+            frozen.claimBatch(10)
+
+            assertThat(frozen.recoverStrandedItems(leaseMillis = 5 * 60 * 1000L)).isEqualTo(0)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.SYNCING.name)
+        }
+    }
+
+    @Test
     fun `an empty outbox does no work`() = runTest {
         val result = engine.runOnce()
 
