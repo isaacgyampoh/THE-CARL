@@ -1,12 +1,12 @@
 :root {
     color-scheme: light dark;
 
-    --ink: #1a1523;
-    --muted: #6b6478;
-    --line: #e6e1ec;
-    --accent: #5b3fa8;
+    --ink: #181d12;
+    --muted: #5f6b52;
+    --line: #e3e9d6;
+    --accent: #2f5d12;
     --bad: #b3261e;
-    --surface: #faf8fd;
+    --surface: #fafbf5;
     --card: #fff;
     /* Text drawn on the accent. In dark mode the accent lightens, so white on it would
        fail contrast — the pairing has to flip with the palette, not stay fixed. */
@@ -14,11 +14,11 @@
 
     /* Status colours are tokens too, so dark mode redefines them in one place rather than
        each rule carrying a hard-coded pair. */
-    --ok-bg: #e8f5ec;   --ok-fg: #1c6b38;
+    --ok-bg: #e4f7be;   --ok-fg: #2f5d12;
     --warn-bg: #fdf3e2; --warn-fg: #8a5a00;
     --bad-bg: #fdeceb;
     --row-warn: #fffaf0;
-    --code-bg: #f2effa;
+    --code-bg: #eff3e4;
 }
 
 /* An agent reconciling at the end of a night shift is reading this in the dark. The palette
@@ -26,20 +26,20 @@
    stretches than a lifted dark surface, and the accent has to stay legible on it. */
 @media (prefers-color-scheme: dark) {
     :root {
-        --ink: #ece7f2;
-        --muted: #a49bb4;
-        --line: #322b3d;
-        --accent: #b9a3ef;
+        --ink: #e6eedc;
+        --muted: #a8b79a;
+        --line: #2e3a24;
+        --accent: #c6f432;
         --bad: #ff8a80;
-        --surface: #15121c;
-        --card: #1e1a27;
-        --on-accent: #221c2e;
+        --surface: #0e140a;
+        --card: #171e12;
+        --on-accent: #16250a;
 
-        --ok-bg: #16301f;   --ok-fg: #7fd79c;
+        --ok-bg: #2e4d12;   --ok-fg: #b8e86a;
         --warn-bg: #362a15; --warn-fg: #f0c274;
         --bad-bg: #3a1d1c;
         --row-warn: #2a2116;
-        --code-bg: #2a2338;
+        --code-bg: #253019;
     }
 }
 

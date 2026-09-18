@@ -23,31 +23,69 @@ import androidx.core.view.WindowCompat
  * <p>The values are the dashboard's, so the two surfaces of the same product look like one
  * product.</p>
  */
-private val BrandAccent = Color(0xFF5B3FA8)
-private val BrandAccentDark = Color(0xFFB9A3EF)
+private val Lime = Color(0xFFC6F432)
+private val DeepGreen = Color(0xFF1E3A12)
+
+/**
+ * Money in, as a colour.
+ *
+ * <p>A separate green from the brand one, and dark enough to read as text on white. The
+ * brand lime is a background colour: as small text on a light surface it fails contrast
+ * badly, which is exactly where an amount lives.</p>
+ *
+ * <p>It is never the only signal. Every amount also carries its sign, so the direction
+ * survives a monochrome screen, a colour-blind reader and a bright market stall.</p>
+ */
+private val MoneyIn = Color(0xFF3F6B14)
+private val MoneyInDark = Color(0xFFB8E86A)
 
 private val LightColours = lightColorScheme(
-    primary = BrandAccent,
+    // Deep green carries the primary actions; the lime is the highlight it sits against.
+    primary = DeepGreen,
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFE9E1FA),
-    onPrimaryContainer = Color(0xFF1F1136),
+    // The balance panel. Lime with near-black green on it — the one thing an agent looks
+    // for first, and the highest-contrast pairing in the palette.
+    primaryContainer = Lime,
+    onPrimaryContainer = Color(0xFF16250A),
     // Selected chips use the secondary container. Left undefined it falls back to a grey
     // barely distinguishable from an unselected chip — which on the capture form meant the
     // cash-in/cash-out choice, the costliest mistake available there, was hard to read at a
     // glance. Tinted towards the brand so "chosen" is unmistakable.
-    secondary = Color(0xFF5B3FA8),
+    secondary = DeepGreen,
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFD7C9F5),
-    onSecondaryContainer = Color(0xFF1F1136),
-    background = Color(0xFFFAF8FD),
-    onBackground = Color(0xFF1A1523),
+    secondaryContainer = Color(0xFFDCF39A),
+    onSecondaryContainer = Color(0xFF16250A),
+    // Money in. Material has no "positive" slot, so it lives in tertiary rather than as a
+    // loose constant nothing else knows about.
+    tertiary = MoneyIn,
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFE4F7BE),
+    onTertiaryContainer = Color(0xFF1B3B00),
+    background = Color(0xFFFAFBF5),
+    onBackground = Color(0xFF181D12),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF1A1523),
-    surfaceVariant = Color(0xFFF2EFFA),
+    onSurface = Color(0xFF181D12),
+    surfaceVariant = Color(0xFFEFF3E4),
+    // The surfaceContainer family, defined explicitly. Card and Surface take their default
+    // container colour from these roles, not from surface or surfaceVariant — leaving them
+    // undefined let Material's baseline purple through, so every card on a green dashboard
+    // rendered lavender. The same trap as the chips: an unnamed role is not a neutral
+    // default, it is somebody else's brand.
+    surfaceDim = Color(0xFFDDE3D2),
+    surfaceBright = Color(0xFFFAFBF5),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF5F8EC),
+    surfaceContainer = Color(0xFFEFF3E4),
+    surfaceContainerHigh = Color(0xFFE9EEDD),
+    surfaceContainerHighest = Color(0xFFE3E9D6),
+    surfaceTint = DeepGreen,
+    inverseSurface = Color(0xFF2D3327),
+    inverseOnSurface = Color(0xFFEFF3E4),
+    inversePrimary = Lime,
     // The dashboard's "muted": labels and secondary lines, still readable rather than faint.
-    onSurfaceVariant = Color(0xFF6B6478),
-    outline = Color(0xFFCFC8DA),
-    outlineVariant = Color(0xFFE6E1EC),
+    onSurfaceVariant = Color(0xFF5F6B52),
+    outline = Color(0xFFC3CDB4),
+    outlineVariant = Color(0xFFE3E9D6),
     error = Color(0xFFB3261E),
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFDECEB),
@@ -55,26 +93,41 @@ private val LightColours = lightColorScheme(
 )
 
 private val DarkColours = darkColorScheme(
-    // The accent lightens so it stays legible on a dark surface, which means text drawn on
-    // it has to darken to match — white on this would fail contrast.
-    primary = BrandAccentDark,
-    onPrimary = Color(0xFF221C2E),
-    primaryContainer = Color(0xFF3B2E63),
-    onPrimaryContainer = Color(0xFFE9E1FA),
-    secondary = Color(0xFFB9A3EF),
-    onSecondary = Color(0xFF221C2E),
-    secondaryContainer = Color(0xFF4B3A7A),
-    onSecondaryContainer = Color(0xFFEDE4FF),
-    background = Color(0xFF15121C),
-    onBackground = Color(0xFFECE7F2),
+    // The lime becomes the primary on dark, because deep green on a dark surface is
+    // unreadable — and text drawn on it darkens to match.
+    primary = Lime,
+    onPrimary = Color(0xFF16250A),
+    primaryContainer = Color(0xFF2C4A18),
+    onPrimaryContainer = Color(0xFFDCF7A6),
+    secondary = Lime,
+    onSecondary = Color(0xFF16250A),
+    secondaryContainer = Color(0xFF3A5A20),
+    onSecondaryContainer = Color(0xFFE7FBC0),
+    tertiary = MoneyInDark,
+    onTertiary = Color(0xFF1B3B00),
+    tertiaryContainer = Color(0xFF2E4D12),
+    onTertiaryContainer = Color(0xFFD6F5A8),
+    background = Color(0xFF0E140A),
+    onBackground = Color(0xFFE6EEDC),
     // Lifted rather than pure black: a reconciliation screen is read for minutes at a time,
     // and maximum contrast is tiring over that long.
-    surface = Color(0xFF1E1A27),
-    onSurface = Color(0xFFECE7F2),
-    surfaceVariant = Color(0xFF2A2338),
-    onSurfaceVariant = Color(0xFFA49BB4),
-    outline = Color(0xFF4A4158),
-    outlineVariant = Color(0xFF322B3D),
+    surface = Color(0xFF171E12),
+    onSurface = Color(0xFFE6EEDC),
+    surfaceVariant = Color(0xFF253019),
+    surfaceDim = Color(0xFF0E140A),
+    surfaceBright = Color(0xFF343B2D),
+    surfaceContainerLowest = Color(0xFF090D06),
+    surfaceContainerLow = Color(0xFF171E12),
+    surfaceContainer = Color(0xFF1B2216),
+    surfaceContainerHigh = Color(0xFF252D1F),
+    surfaceContainerHighest = Color(0xFF303829),
+    surfaceTint = Lime,
+    inverseSurface = Color(0xFFE6EEDC),
+    inverseOnSurface = Color(0xFF2D3327),
+    inversePrimary = DeepGreen,
+    onSurfaceVariant = Color(0xFFA8B79A),
+    outline = Color(0xFF4A5A3C),
+    outlineVariant = Color(0xFF2E3A24),
     error = Color(0xFFFF8A80),
     onError = Color(0xFF3A1D1C),
     errorContainer = Color(0xFF3A1D1C),

@@ -26,6 +26,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -566,6 +568,12 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Direction as a shape before it is a number. An agent scanning a shift's worth of
+        // rows reads the column of badges, not the amounts — and the arrow differs as well
+        // as the tint, so it survives a monochrome screen and a colour-blind reader.
+        DirectionBadge(incoming)
+        Spacer(Modifier.width(12.dp))
+
         Column(Modifier.weight(1f)) {
             Text(item.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
             Spacer(Modifier.height(2.dp))
@@ -588,11 +596,44 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
             Text(
                 (if (incoming) "+" else "−") + MoneyFormat.format(item.amountMinor),
                 style = MaterialTheme.typography.bodyLarge,
+                // Money in is tinted; money out stays the ordinary ink. The sign is still
+                // there, so the colour adds emphasis rather than carrying the meaning.
+                color = if (incoming) {
+                    MaterialTheme.colorScheme.tertiary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1
             )
             Spacer(Modifier.height(2.dp))
             DeliveryLabel(item.delivery)
         }
+    }
+}
+
+/** Cash in or cash out, as a glyph, before any figure is read. */
+@Composable
+private fun DirectionBadge(incoming: Boolean) {
+    val colours = MaterialTheme.colorScheme
+    val background = if (incoming) colours.tertiaryContainer else colours.surfaceVariant
+    val tint = if (incoming) colours.onTertiaryContainer else colours.onSurfaceVariant
+
+    Box(
+        modifier = Modifier.size(40.dp).background(background, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = if (incoming) {
+                Icons.Filled.KeyboardArrowDown
+            } else {
+                Icons.Filled.KeyboardArrowUp
+            },
+            // Described, not decorative: the row's own text does not say which way the money
+            // moved, only the sign on the amount does.
+            contentDescription = if (incoming) "Cash in" else "Cash out",
+            tint = tint,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 
