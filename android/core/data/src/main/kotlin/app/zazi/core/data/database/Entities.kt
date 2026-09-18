@@ -243,3 +243,22 @@ data class TelemetryEventEntity(
     val correlationId: String?,
     val occurredAtUtcMillis: Long
 )
+
+/**
+ * A recent transaction together with how far it has got towards the server.
+ *
+ * <p>A query projection rather than a table: it joins what the agent recorded with where it
+ * has reached, which are deliberately separate rows. [outboxState] is null once the outbox
+ * row has been pruned, which means delivered and tidied — not missing.</p>
+ */
+data class RecentTransactionRow(
+    val clientTransactionId: String,
+    val transactionType: String,
+    val provider: String,
+    val amountMinor: Long,
+    val cashDeltaMinor: Long,
+    val transactionAtUtcMillis: Long,
+    val reference: String?,
+    val sourceType: String,
+    val outboxState: String?
+)

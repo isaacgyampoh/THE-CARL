@@ -12,6 +12,7 @@ import app.zazi.core.data.session.SessionState
 import app.zazi.core.domain.model.Provider
 import app.zazi.core.domain.model.TransactionType
 import app.zazi.core.domain.sync.OutboxState
+import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.CaptureConfirmation
 import app.zazi.ui.state.CaptureError
 import app.zazi.ui.state.CaptureProvider
@@ -131,7 +132,12 @@ class DashboardViewModel(
     private val outboxRepository: OutboxRepository,
     private val sessionRepository: SessionRepository,
     private val localTotals: suspend () -> Pair<Long, Long>?,
-    private val syncedTodayCount: suspend () -> Int
+    private val syncedTodayCount: suspend () -> Int,
+    /**
+     * What this device has recorded. Supplied as a function so this class stays free of
+     * Room, and defaulted to empty so existing callers and tests are unaffected.
+     */
+    private val recentActivity: suspend () -> List<ActivityItem> = { emptyList() }
 ) {
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
@@ -152,6 +158,9 @@ class DashboardViewModel(
             // dashboard is worse than an empty one.
             todayCashMinor = totals?.first,
             todayFloatMinor = totals?.second,
+            // Failing to read the history must not blank the figures above it; an empty list
+            // is the honest fallback, and the screen says when there is nothing to show.
+            activity = runCatching { recentActivity() }.getOrDefault(emptyList()),
             isOnline = isOnline,
             isSyncing = outboxRepository.countByState(OutboxState.SYNCING) > 0
         )

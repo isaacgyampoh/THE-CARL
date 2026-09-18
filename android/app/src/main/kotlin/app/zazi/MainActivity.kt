@@ -33,11 +33,15 @@ import app.zazi.ui.DeviceRevokedScreen
 import app.zazi.ui.EnrolmentScreen
 import app.zazi.ui.LoadingScreen
 import app.zazi.ui.LoginScreen
+import app.zazi.ui.state.ActivityDelivery
+import app.zazi.ui.state.ActivityItem
+import app.zazi.ui.state.CaptureTransactionType
 import app.zazi.ui.viewmodel.CaptureViewModel
 import app.zazi.ui.viewmodel.DashboardViewModel
 import app.zazi.ui.viewmodel.EnrolmentViewModel
 import app.zazi.ui.theme.ZaziTheme
 import app.zazi.ui.viewmodel.LoginViewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -103,7 +107,31 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     .totalsBetween(dayStart, dayStart + DAY_MILLIS)
                 totals.cashMinor to totals.floatMinor
             },
-            syncedTodayCount = { container.dashboardRepository.syncedCount() }
+            syncedTodayCount = { container.dashboardRepository.syncedCount() },
+            recentActivity = {
+                // Mapped here rather than in the repository so the persistence projection
+                // stays a persistence concern and the screen gets a model in its own terms.
+                container.dashboardRepository.observeRecent().first().map { row ->
+                    ActivityItem(
+                        clientTransactionId = row.clientTransactionId,
+                        label = CaptureTransactionType.entries
+                            .firstOrNull { it.name == row.transactionType }
+                            ?.label
+                        // Not every stored type is offerable on the capture form — a reversal
+                        // or an adjustment can arrive from elsewhere — so an unknown type is
+                        // shown readably rather than dropped from the agent's own history.
+                            ?: row.transactionType.lowercase().replace('_', ' ')
+                                .replaceFirstChar { it.uppercase() },
+                        provider = row.provider,
+                        amountMinor = row.amountMinor,
+                        cashDeltaMinor = row.cashDeltaMinor,
+                        atUtcMillis = row.transactionAtUtcMillis,
+                        reference = row.reference,
+                        capturedAutomatically = row.sourceType == "SMS",
+                        delivery = ActivityDelivery.fromOutboxState(row.outboxState)
+                    )
+                }
+            }
         )
     }
 

@@ -68,6 +68,36 @@ interface LocalTransactionDao {
     @Query("SELECT * FROM local_transactions ORDER BY transactionAtUtcMillis DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<LocalTransactionEntity>>
 
+    /**
+     * Recent transactions with the delivery state of each.
+     *
+     * <p>A LEFT JOIN, not an inner one: the outbox row is deleted once an item is settled and
+     * pruned, and a transaction whose outbox row has gone is still a transaction the agent
+     * recorded. Dropping it from their own history because the plumbing tidied up would be
+     * the worst kind of wrong — it would look like the capture never happened.</p>
+     *
+     * <p>Sorted by when the transaction happened, not when this device stored it, so an item
+     * captured late from an SMS still sits in its true place in the day.</p>
+     */
+    @Query(
+        """
+        SELECT t.clientTransactionId AS clientTransactionId,
+               t.transactionType     AS transactionType,
+               t.provider            AS provider,
+               t.amountMinor         AS amountMinor,
+               t.cashDeltaMinor      AS cashDeltaMinor,
+               t.transactionAtUtcMillis AS transactionAtUtcMillis,
+               t.reference           AS reference,
+               t.sourceType          AS sourceType,
+               o.state               AS outboxState
+        FROM local_transactions t
+        LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        ORDER BY t.transactionAtUtcMillis DESC
+        LIMIT :limit
+        """
+    )
+    fun observeRecentWithDelivery(limit: Int): Flow<List<RecentTransactionRow>>
+
     @Query(
         """
         SELECT * FROM local_transactions

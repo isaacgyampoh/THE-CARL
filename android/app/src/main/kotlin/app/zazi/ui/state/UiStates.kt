@@ -84,6 +84,8 @@ data class DashboardUiState(
     val syncedTodayCount: Int = 0,
     val todayCashMinor: Long? = null,
     val todayFloatMinor: Long? = null,
+    /** What this device has recorded, newest first. Empty until the first capture. */
+    val activity: List<ActivityItem> = emptyList(),
     val isOnline: Boolean = true,
     val isSyncing: Boolean = false
 ) {
@@ -186,6 +188,62 @@ data class CaptureConfirmation(
 
     /** Short handle an agent can quote to support. */
     val shortReference: String get() = clientTransactionId.takeLast(8)
+}
+
+/**
+ * One line in the agent's own record of what they captured.
+ *
+ * <p>Delivery is presented as three states rather than six, because the outbox's distinctions
+ * — pending, syncing, retrying — are all the same fact to the person holding the phone: it is
+ * on its way and nothing is required of them. The states that do require something, a
+ * conflict or an exhausted retry, are kept separate precisely because they need a person.</p>
+ */
+data class ActivityItem(
+    val clientTransactionId: String,
+    val label: String,
+    val provider: String,
+    val amountMinor: Long,
+    /** Signed cash movement, so the list shows direction without re-deriving it. */
+    val cashDeltaMinor: Long,
+    val atUtcMillis: Long,
+    val reference: String?,
+    val capturedAutomatically: Boolean,
+    val delivery: ActivityDelivery
+) {
+    val shortReference: String get() = clientTransactionId.takeLast(8)
+}
+
+enum class ActivityDelivery {
+    /** On this device and on its way. Nothing is required of the agent. */
+    SENDING,
+
+    /** The server has it. */
+    SENT,
+
+    /** Stopped, and a person has to look. Never resolved by waiting. */
+    NEEDS_REVIEW;
+
+    val label: String
+        get() = when (this) {
+            SENDING -> "Sending"
+            SENT -> "Sent"
+            NEEDS_REVIEW -> "Needs review"
+        }
+
+    companion object {
+        /**
+         * Maps an outbox state to what the agent needs to know.
+         *
+         * <p>A null state means the outbox row has been pruned after delivery, which is
+         * settled, not missing — treating it as unknown would show a delivered transaction
+         * as though something were wrong with it.</p>
+         */
+        fun fromOutboxState(state: String?): ActivityDelivery = when (state) {
+            null, "SYNCED" -> SENT
+            "CONFLICT", "DEAD_LETTER" -> NEEDS_REVIEW
+            else -> SENDING
+        }
+    }
 }
 
 /** How a queued item is presented. Mirrors OutboxState; deliberately not a second enum. */

@@ -1,7 +1,9 @@
 package app.zazi.core.data.repository
 
+import app.zazi.core.data.database.RecentTransactionRow
 import app.zazi.core.data.database.ZaziDatabase
 import app.zazi.core.domain.sync.OutboxState
+import kotlinx.coroutines.flow.Flow
 
 /** Local movement totals for a window, in minor units. */
 data class DailyTotals(val cashMinor: Long, val floatMinor: Long)
@@ -32,4 +34,18 @@ class DashboardRepository(private val database: ZaziDatabase) {
 
     suspend fun syncedCount(): Int =
         database.outboxDao().countByState(OutboxState.SYNCED.name)
+
+    /**
+     * What this device has recorded, most recent first.
+     *
+     * <p>A Flow, so the list updates as sync progresses without the screen polling for it.
+     * The agent sees an item move from waiting to sent on its own.</p>
+     */
+    fun observeRecent(limit: Int = DEFAULT_RECENT): Flow<List<RecentTransactionRow>> =
+        database.localTransactionDao().observeRecentWithDelivery(limit)
+
+    private companion object {
+        /** Enough to cover a shift's worth of checking back, without becoming a report. */
+        const val DEFAULT_RECENT = 25
+    }
 }

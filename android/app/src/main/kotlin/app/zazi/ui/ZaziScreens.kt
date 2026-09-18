@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import app.zazi.ui.state.ActivityDelivery
+import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.CaptureConfirmation
 import app.zazi.ui.state.CaptureError
 import app.zazi.ui.state.CaptureProvider
@@ -57,6 +60,9 @@ import app.zazi.ui.state.CaptureUiState
 import app.zazi.ui.state.DashboardUiState
 import app.zazi.ui.state.EnrolmentUiState
 import app.zazi.ui.state.LoginUiState
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import app.zazi.ui.state.MoneyFormat
 
 /**
@@ -253,9 +259,9 @@ fun EnrolmentScreen(
 /**
  * The screen an agent looks at between customers.
  *
- * <p>Laid out around the two questions actually being asked — "where do I stand today?" and
- * "is anything stuck?" — with the action performed dozens of times a day anchored to the
- * bottom so it is always under a thumb and never behind a scroll.</p>
+ * <p>Three questions, in the order they are asked: where do I stand today, did the thing I
+ * just recorded actually take, and is anything stuck. The action performed dozens of times a
+ * day is anchored to the bottom so it is always under a thumb.</p>
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -280,9 +286,8 @@ fun DashboardScreen(
             )
         },
         bottomBar = {
-            // Anchored rather than placed in the scroll. Recording a transaction is the
-            // whole point of the screen, and it used to sit mid-page where it moved as the
-            // sync list grew and could be scrolled off entirely.
+            // Anchored rather than placed in the scroll. Recording a transaction is the whole
+            // point of the screen, and in the scroll it moved as the list below it grew.
             Surface(tonalElevation = 3.dp) {
                 Button(
                     onClick = onCapture,
@@ -305,7 +310,7 @@ fun DashboardScreen(
         ) {
             Spacer(Modifier.height(4.dp))
 
-            MovementCard(
+            PositionPanel(
                 cashMinor = state.todayCashMinor,
                 floatMinor = state.todayFloatMinor
             )
@@ -314,13 +319,21 @@ fun DashboardScreen(
 
             SyncCard(state = state, onSyncNow = onSyncNow)
 
+            Spacer(Modifier.height(20.dp))
+
+            // The device held every transaction it had ever captured and showed the agent
+            // none of them. They could record and never look back — no way to confirm a
+            // capture took, check a figure, or quote a reference to a customer standing
+            // there. The data was already local; only the screen was missing.
+            ActivitySection(items = state.activity)
+
             state.device?.let { device ->
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(20.dp))
 
                 // Two different facts, deliberately not collapsed into one line. The server
                 // says whether this kind of device may capture SMS at all; Android says
-                // whether this installation has been allowed to. Showing only the first
-                // would tell an agent capture is running when no message can reach the app.
+                // whether this installation has been allowed to. Showing only the first would
+                // tell an agent capture is running when no message can reach the app.
                 when {
                     !device.canAttemptSmsCapture ->
                         CaptureModeRow("Manual capture", "Transactions are recorded by hand.")
@@ -336,9 +349,9 @@ fun DashboardScreen(
 
                 Spacer(Modifier.height(16.dp))
 
-                // The branch name when the server has sent one. It falls back to a short
-                // reference offline, and on servers predating the field — never the full
-                // UUID, which told an agent nothing and took a line and a half doing it.
+                // The branch name when the server has sent one; a short reference offline and
+                // on servers predating the field — never the full UUID, which told an agent
+                // nothing and took a line and a half doing it.
                 Text(
                     device.branchName ?: "Branch ref ${device.branchId.take(8)}",
                     style = MaterialTheme.typography.bodySmall,
@@ -358,11 +371,7 @@ private fun ConnectionChip(isOnline: Boolean) {
     val tint = if (isOnline) colours.primary else colours.onSurfaceVariant
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(tint, CircleShape)
-        )
+        Box(modifier = Modifier.size(8.dp).background(tint, CircleShape))
         Spacer(Modifier.width(6.dp))
         Text(
             if (isOnline) "Online" else "Offline",
@@ -373,43 +382,38 @@ private fun ConnectionChip(isOnline: Boolean) {
 }
 
 /**
- * Today's movement.
+ * Today's movement, given the weight it earns.
  *
- * <p>Absent rather than zero when a total cannot be calculated. A fabricated figure on a
+ * <p>Filled rather than outlined because this is the one thing on the screen an agent looks
+ * for first, and as a plain card it carried no more emphasis than the sync status underneath
+ * it. Absent rather than zero when a total cannot be calculated: a fabricated figure on a
  * financial dashboard is worse than an empty one.</p>
  */
 @Composable
-private fun MovementCard(cashMinor: Long?, floatMinor: Long?) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Row(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-            MovementFigure(
-                label = "Cash",
-                minor = cashMinor,
-                modifier = Modifier.weight(1f)
-            )
+            PositionFigure("Cash", cashMinor, Modifier.weight(1f))
             // A hairline rather than a gap: the two figures are read together and move in
-            // opposite directions, so they need to look like one statement, not two cards.
+            // opposite directions, so they should look like one statement, not two cards.
             VerticalDivider(
                 modifier = Modifier.height(56.dp),
-                color = MaterialTheme.colorScheme.outlineVariant
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.25f)
             )
-            MovementFigure(
-                label = "Float",
-                minor = floatMinor,
-                modifier = Modifier.weight(1f).padding(start = 16.dp)
-            )
+            PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = 16.dp))
         }
     }
 }
 
 @Composable
-private fun MovementFigure(label: String, minor: Long?, modifier: Modifier = Modifier) {
+private fun PositionFigure(label: String, minor: Long?, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(label, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(4.dp))
         Text(
             minor?.let { MoneyFormat.format(it) } ?: "—",
@@ -423,8 +427,7 @@ private fun MovementFigure(label: String, minor: Long?, modifier: Modifier = Mod
  * Sync state, summarised.
  *
  * <p>Previously four rows that read "0" all day. The counts only matter when they are not
- * zero, so the ordinary case is now a single settled line and the numbers appear when there
- * is something to say about them.</p>
+ * zero, so the ordinary case is a single settled line.</p>
  */
 @Composable
 private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
@@ -446,8 +449,7 @@ private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
                             state.unsyncedCount > 0 && !state.isOnline ->
                                 "Saved on this device. They will send when you are back online."
                             state.unsyncedCount > 0 -> "Sending automatically."
-                            state.syncedTodayCount > 0 ->
-                                "${state.syncedTodayCount} sent today."
+                            state.syncedTodayCount > 0 -> "${state.syncedTodayCount} sent today."
                             else -> "Recorded transactions appear here."
                         },
                         style = MaterialTheme.typography.bodyMedium,
@@ -481,6 +483,96 @@ private fun SyncCard(state: DashboardUiState, onSyncNow: () -> Unit) {
     }
 }
 
+/** The agent's own record of what this device captured. */
+@Composable
+private fun ActivitySection(items: List<ActivityItem>) {
+    Text("Recent", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(8.dp))
+
+    if (items.isEmpty()) {
+        // Says what will happen rather than that something is missing. An empty list on a
+        // fresh device is the expected state, not a fault.
+        Text(
+            "Transactions you record appear here, newest first.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    // A Column, not a LazyColumn: this sits inside a scrolling parent, where nesting a lazy
+    // list of the same orientation is a measurement error rather than an optimisation. The
+    // query is capped well below any size where laziness would pay.
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            items.forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                ActivityRow(item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityRow(item: ActivityItem) {
+    // Direction comes from the stored cash delta, never re-derived from the type. Direction
+    // was decided once at capture by LedgerProjection; deciding it again here would be a
+    // second opinion that could disagree with the figures above.
+    val incoming = item.cashDeltaMinor >= 0
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(item.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                buildString {
+                    append(item.provider)
+                    append(" · ")
+                    append(formatClock(item.atUtcMillis))
+                    // Worth saying: an agent who did not type this needs to know where it
+                    // came from before they trust it.
+                    if (item.capturedAutomatically) append(" · from SMS")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                (if (incoming) "+" else "−") + MoneyFormat.format(item.amountMinor),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(2.dp))
+            DeliveryLabel(item.delivery)
+        }
+    }
+}
+
+@Composable
+private fun DeliveryLabel(delivery: ActivityDelivery) {
+    val colours = MaterialTheme.colorScheme
+    val tint = when (delivery) {
+        ActivityDelivery.SENT -> colours.onSurfaceVariant
+        ActivityDelivery.SENDING -> colours.primary
+        ActivityDelivery.NEEDS_REVIEW -> colours.error
+    }
+
+    Text(delivery.label, style = MaterialTheme.typography.labelSmall, color = tint)
+}
+
+/** Local wall-clock time. Ghana observes UTC+0 year-round, so this is also the business day. */
+private fun formatClock(utcMillis: Long): String =
+    DateTimeFormatter.ofPattern("HH:mm")
+        .format(Instant.ofEpochMilli(utcMillis).atZone(ZoneId.systemDefault()))
+
 @Composable
 private fun CaptureModeRow(title: String, detail: String) {
     Column {
@@ -496,10 +588,9 @@ private fun CaptureModeRow(title: String, detail: String) {
 /**
  * The SMS permission ask.
  *
- * <p>Kept as a card with one action. It was four paragraphs of prose that dominated the
- * screen and buried the choice; the explanation an agent needs before granting access to
- * their messages is short, and the reassurance that declining is fine belongs next to the
- * button rather than three lines below it.</p>
+ * <p>A card with one action. It was four paragraphs of prose that dominated the screen and
+ * buried the choice; the reassurance that declining is fine belongs next to the button rather
+ * than three lines below it.</p>
  */
 @Composable
 private fun SmsPermissionCard(onRequest: () -> Unit) {
@@ -532,8 +623,9 @@ private fun SmsPermissionCard(onRequest: () -> Unit) {
  *
  * <p>Ordered by how much each answer matters. Direction first, because cash in and cash out
  * move the ledger opposite ways and picking the wrong one is the costliest mistake available
- * on this screen; then the amount, large enough to check at a glance before saving; then the
- * optional details, plainly marked so nobody types them out of obligation.</p>
+ * on this screen; then the amount, large enough to check against the customer's handset
+ * before saving; then the optional details, plainly marked so nobody types them out of
+ * obligation.</p>
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
