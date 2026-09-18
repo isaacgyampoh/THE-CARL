@@ -123,14 +123,13 @@ Before any migration reaches an environment holding real records:
 ## Applying migrations
 
 ```bash
-export PATH="$HOME/.dotnet:$PATH"
 export ConnectionStrings__DefaultConnection="Host=…;Database=zazi;Username=…;Password=…"
 
 # Review as SQL first — always.
-dotnet ef migrations script --idempotent \
+scripts/dotnet.sh ef migrations script --idempotent \
   --project src/Zazi.Infrastructure -o migration.sql
 
-dotnet ef database update --project src/Zazi.Infrastructure
+scripts/dotnet.sh ef database update --project src/Zazi.Infrastructure
 ```
 
 `DesignTimeDbContextFactory` supplies the Npgsql provider to the CLI, so scaffolding does not

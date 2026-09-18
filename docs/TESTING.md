@@ -3,14 +3,25 @@
 ## Running the suite
 
 ```bash
-export PATH="$HOME/.dotnet:$PATH"   # 8.0.424 — see global.json
-dotnet restore && dotnet build && dotnet test
+scripts/dotnet.sh test
 ```
 
-Without a PostgreSQL server the 74 PostgreSQL-backed tests **skip with a reason**. They do
+Use the wrapper rather than a bare `dotnet`. It finds the SDK that `global.json` pins —
+which on this project is .NET 8, and which is often **not** the one a bare `dotnet` resolves.
+The muxer picks an SDK relative to its own location, so a machine with .NET 10 in
+`/usr/local/share/dotnet` and .NET 8 in `~/.dotnet` will fail with "A compatible .NET SDK was
+not found" no matter what `DOTNET_ROOT` says. The wrapper invokes the right binary, refuses
+to fall back to a newer major version, and prints the install command when the SDK is
+genuinely absent. See `scripts/dotnet.sh`.
+
+Without a PostgreSQL server the 141 PostgreSQL-backed tests **skip with a reason**. They do
 not pass. A green run that reports skips has not verified idempotency, concurrency,
 constraints, atomicity, reversal safety, or failure recovery — read the skip count, not just
 the colour.
+
+The full suite is **403 tests** (213 unit, 190 integration) and should report **0 skipped**.
+If integration tests skip, the credentials below are wrong — read them from here rather than
+guessing, because a wrong password skips silently and still prints "Passed!".
 
 ## Test layers
 

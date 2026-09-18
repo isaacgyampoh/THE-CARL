@@ -401,6 +401,44 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `a row exactly at the lease boundary is recovered`() {
+        // The inclusive edge, stated precisely rather than inferred from the zero-lease case.
+        // Claim at T, then recover with a lease chosen so the boundary lands exactly on T.
+        kotlinx.coroutines.test.runTest {
+            val queued = queue("3.00")
+            val claimedAt = System.currentTimeMillis() + 1_000L
+
+            OutboxRepository(database, now = { claimedAt }).claimBatch(10)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.SYNCING.name)
+
+            // boundary = (claimedAt + 60_000) - 60_000 = claimedAt
+            val later = OutboxRepository(database, now = { claimedAt + 60_000L })
+            assertThat(later.recoverStrandedItems(leaseMillis = 60_000L)).isEqualTo(1)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.PENDING.name)
+        }
+    }
+
+    @Test
+    fun `a row one millisecond inside the lease is not recovered`() {
+        // The other side of the same edge. Making the comparison inclusive must widen the
+        // claim by exactly one millisecond and no more — a row still inside its lease belongs
+        // to a worker that may genuinely be mid-request, and taking it would cost a wasted
+        // batch round trip.
+        kotlinx.coroutines.test.runTest {
+            val queued = queue("3.00")
+            val claimedAt = System.currentTimeMillis() + 1_000L
+
+            OutboxRepository(database, now = { claimedAt }).claimBatch(10)
+
+            // boundary = (claimedAt + 60_000) - 60_001 = claimedAt - 1, so the row's last
+            // attempt is one millisecond newer than the boundary and must be left alone.
+            val later = OutboxRepository(database, now = { claimedAt + 60_000L })
+            assertThat(later.recoverStrandedItems(leaseMillis = 60_001L)).isEqualTo(0)
+            assertThat(stateOf(queued)).isEqualTo(OutboxState.SYNCING.name)
+        }
+    }
+
+    @Test
     fun `an empty outbox does no work`() = runTest {
         val result = engine.runOnce()
 
