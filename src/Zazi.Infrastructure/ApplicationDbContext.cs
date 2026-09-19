@@ -162,6 +162,25 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.SecurityStamp).HasMaxLength(128);
             builder.HasIndex(x => new { x.OrganizationId, x.Email }).IsUnique();
 
+            builder.Property(x => x.EmailVerificationTokenHash).HasMaxLength(128);
+
+            // Verification looks a user up by this hash and nothing else, so it needs an index
+            // or every click on a verification link is a full table scan. Filtered, because the
+            // column is null for every account that is already verified — which, before long,
+            // is nearly all of them.
+            builder
+                .HasIndex(x => x.EmailVerificationTokenHash)
+                .HasFilter("\"EmailVerificationTokenHash\" IS NOT NULL");
+
+            builder.Property(x => x.PasswordResetTokenHash).HasMaxLength(128);
+
+            // Same shape and the same reason as the index above: reset looks a user up by this
+            // hash alone, and the column is null for every account not currently resetting —
+            // which is nearly all of them, nearly all the time.
+            builder
+                .HasIndex(x => x.PasswordResetTokenHash)
+                .HasFilter("\"PasswordResetTokenHash\" IS NOT NULL");
+
             // Roles are organization-scoped entities shared by many users, so this must be a
             // many-to-many join. The previous mapping used OrganizationId as a foreign key back
             // to User.Id, which meant assigning an existing role to a second user rewrote that

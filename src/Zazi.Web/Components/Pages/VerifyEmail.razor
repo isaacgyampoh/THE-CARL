@@ -1,0 +1,59 @@
+@page "/verify-email"
+@using Microsoft.AspNetCore.Authorization
+@using Zazi.Application.Onboarding
+@attribute [AllowAnonymous]
+@inject ISignUpService SignUp
+
+@* The other end of the link in the verification email. Anonymous by necessity: the whole
+   point is that the person cannot sign in until this has run. *@
+
+<PageTitle>Confirm your email · Zazi</PageTitle>
+
+<div class="signin">
+    <h1>Zazi</h1>
+
+    @switch (_outcome)
+    {
+        case EmailVerificationOutcome.Verified:
+            <p class="subtitle">Email confirmed</p>
+            <p>Your account is ready. Sign in to set up your business.</p>
+            <p><a href="/sign-in">Sign in</a></p>
+            break;
+
+        case EmailVerificationOutcome.Expired:
+            <p class="subtitle">That link has expired</p>
+            <p>
+                Verification links last 24 hours. Request a new one and we will send another.
+            </p>
+            <p><a href="/sign-up">Request a new link</a></p>
+            break;
+
+        default:
+            <p class="subtitle">That link did not work</p>
+            @* One message for a token that never existed, one already used, and one whose
+               account is gone. Distinguishing them would only help someone trying tokens they
+               were never sent. *@
+            <p>
+                It may already have been used, or it may have been mistyped. If you have
+                already confirmed, just sign in.
+            </p>
+            <p><a href="/sign-in">Sign in</a> · <a href="/sign-up">Request a new link</a></p>
+            break;
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "token")]
+    private string? Token { get; set; }
+
+    private EmailVerificationOutcome _outcome = EmailVerificationOutcome.InvalidOrAlreadyUsed;
+
+    // OnInitializedAsync, so the token is redeemed while the page is being built and the
+    // result is what renders. Static rendering means this runs exactly once per request,
+    // which matters for something that is deliberately single-use.
+    protected override async Task OnInitializedAsync()
+    {
+        var result = await SignUp.VerifyEmailAsync(Token ?? string.Empty);
+        _outcome = result.Outcome;
+    }
+}

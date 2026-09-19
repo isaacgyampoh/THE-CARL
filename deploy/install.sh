@@ -124,6 +124,35 @@ ENVEOF
 cat > /etc/zazi/web.env <<ENVEOF
 ConnectionStrings__DefaultConnection=${CONN}
 ZAZI_JWT_KEY=${JWT_KEY}
+
+# ─── Transactional email ─────────────────────────────────────────────────────
+# Both lines are commented out because this script has no key to write. Enabling the
+# provider without one is a startup failure by design — a deployment that believes it
+# can send email and cannot is how people end up waiting for a verification message
+# nobody ever sent — so a fresh install would refuse to boot.
+#
+# To enable: get a key from https://resend.com/api-keys, verify getzazi.com there
+# (see docs/PRODUCTION.md for the DNS records), then uncomment BOTH lines, paste the
+# key, and restart:  sudo systemctl restart zazi-web
+#
+# Only this file. The API does not send email, so the key does not belong in api.env.
+#Email__Provider=Resend
+#RESEND_API_KEY=re_paste_the_key_here
+
+# ─── Public URL ──────────────────────────────────────────────────────────────
+# How customers reach this dashboard. Every link Zazi emails is built from it, and it is
+# read from here rather than from the request so that nobody can redirect those links by
+# sending a chosen Host header.
+#
+# Required for password reset, and required before signup can be enabled.
+Portal__PublicBaseUrl=https://app.${ZAZI_DOMAIN}
+
+# ─── Self-service signup ─────────────────────────────────────────────────────
+# Off unless you turn it on. Requires the email lines above to be working first: a signup
+# that cannot send its verification link creates accounts nobody can open.
+#
+# Password reset needs no switch — it works as soon as email and the URL above are set.
+#SignUp__Enabled=true
 ENVEOF
 
 for svc in api web; do
@@ -220,6 +249,15 @@ Still to do, in this order:
 
   4. Check readiness, which is the one that proves the database is reachable:
         curl -fsS https://api.<your-domain>/ready
+
+  5. Enable outgoing email, if you want people to be able to verify their own
+     accounts. Verify getzazi.com at https://resend.com/domains (it gives you the
+     DKIM, SPF and MX records to add in Cloudflare, all DNS-only / grey cloud),
+     create a Sending-access API key, then uncomment the two email lines at the
+     bottom of /etc/zazi/web.env, paste the key, and:
+        sudo systemctl restart zazi-web
+     The dashboard will refuse to start if Email__Provider=Resend is set without a
+     key, which is how you find out you missed a step.
 
 Database and signing secrets were generated on this machine and written to
 /etc/zazi/*.env with mode 600. They were not printed and are not in the repository.

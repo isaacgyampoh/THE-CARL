@@ -17,6 +17,7 @@ using Zazi.Application.Evidence;
 using Zazi.Application.Sync;
 using Zazi.Infrastructure.Evidence;
 using Zazi.Infrastructure;
+using Zazi.Infrastructure.Email;
 using Zazi.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -206,6 +207,12 @@ builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService
 builder.Services.AddScoped<ISyncTransactionService, SyncTransactionService>();
 builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
 builder.Services.AddScoped<ITransactionEvidenceSource, ManualEntryEvidenceSource>();
+// Transactional email. Registered in both hosts from one place so the dashboard cannot start
+// without something the API has — the mistake already made once with IIdentityRevocationService.
+// The Resend credential is read from the RESEND_API_KEY environment variable inside this call
+// and is never bound from configuration, so it cannot arrive from a committed appsettings file.
+builder.Services.AddZaziEmail(builder.Configuration, builder.Environment.IsDevelopment());
+
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();

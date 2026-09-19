@@ -167,6 +167,46 @@ public sealed class User : AggregateRoot
     public DateTimeOffset? LockoutUntilUtc { get; set; }
     public DateTimeOffset? LastLoginAtUtc { get; set; }
     public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// SHA-256 of the pending email-verification token, or null when nothing is pending.
+    /// </summary>
+    /// <remarks>
+    /// The hash, never the token. The token is in an email the person already has; what must
+    /// not be true is that reading this table hands someone the ability to activate accounts
+    /// they never had access to. Cleared on use, which is what makes a token single-use.
+    /// </remarks>
+    public string? EmailVerificationTokenHash { get; set; }
+
+    /// <summary>When the pending verification token stops working.</summary>
+    public DateTimeOffset? EmailVerificationExpiresAtUtc { get; set; }
+
+    /// <summary>
+    /// When a verification email was last sent, used to throttle resends.
+    /// </summary>
+    /// <remarks>
+    /// Without it, the resend form is a way to have Zazi send unlimited mail to an address
+    /// chosen by whoever is asking — which costs the sending domain its reputation rather
+    /// than costing the sender anything.
+    /// </remarks>
+    public DateTimeOffset? EmailVerificationSentAtUtc { get; set; }
+
+    /// <summary>
+    /// SHA-256 of the pending password-reset token, or null when no reset is pending.
+    /// </summary>
+    /// <remarks>
+    /// The same pattern as <see cref="EmailVerificationTokenHash"/>, for a sharper reason: this
+    /// token sets a password. Storing only the hash means a copy of this table does not let
+    /// anyone take over accounts, and clearing it on use is what makes the token single-use.
+    /// </remarks>
+    public string? PasswordResetTokenHash { get; set; }
+
+    /// <summary>When the pending reset token stops working.</summary>
+    public DateTimeOffset? PasswordResetExpiresAtUtc { get; set; }
+
+    /// <summary>When a reset email was last sent, used to throttle repeat requests.</summary>
+    public DateTimeOffset? PasswordResetRequestedAtUtc { get; set; }
+
     public List<Role> Roles { get; set; } = new();
 }
 

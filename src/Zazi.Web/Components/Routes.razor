@@ -1,6 +1,24 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
+<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
+    @*
+        Without a NotFound block, a client-side navigation to a route that does not exist
+        renders nothing at all: the page goes blank with no error and no way back. Server-side
+        the request never reaches the Router — endpoint routing answers first — so this only
+        shows for navigation within an already-loaded circuit, which is exactly the case where
+        a blank screen is least explicable to the person looking at it.
+    *@
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <PageTitle>Page not found · Zazi</PageTitle>
+            <div class="signin">
+                <h1>Zazi</h1>
+                <p class="subtitle">Page not found</p>
+                <p>That page does not exist. It may have been renamed, or the link may be wrong.</p>
+                <p><a href="/">Back to the dashboard</a></p>
+            </div>
+        </LayoutView>
+    </NotFound>
 </Router>

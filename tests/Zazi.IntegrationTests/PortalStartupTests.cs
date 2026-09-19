@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Zazi.Application;
+using Zazi.Application.Email;
+using Zazi.Application.Onboarding;
 using Zazi.Application.Security;
 
 using Zazi.IntegrationTests.Postgres;
@@ -78,5 +80,18 @@ public class PortalStartupTests
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IDeviceEnrollmentService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IOrganizationService>());
         Assert.NotNull(scope.ServiceProvider.GetRequiredService<IIdentityRevocationService>());
+
+        // Signup and email verification are the portal's job, so the portal is the host that
+        // must be able to send. Registered for both hosts from one extension method precisely
+        // to avoid repeating the omission this test was written for.
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IEmailSender>());
+
+        // Self-service signup. Registered only in the portal, since the API has no signup
+        // surface — which is exactly the shape of omission this test exists for.
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<ISignUpService>());
+
+        // Password reset. Portal-only like signup, and the page that needs it is reached
+        // by people who are already locked out — the worst audience for a 500.
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IPasswordResetService>());
     }
 }

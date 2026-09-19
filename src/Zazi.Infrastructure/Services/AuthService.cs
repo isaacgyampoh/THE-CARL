@@ -11,6 +11,8 @@ using Zazi.Application;
 using Zazi.Application.Security;
 using Zazi.Domain;
 
+using Zazi.Infrastructure.Security;
+
 namespace Zazi.Infrastructure.Services;
 
 public class AuthService : IAuthService
@@ -607,26 +609,11 @@ public class AuthService : IAuthService
         candidate.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    private static void ValidatePasswordStrength(string password)
-    {
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 12)
-        {
-            throw new ArgumentException("Password must be at least 12 characters long.", nameof(password));
-        }
-
-        var categories = 0;
-        if (password.Any(char.IsUpper)) categories++;
-        if (password.Any(char.IsLower)) categories++;
-        if (password.Any(char.IsDigit)) categories++;
-        if (password.Any(c => !char.IsLetterOrDigit(c))) categories++;
-
-        if (categories < 3)
-        {
-            throw new ArgumentException(
-                "Password must combine at least three of: uppercase, lowercase, digits, symbols.",
-                nameof(password));
-        }
-    }
+    // Delegated rather than implemented here: self-service signup applies the same rules, and
+    // a second copy of a password policy diverges silently — the weaker path just starts
+    // accepting what the other refuses.
+    private static void ValidatePasswordStrength(string password) =>
+        PasswordPolicy.Validate(password);
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
@@ -684,46 +671,21 @@ public class AuthService : IAuthService
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
+    // All three delegate to PasswordHashing, which is also what self-service signup uses to
+    // create owners. The parameters must be identical in both places or accounts made by one
+    // path fail to authenticate through the other — presenting as a wrong password, with
+    // nothing to suggest the password was right.
     private static string HashPassword(string password, out string salt)
     {
-        salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(SaltBytes));
-        return HashPassword(password, salt);
+        salt = PasswordHashing.NewSalt();
+        return PasswordHashing.Hash(password, salt);
     }
 
-    private static string HashPassword(string password, string salt)
-    {
-        var bytes = KeyDerivation.Pbkdf2(
-            password,
-            Encoding.UTF8.GetBytes(salt),
-            KeyDerivationPrf.HMACSHA256,
-            Pbkdf2Iterations,
-            DerivedKeyBytes);
+    private static string HashPassword(string password, string salt) =>
+        PasswordHashing.Hash(password, salt);
 
-        return Convert.ToBase64String(bytes);
-    }
-
-    private static bool VerifyPassword(string password, string passwordHash, string salt)
-    {
-        if (string.IsNullOrWhiteSpace(salt) || string.IsNullOrWhiteSpace(passwordHash))
-        {
-            return false;
-        }
-
-        byte[] expected;
-        byte[] actual;
-        try
-        {
-            expected = Convert.FromBase64String(passwordHash);
-            actual = Convert.FromBase64String(HashPassword(password, salt));
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        // Fixed-time comparison: a short-circuiting string compare leaks hash prefixes.
-        return CryptographicOperations.FixedTimeEquals(expected, actual);
-    }
+    private static bool VerifyPassword(string password, string passwordHash, string salt) =>
+        PasswordHashing.Verify(password, passwordHash, salt);
 
     private static string HashToken(string token) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));

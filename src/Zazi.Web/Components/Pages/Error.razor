@@ -1,36 +1,63 @@
-﻿@page "/Error"
+@page "/error"
 @using System.Diagnostics
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
 
-<PageTitle>Error</PageTitle>
+@*
+    Anonymous, and it has to be.
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+    The portal denies by default, and outside Development UseExceptionHandler re-executes
+    failed requests at this path. Without the attribute above, an anonymous visitor who hits
+    any error is redirected here, fails the fallback policy here, and is redirected to
+    /sign-in — which, if the error is not specific to one page, fails the same way again.
+    That is not a broken error page, it is the whole dashboard unreachable behind a redirect
+    loop that reads as ordinary sign-in traffic in the logs.
 
-@if (ShowRequestId)
-{
+    It also cannot happen in Development, because the exception handler is not registered
+    there. So it is invisible until it is in production. PortalErrorPageTests is the guard.
+*@
+
+<PageTitle>Something went wrong · Zazi</PageTitle>
+
+<div class="signin">
+    <h1>Zazi</h1>
+    <p class="subtitle">Something went wrong</p>
+
     <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
+        The page could not be loaded. Nothing you were doing has been lost — Zazi records
+        transactions when they are submitted, not when a page renders.
     </p>
-}
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+    <p>
+        Try again in a moment. If it keeps happening, quote the reference below when you
+        report it.
+    </p>
 
-@code{
+    @if (ShowRequestId)
+    {
+        <p>
+            <strong>Reference:</strong> <code>@RequestId</code>
+        </p>
+    }
+
+    @* Deliberately no exception detail, no stack trace, and no advice to enable Development
+       mode — which is what the stock template puts here. Telling the operator of a financial
+       system to switch on the setting that prints exception detail to end users is not advice
+       worth shipping. The detail is in the server log, where it belongs. *@
+
+    <p><a href="/sign-in">Back to sign in</a></p>
+</div>
+
+@code {
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
     private string? RequestId { get; set; }
     private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 
+    // The same identifier that appears in the server log for this request, so a report of
+    // "it broke" can be matched to the actual exception without asking the person anything
+    // they would have to understand.
     protected override void OnInitialized() =>
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
 }

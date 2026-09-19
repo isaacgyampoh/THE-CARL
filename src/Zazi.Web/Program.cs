@@ -3,13 +3,19 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Zazi.Application;
 using Zazi.Application.Security;
+using Zazi.Infrastructure.Onboarding;
+using Zazi.Application.Onboarding;
 using Zazi.Infrastructure;
+using Zazi.Infrastructure.Email;
+using Zazi.Infrastructure.Security;
 using Zazi.Infrastructure.Services;
 using Zazi.Web.Components;
 using Zazi.Web.Endpoints;
@@ -177,6 +183,53 @@ builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService
 // The Team page issues and revokes activation codes.
 builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
+// Transactional email. Registered in both hosts from one place so the dashboard cannot start
+// without something the API has — the mistake already made once with IIdentityRevocationService.
+// The Resend credential is read from the RESEND_API_KEY environment variable inside this call
+// and is never bound from configuration, so it cannot arrive from a committed appsettings file.
+builder.Services.AddZaziEmail(builder.Configuration, builder.Environment.IsDevelopment());
+
+// Where a failed request is re-executed, outside Development. Declared here rather than as an
+// argument to UseExceptionHandler so there is one copy of the path and it is readable from the
+// container.
+//
+// The page it names MUST be anonymous. The portal denies by default, so an error page behind
+// the fallback policy turns every error an anonymous visitor hits into a redirect to /sign-in
+// — which errors the same way, forever. PortalErrorPageTests holds the two ends together.
+builder.Services.Configure<ExceptionHandlerOptions>(options =>
+{
+    options.ExceptionHandlingPath = "/error";
+    options.CreateScopeForErrors = true;
+});
+
+// ─── Self-service onboarding ─────────────────────────────────────────────────
+// Validated at startup like everything else that can be half-configured: signup switched on
+// without a public base URL sends verification links that go nowhere, and the person who finds
+// out is a customer who cannot open the account they just created.
+// How the portal is reached from outside. Every link Zazi emails is built from this and
+// never from the request's Host header — those links activate accounts and change passwords,
+// so a URL the caller chooses is a URL pointing wherever they like.
+var portalOptions = new PortalOptions();
+builder.Configuration.GetSection(PortalOptions.SectionName).Bind(portalOptions);
+portalOptions.Validate();
+builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(portalOptions));
+
+var signUpOptions = new SignUpOptions();
+builder.Configuration.GetSection(SignUpOptions.SectionName).Bind(signUpOptions);
+signUpOptions.Validate(portalOptions);
+builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(signUpOptions));
+builder.Services.AddScoped<ISignUpService, SignUpService>();
+
+// Password reset. Unlike signup there is no switch: an account holder who has forgotten their
+// password needs a way back in whether or not the deployment accepts new signups. It refuses
+// at the page when Portal:PublicBaseUrl is absent, rather than stopping the portal starting,
+// so adding this setting does not take an existing deployment down.
+var passwordResetOptions = new PasswordResetOptions();
+builder.Configuration.GetSection(PasswordResetOptions.SectionName).Bind(passwordResetOptions);
+passwordResetOptions.Validate();
+builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(passwordResetOptions));
+builder.Services.AddScoped<IPasswordResetService, PasswordResetService>();
+
 
 var app = builder.Build();
 
@@ -223,7 +276,11 @@ if (!app.Environment.IsDevelopment())
         });
     }
 
-    app.UseExceptionHandler("/error", createScopeForErrors: true);
+    // Parameterless, so the path comes from the options configured above rather than being
+    // written a second time here. The string overload builds its own options object and leaves
+    // IOptions<ExceptionHandlerOptions> empty, which means nothing else — including a test —
+    // can ask the application where it sends failed requests.
+    app.UseExceptionHandler();
     app.UseHsts();
 
     // A password posted over plain HTTP is a password disclosed. Development is exempt so
@@ -232,10 +289,17 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
-app.UseAntiforgery();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// After authentication, not before it. An antiforgery token is bound to the user it was
+// issued to, so the middleware that validates one needs an identity to validate it against;
+// running it first means it decides on every request that nobody is signed in. The framework
+// does not complain, and the sign-in POST works either way because it is genuinely anonymous
+// — which is what makes the wrong order easy to keep.
+app.UseAntiforgery();
+
 app.UseRateLimiter();
 
 // Same split, and the same paths, as the API: /health is liveness, /ready proves this
@@ -258,6 +322,27 @@ app.MapGet("/ready", async (ApplicationDbContext db, CancellationToken cancellat
 
 app.MapAuthEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+
+// Checked against the endpoints that were actually built, after everything is mapped.
+//
+// These two paths carry the whole dashboard. If either stops being anonymous, every visitor
+// is redirected to a page that redirects them again — and the logs look like a healthy portal
+// serving signed-out users the entire time. A startup failure naming the page is worth far
+// more than discovering it from a customer.
+app.AssertAnonymouslyReachable(
+    "/sign-in",
+    // Both halves of onboarding. A verification link that lands on a page requiring sign-in
+    // cannot be followed by the one person it was sent to — who, by definition, cannot sign in
+    // until they have followed it.
+    "/sign-up",
+    "/verify-email",
+    // Both halves of password reset. Somebody using these cannot sign in by definition, so a
+    // page here that demanded authentication would be unreachable by exactly the people it is
+    // for — and the redirect would look like ordinary sign-in traffic in the logs.
+    "/forgot-password",
+    "/reset-password",
+    app.Services.GetRequiredService<IOptions<ExceptionHandlerOptions>>()
+        .Value.ExceptionHandlingPath.Value ?? "/error");
 
 app.Run();
 

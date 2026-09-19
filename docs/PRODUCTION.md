@@ -263,10 +263,28 @@ sudo ZAZI_DOMAIN=<your-domain> bash install.sh
 ```bash
 scripts/dotnet.sh publish src/Zazi.Api -c Release -o /tmp/zazi-api
 scripts/dotnet.sh publish src/Zazi.Web -c Release -o /tmp/zazi-web
-rsync -a /tmp/zazi-api/ root@<server>:/opt/zazi/api/
-rsync -a /tmp/zazi-web/ root@<server>:/opt/zazi/web/
+rsync -a --delete /tmp/zazi-api/ root@<server>:/opt/zazi/api/
+rsync -a --delete /tmp/zazi-web/ root@<server>:/opt/zazi/web/
 rsync -a scripts/healthcheck.sh deploy/backup.sh root@<server>:/opt/zazi/scripts/
 ```
+
+**`--delete` is not optional, and it is not there for tidiness.** A publish directory is a
+closed set: the application loads what is next to it in preference to the shared framework.
+Without `--delete`, a file from an earlier publish that no longer exists in the current one
+stays on the server forever — and if that file is a `Microsoft.AspNetCore.*` assembly left
+behind by a self-contained or differently-targeted build, the application silently runs on it
+instead of the runtime you installed. Nothing reports this. The binaries you deployed hash
+correctly, the service starts, and the behaviour is from code you are not looking at.
+
+A quick check that the directory is clean, run on the server:
+
+```bash
+ls -1 /opt/zazi/web | grep -c '^Microsoft\.AspNetCore'   # expect 0
+ls -1 /opt/zazi/api | grep -c '^Microsoft\.AspNetCore'   # expect 0
+```
+
+Anything other than `0` means a stale publish is being loaded, and the fix is to empty the
+directory and deploy again rather than to sync over the top of it.
 
 **On the VM** — start everything:
 
@@ -303,6 +321,264 @@ a real Let's Encrypt certificate, so strict validation succeeds.
 **Leave these alone:** Cloudflare's Rocket Loader and Auto Minify can interfere with Blazor's
 SignalR negotiation. Zazi's own rate limiting is per-IP and sufficient; Cloudflare rate
 limiting rules on top are optional and not required by this deployment.
+
+## Password reset
+
+An account holder who has forgotten their password can get back in without an administrator.
+**There is no switch for it** — unlike signup, which a deployment opts into, somebody locked
+out of their own records needs a route back whether or not this deployment accepts new
+signups. It works as soon as two things are configured:
+
+```
+Portal__PublicBaseUrl=https://app.getzazi.com
+```
+
+plus working email (see above). Without the URL, `/forgot-password` says password reset is
+unavailable and tells people to contact an administrator, rather than pretending to send a
+message it cannot build a link for. The portal still starts either way — adding this setting
+must not be able to take a running deployment down.
+
+### The flow
+
+1. `/forgot-password` — anonymous, rate limited by the same per-IP policy as sign-in.
+2. The person enters an address. **The page says exactly the same thing whatever happens.**
+3. For an account that is active and uses a password, a 32-byte random token is generated.
+   Only its SHA-256 is stored, alongside an expiry 30 minutes out.
+4. The link is emailed as `Zazi <no-reply@getzazi.com>` through Resend.
+5. `/reset-password?token=…` checks the token *without consuming it* — a page load is not a
+   reset, and mail clients prefetch links.
+6. Submitting a new password consumes the token and sets the password in one transaction.
+7. Every session is closed and the security stamp rotated, so the new password is required
+   everywhere immediately.
+8. A confirmation email goes out, with nothing to click.
+
+### Why 30 minutes and not 24 hours
+
+Email verification links last a day; these last half an hour. A verification link only proves
+an address. This one changes the password on an account holding financial records, and it sits
+in a mailbox for exactly as long as it is valid.
+
+### Things it deliberately does not do
+
+**It does not reveal whether an address is registered.** Same message, same status, no redirect
+difference — and the response is held to a floor of 900ms so that the *timing* cannot say
+either. A known address writes a token and calls the email provider; an unknown one does a
+single lookup. Without the floor a stopwatch reads off the difference and the identical wording
+buys nothing.
+
+**It does not reset inactive or activation-only accounts.** An owner who has not verified their
+address needs the verification link, not a reset — issuing one would activate an account
+through the back door. Workers who authenticate by activation code have no password to reset.
+
+**It does not spend the token on a weak password.** The policy is checked first, so someone who
+picks a short password can simply try again rather than having to request a whole new link.
+
+**Only one concurrent use wins.** The token is cleared and claimed by a single conditional
+`UPDATE`; the loser is refused rather than quietly writing a second password over the first.
+
+**Nothing sensitive reaches the logs.** Audit entries record `PASSWORD_RESET_REQUESTED` and
+`PASSWORD_RESET_COMPLETED` against the user and organization, and contain no token, no hash and
+no password. Log lines mask the address.
+
+### After a reset
+
+Every session is closed: the security stamp is rotated, `AuthSessions` are revoked and
+refresh-token families are killed, through the same `IIdentityRevocationService` an
+administrator revocation uses, with trigger `PasswordChanged`. A reset that left whoever forced
+it still signed in would defeat the point. Lockout counters are cleared too — someone who was
+locked out and has now proved control of the mailbox has answered the question lockout asked.
+
+## Self-service signup
+
+A business can create its own Zazi account without anyone at Zazi being involved. It is
+**off by default** — opening a financial system to public registration is a decision to make
+deliberately, and a pilot running with a handful of known agents has no reason to accept
+accounts from whoever finds the URL.
+
+### Turning it on
+
+Email has to work first. A signup that cannot send its verification link creates accounts
+nobody can open. Configure Resend, confirm it with the live smoke test above, then add to
+`/etc/zazi/web.env`:
+
+```
+Portal__PublicBaseUrl=https://app.getzazi.com
+SignUp__Enabled=true
+```
+
+and `sudo systemctl restart zazi-web`. The dashboard refuses to start if `SignUp__Enabled` is
+true without a valid absolute `Portal__PublicBaseUrl`.
+
+`Portal__PublicBaseUrl` is read from configuration and **never from the request's `Host`
+header**. These links activate accounts and change passwords, so one assembled from a header
+the caller chose is a link an attacker can aim at a site they control.
+
+### What happens
+
+1. Someone fills in the form at `/sign-up`: business name, their name, email, password.
+2. Zazi creates the organization, its first branch and the owner **in one transaction**.
+3. The owner is written **inactive and unverified**. Login refuses an inactive user, so at
+   this point there is no account anyone can sign into — including whoever typed the address,
+   if it was not theirs to type.
+4. A verification link is emailed. The token is 32 random bytes; only its SHA-256 is stored.
+5. Opening the link activates the owner and clears the token, which is what makes it
+   single-use. It expires after 24 hours.
+6. The owner signs in and sets up branches, staff and activation codes as usual.
+
+### Things it deliberately does not do
+
+**It does not say whether an address is already registered.** A second signup on a known
+address returns exactly the same response as a new one, creates nothing, and sends the real
+account holder an email saying someone tried. Otherwise the form is a way to enumerate Zazi's
+customers, which would undo the care the sign-in form already takes.
+
+**It does not grant anything beyond the new tenant.** The owner gets `OWNER` for their own
+organization and nothing else — never `PLATFORM_ADMIN`, which can reach every tenant.
+
+**It does not roll back the account if the email fails.** The organization is committed first
+and the send reported separately, so a transient delivery problem does not lose the tenant.
+The page then offers to resend rather than telling someone to watch an inbox that will stay
+empty.
+
+**Resends are throttled** to one per address every couple of minutes, and issue a *new* token
+that retires the previous one. Without the throttle, the form is a way to have Zazi send
+unlimited mail to an address chosen by whoever is asking — which costs the sending domain its
+reputation rather than costing them anything.
+
+## If the dashboard redirects to /sign-in forever
+
+The symptom: `https://app.<your-domain>/sign-in` answers `302` pointing at `/sign-in`. Nobody
+can sign in, so nothing is reachable. `/health` still returns `200`, which makes it look like
+the application is fine.
+
+It looks fine in the logs too. A stream of redirects to the sign-in page is exactly what a
+healthy portal serving signed-out visitors produces, so there is nothing anomalous to find.
+
+**Read the `Location` header.** It carries the answer and takes one command:
+
+```bash
+curl -sSI https://app.<your-domain>/sign-in | grep -i '^location:'
+```
+
+| `ReturnUrl` | Meaning |
+|---|---|
+| `%2Ferror` | Rendering the page threw, and the error page sent the visitor back. The exception is in `journalctl -u zazi-web`; the redirect is a symptom, not the fault. |
+| `%2Fsign-in` | No endpoint matched `/sign-in`, so it fell to the deny-by-default fallback policy. Almost always a stale publish directory — see `--delete` above. |
+
+Both causes are now guarded at startup. `AnonymousRouteGuard` checks the endpoints the
+application actually built and refuses to start if either `/sign-in` or the error page is
+missing or not anonymous, naming the page. So on a current build, a portal that starts at all
+has both of these routes working — which means a loop on a running instance points at the
+exception, not at routing.
+
+## Transactional email
+
+Zazi sends email through [Resend](https://resend.com). One provider, one endpoint, one
+credential. The application posts to `https://api.resend.com/emails` directly rather than
+through a client library: Resend publishes no official .NET SDK, the community package is
+pre-1.0, and what it would save is a single HTTP call.
+
+### 1. Verify the domain
+
+At <https://resend.com/domains>, add `getzazi.com`. Resend gives you a set of records; add
+them in Cloudflare exactly as shown, and set every one of them to **DNS-only (grey cloud)**.
+Proxying is for HTTP. A proxied MX or TXT record does not resolve to what the receiving mail
+server needs, and verification silently never completes.
+
+| Type | Purpose | Notes |
+|---|---|---|
+| `TXT` | DKIM | The long public key. Copy it whole; a truncated value fails verification with no useful error. |
+| `MX` | Bounce handling | On the `send` subdomain, not the apex. It does not affect your inbound mail. |
+| `TXT` | SPF | Merge into your existing SPF record if you already have one — a domain with **two** SPF records is treated as having none. |
+
+Verification usually completes in minutes. Nothing sends until it does; an unverified domain
+comes back as a `403` with `The from domain is not verified`, which is logged in full.
+
+**Status: `getzazi.com` is verified.** Confirmed on 19 September 2026 by a live send from
+`no-reply@getzazi.com`, which an unverified domain would have rejected. This step is done
+unless the DNS records are changed.
+
+DMARC is not required by Resend and is worth adding anyway once DKIM and SPF pass, starting
+at `p=none` so you see reports before anything is rejected.
+
+### 2. Create a key
+
+At <https://resend.com/api-keys>, create one with **Sending access**, not full access. The
+dashboard only ever posts a message; a full-access key additionally grants read access to
+every message the domain has ever sent, which is a meaningful difference in what a leak of
+this server costs.
+
+Resend shows the key once. It starts `re_`.
+
+### 3. Configure the server
+
+Both lines, in `/etc/zazi/web.env` only:
+
+```
+Email__Provider=Resend
+RESEND_API_KEY=re_...
+```
+
+Then `sudo systemctl restart zazi-web`.
+
+**Only that file.** The API sends no email — signup and verification are the dashboard's —
+so the key does not go in `api.env`. The file is mode `600` and owned by root; `install.sh`
+writes both lines commented out, ready to uncomment.
+
+**The key is never read from configuration.** Not `appsettings.json`, not a user-secrets
+file — the application calls `Environment.GetEnvironmentVariable("RESEND_API_KEY")` and
+consults nothing else. A key placed in a settings file does not work, which is the point:
+settings files are committed.
+
+### What happens when it is wrong
+
+| Situation | Behaviour |
+|---|---|
+| `Email__Provider=Resend`, no key | **The dashboard refuses to start**, naming the variable. Deliberate: a deployment that believes it can send and cannot leaves people waiting for a message that is never coming. |
+| Neither line set | Starts normally. Every send is reported as failed and logged as an error. Nothing silently disappears. |
+| Key rejected (`401`/`403`) | Logged at **error**. No retry helps; the key or the domain is wrong. |
+| Rate limited, or Resend `5xx` | Logged at warning, reported as transient, safe to retry. |
+| Provider slow | Abandoned after `Email:TimeoutSeconds` (10). Someone is waiting on a signup response; an unsent email beats a hung request. |
+
+Nothing about a failure is shown to the person signing up beyond that the message could not
+be sent — provider responses stay in the server log.
+
+### What is in the logs
+
+Recipients are masked to `am***@example.com`: enough to match a support request to a send,
+not enough to build a mailing list from a log file. Anything key-shaped is stripped before
+writing. Message bodies are never logged in production — in development, where no provider
+is configured, the whole message *is* written to the log so you can click the verification
+link without an account, which is exactly why that sender is unreachable outside Development.
+
+### Proving it actually works
+
+Everything else about email is tested against a stub, which proves the code is right and
+proves nothing about the account. Whether the key has the right scope and whether the sender
+domain is verified cannot be discovered locally, and getting either wrong presents the same
+way: signup appears to work and nobody receives anything.
+
+There is an opt-in test that sends a real message through the real API, to Resend's own sink
+address so nothing lands in front of a person:
+
+```bash
+ZAZI_EMAIL_LIVE_TEST=1 RESEND_API_KEY='re_...' \
+  scripts/dotnet.sh test tests/Zazi.IntegrationTests/Zazi.IntegrationTests.csproj \
+  --filter FullyQualifiedName~ResendLiveSmokeTest
+```
+
+It needs **both** variables. `RESEND_API_KEY` alone is not enough, because that variable is
+legitimately set on a machine configured for real use and a normal test run must not start
+sending mail. A pass means the credential, its scope and the sender domain are all good.
+
+Run it after issuing or rotating a key. A `403` means the domain is not verified; a `401`
+means the key is wrong or lacks Sending access.
+
+### Rotating the key
+
+Create the new key in Resend first, swap the value in `/etc/zazi/web.env`, restart
+`zazi-web`, confirm a send, then revoke the old one. Resend allows several live keys, so
+there is no window where the dashboard has none.
 
 ## Android release build
 

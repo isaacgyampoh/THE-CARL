@@ -33,7 +33,11 @@ appsettings.Production.json
 appsettings.*.local.json
 .env
 .env.*
-!.env.example
+# Anything ending in .env, not only a file called exactly that. deploy/*.env.example tells
+# people to copy the template to api.env and web.env, and those filled-in copies carry the
+# database password, the JWT key and the Resend API key. `.env` alone does not match them.
+*.env
+!*.env.example
 
 # Build artefacts. Android build/ output is already ignored, but an APK copied elsewhere for
 # distribution is not, and a signed pilot build is a redistributable credential-bearing binary.
