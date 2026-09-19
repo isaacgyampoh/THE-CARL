@@ -126,33 +126,32 @@ with no shell and no home. `/opt/zazi` (application, root-owned), `/etc/zazi` (s
 600), `/var/lib/zazi/keys` (data-protection key ring, owned by `zazi`, mode 700),
 `/var/log/caddy`.
 
-### On Oracle Cloud Always Free
+### On Hetzner Cloud
 
-Always Free offers two shapes, and only one of them can run Zazi.
-
-| Shape | Verdict |
+| | Recommendation |
 |---|---|
-| **VM.Standard.A1.Flex** (Ampere, ARM) — up to 4 OCPU / 24 GB | **Use this.** Ask for 2 OCPU / 12 GB; it is free and comfortably above what Zazi needs. |
-| VM.Standard.E2.1.Micro (AMD, x86) — 1 OCPU / **1 GB** | Too small. Below the 2 GB minimum above: it survives until the first large batch sync, then the kernel kills PostgreSQL. |
+| **Shape** | **CX22** — 2 vCPU, 4 GB, 40 GB. Comfortably above the minimum; the next size down is 2 GB and leaves no headroom for a batch sync landing while the dashboard renders. |
+| **Location** | **Falkenstein, Nuremberg or Helsinki.** ~130 ms to Ghana. Fine — Zazi is offline-first and syncs in batches. |
+| **Image** | Ubuntu 24.04 LTS |
+| **Firewall** | Hetzner Cloud Firewall (console) *or* the host `ufw` that `install.sh` configures. One is enough. |
 
-**ARM is fine.** `dotnet publish` without a runtime identifier produces framework-dependent
-output that runs on whatever architecture the installed runtime is, and Ubuntu ships
-`aspnetcore-runtime-8.0` for arm64. Nothing in Zazi is architecture-specific. Do not add
-`-r linux-arm64` — it would produce a self-contained build that then has to match.
+Two things Hetzner does differently from most providers, both in your favour:
 
-**Two firewalls, and this catches people.** Oracle filters at the network level with VCN
-Security Lists *and* ships images carrying their own `iptables` rules. Neither is ufw.
+**One firewall, not two.** The image ships no preinstalled `iptables` ruleset, so `ufw` is the
+only thing filtering and what it reports is what is happening. `install.sh` still checks for a
+persistent ruleset and removes it if present, which is a no-op here.
 
-- The **VCN Security List** is in the OCI console and `install.sh` cannot reach it. Open TCP
-  80 and 443 there: *Networking → Virtual Cloud Networks → your VCN → Security Lists → Add
-  Ingress Rules*. Until you do, traffic never arrives, however correct everything on the host
-  looks.
-- The **preinstalled `iptables` rules** DROP inbound traffic other than SSH and are not
-  managed by ufw, so ufw can report exactly the right rules while every request is still
-  dropped. `install.sh` removes them, because two firewalls disagreeing is worse than either.
+If you prefer to manage ingress in the Hetzner console instead, the rules are the same: allow
+TCP 80 and 443 from Cloudflare's ranges, TCP 22 from your address, deny the rest. Do not
+configure both and expect them to agree — pick one.
 
-The symptom of missing either is identical and misleading: `https://api.getzazi.com` times
-out, and it reads as a DNS or Cloudflare problem.
+**IPv6 is on by default and is free.** Cloudflare proxies IPv6 origins, so an AAAA record
+works as well as an A record. Nothing in Zazi cares which; the Caddyfile already trusts
+Cloudflare's IPv6 ranges.
+
+**Take a snapshot** once `https://api.getzazi.com/ready` returns 200 and before real agents
+are on it. Hetzner snapshots are cheap and restore in minutes, which is a far shorter path
+back than rebuilding from this runbook.
 
 ## Database
 

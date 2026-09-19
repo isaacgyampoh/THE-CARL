@@ -51,9 +51,9 @@
 # Native bindings resolved through JNI, which the shrinker cannot follow. Losing these means
 # the encrypted database cannot be opened — the agent's local record becomes unreadable.
 -keep class net.zetetic.database.** { *; }
--keep class net.sqlcipher.** { *; }
+-keep class net.zetetic.database.** { *; }
 -dontwarn net.zetetic.**
--dontwarn net.sqlcipher.**
+-dontwarn net.zetetic.database.**
 
 # ─── WorkManager ─────────────────────────────────────────────────────────────
 # Workers are instantiated by name.

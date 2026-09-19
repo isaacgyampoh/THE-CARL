@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import app.zazi.core.domain.security.DatabaseKeyProvider
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 /**
  * Zazi's local database.
@@ -55,7 +55,16 @@ abstract class ZaziDatabase : RoomDatabase() {
         fun encrypted(
             context: Context,
             keyProvider: DatabaseKeyProvider
-        ): ZaziDatabase = build(context, SupportFactory(keyProvider.databaseKey()))
+        ): ZaziDatabase {
+            // net.zetetic:sqlcipher-android, not the legacy android-database-sqlcipher.
+            // The old artifact ships native libraries aligned to 4 KB pages, which Android
+            // 15 and later reject: on a 16 KB-page device libsqlcipher.so does not load, the
+            // encrypted database cannot be opened, and the app is dead before its first
+            // frame. Same SQLCipher 4 format, so a database written by the old library opens
+            // unchanged here.
+            System.loadLibrary("sqlcipher")
+            return build(context, SupportOpenHelperFactory(keyProvider.databaseKey()))
+        }
 
         /**
          * Opens with a caller-supplied helper factory.

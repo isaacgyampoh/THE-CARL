@@ -158,7 +158,7 @@ say "Locking the firewall to Cloudflare"
 # SSH is left open to everywhere here because locking yourself out of a remote VM is a
 # worse first-day outcome than an exposed SSH port. Narrow it to your own address once
 # you are in: ufw allow from <your-ip> to any port 22 && ufw delete allow 22
-# Oracle Cloud images arrive with their own iptables ruleset — /etc/iptables/rules.v4,
+# Some provider images arrive with their own iptables ruleset — /etc/iptables/rules.v4,
 # managed by netfilter-persistent — which DROPs inbound traffic other than SSH. ufw does
 # not manage those rules and does not remove them, so a deployment can have textbook-correct
 # ufw output and still drop every request. It looks like a DNS or Cloudflare problem and is
@@ -208,12 +208,11 @@ Still to do, in this order:
   2. Point DNS at this server in Cloudflare: A records for api and app, both
      PROXIED (orange cloud), SSL/TLS mode Full (strict).
 
-  2b. ON ORACLE CLOUD ONLY — open 80 and 443 in the VCN Security List, in the OCI
-      console. Oracle has a second firewall at the network level that this script
-      cannot reach, and it blocks everything by default. The host firewall above is
-      configured correctly and traffic still will not arrive until you do this.
-      Networking -> Virtual Cloud Networks -> your VCN -> Security Lists ->
-      Add Ingress Rules for TCP 80 and 443.
+  2b. If your provider has its own network-level firewall as well as this host's
+      (Oracle Cloud and AWS do; Hetzner does not by default), open TCP 80 and 443
+      there too. The host firewall below is configured correctly and traffic still
+      will not arrive until the provider's is. The symptom is a timeout that reads
+      as a DNS or Cloudflare fault.
 
   3. Start everything:
         sudo systemctl enable --now zazi-api zazi-web zazi-healthcheck.timer

@@ -8,7 +8,7 @@ coroutines = "1.9.0"
 room = "2.6.1"
 workManager = "2.9.1"
 securityCrypto = "1.1.0-alpha06"
-sqlcipher = "4.5.4"
+sqlcipher = "4.9.0"
 sqliteKtx = "2.4.0"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
@@ -50,7 +50,12 @@ androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 androidx-sqlite-ktx = { module = "androidx.sqlite:sqlite-ktx", version.ref = "sqliteKtx" }
-sqlcipher = { module = "net.zetetic:android-database-sqlcipher", version.ref = "sqlcipher" }
+# The maintained artifact. net.zetetic:android-database-sqlcipher is the legacy one and
+# ships native libraries aligned to 4 KB pages, which Android 15 and later reject: on a
+# 16 KB-page device libsqlcipher.so will not load, the encrypted database cannot be opened,
+# and Zazi is dead on startup. Play also requires 16 KB support for apps targeting Android
+# 15+. Same SQLCipher 4 format, so existing databases open unchanged.
+sqlcipher = { module = "net.zetetic:sqlcipher-android", version.ref = "sqlcipher" }
 
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
 androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "workManager" }
