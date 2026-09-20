@@ -1,0 +1,131 @@
+# Zazi: build, test, then deploy.
+#
+# Railway can deploy on its own whenever main changes, and that is deliberately NOT how this
+# is set up. Auto-deploy ships whatever was pushed, including a commit whose tests fail —
+# which for a system holding other people's financial records is the wrong default. Turn
+# Railway's "Auto Deploy" OFF and let this workflow be the only thing that deploys, so the
+# tests are a gate rather than a report.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Lets a known-good commit be redeployed from the Actions tab without a code change,
+  # which is the rollback path: re-run this workflow against an earlier commit.
+  workflow_dispatch:
+
+concurrency:
+  # One deploy at a time. Two overlapping runs can apply migrations concurrently, and the
+  # second would be racing the first against the same database.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # The integration tests need a real PostgreSQL: the transactions, partial indexes and
+        # advisory locks they rely on are things the in-memory provider only pretends to have.
+        image: postgres:16
+        env:
+          POSTGRES_USER: carl
+          POSTGRES_PASSWORD: carl-test-password
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # Honours global.json, so CI cannot silently build on a different SDK band than
+          # the one this project is developed and tested against.
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Zazi.sln
+
+      - name: Build
+        run: dotnet build Zazi.sln -c Release --no-restore
+
+      - name: Test
+        env:
+          ZAZI_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=carl;Password=carl-test-password
+        run: |
+          set -o pipefail
+          dotnet test Zazi.sln -c Release --no-build --logger "console;verbosity=normal" \
+            | tee test-output.txt
+
+          # Without a reachable database the integration tests SKIP rather than fail, so a
+          # broken CI database would produce a green build that proved almost nothing. Exactly
+          # one skip is expected: the opt-in live-email test, which really should not run here.
+          skipped=$(grep -oE 'Skipped: +[0-9]+' test-output.txt \
+                    | grep -oE '[0-9]+' | paste -sd+ - | bc)
+          echo "Skipped tests: ${skipped:-0}"
+          if [ "${skipped:-0}" -gt 1 ]; then
+            echo "More tests were skipped than the one opt-in live-email test." >&2
+            echo "That usually means the PostgreSQL service was unreachable, so the" >&2
+            echo "integration suite did not actually run. Refusing to deploy." >&2
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy to Railway
+    needs: test
+    runs-on: ubuntu-latest
+    # Belt and braces: `needs` already blocks this on failure, and this makes it explicit
+    # that nothing deploys from a red build.
+    if: success()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy API
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        # The API first, always. It is the service that applies EF migrations on startup, and
+        # the web portal reads the same database — so a web instance started against an
+        # unmigrated schema would fail on the first query touching a new column.
+        run: railway up --service "${{ vars.RAILWAY_API_SERVICE }}" --detach
+
+      - name: Wait for the API to become ready
+        run: |
+          # Polls the public health endpoint rather than assuming the deploy finished. A
+          # migration on a large table is not instant, and deploying the web portal before
+          # the schema is in place is exactly the race this ordering exists to avoid.
+          for attempt in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.API_HEALTH_URL }}" || true)
+            if [ "$code" = "200" ]; then echo "API ready after ${attempt} attempt(s)"; exit 0; fi
+            sleep 10
+          done
+          echo "API did not become ready; not deploying the web portal." >&2
+          exit 1
+
+      - name: Deploy Web
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service "${{ vars.RAILWAY_WEB_SERVICE }}" --detach
+
+      - name: Verify the portal is serving
+        run: |
+          for attempt in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.WEB_SIGNIN_URL }}" || true)
+            if [ "$code" = "200" ]; then echo "Portal ready after ${attempt} attempt(s)"; exit 0; fi
+            sleep 10
+          done
+          echo "Portal did not come up. Roll back in the Railway dashboard: open the service," >&2
+          echo "choose the previous deployment, and press Redeploy." >&2
+          exit 1

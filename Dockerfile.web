@@ -1,0 +1,47 @@
+# Zazi Web portal container image.
+#
+# Two stages: the SDK builds, the much smaller ASP.NET runtime image runs. Shipping the SDK
+# would treble the image size and put a compiler in production for no reason.
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# global.json pins the SDK feature band, so it is copied before anything else: if the base
+# image ever drifts outside that band the build fails here, loudly, rather than silently
+# compiling against a different toolchain than the one this project is tested on.
+COPY global.json ./
+
+# Project files first, restore second, sources third. Restore is the slow step and depends
+# only on the .csproj files, so this ordering lets Docker reuse the cached restore whenever
+# code changes but dependencies do not.
+COPY src/Zazi.Domain/Zazi.Domain.csproj                 src/Zazi.Domain/
+COPY src/Zazi.Application/Zazi.Application.csproj       src/Zazi.Application/
+COPY src/Zazi.Infrastructure/Zazi.Infrastructure.csproj src/Zazi.Infrastructure/
+COPY src/Zazi.Web/Zazi.Web.csproj                       src/Zazi.Web/
+RUN dotnet restore src/Zazi.Web/Zazi.Web.csproj
+
+COPY src/ src/
+RUN dotnet publish src/Zazi.Web/Zazi.Web.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+
+# Deliberately NOT dropping to the non-root user here, unlike Dockerfile.api.
+#
+# This service needs a Railway Volume for its data-protection key ring, and Railway mounts
+# volumes owned by root. A non-root process cannot create its key directory inside one, so
+# the container would fail on startup with a permissions error — and the symptom a founder
+# would see is simply "the portal is down", with the cause buried in a stack trace.
+#
+# The API takes no volume and does drop privileges, so this exception is confined to the one
+# service that needs it. Inside a Railway container this is isolation loss in depth, not host
+# root. Once the volume's ownership is confirmed writable by uid $APP_UID, restore:
+#     USER $APP_UID
+
+# Railway assigns a port at runtime and expects the process to listen on it. There is no
+# fixed 5055 here the way there was under systemd — the platform decides.
+#   ASPNETCORE_URLS=http://0.0.0.0:${PORT}
+ENV ASPNETCORE_ENVIRONMENT=Production
+
+ENTRYPOINT ["dotnet", "Zazi.Web.dll"]

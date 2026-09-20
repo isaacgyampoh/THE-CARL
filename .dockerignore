@@ -1,0 +1,34 @@
+# Build output. Copying a host-built bin/ into the image is how a stale assembly ends up
+# running in production while the source says otherwise.
+**/bin/
+**/obj/
+**/out/
+
+# Not part of either service. The Android app is a separate artefact entirely, and it is
+# large enough to slow every build if it is sent to the daemon.
+android/
+tests/
+
+# Local tooling and editor state.
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+*.user
+
+# Anything that could carry a credential. None of these are committed, and the image is
+# not the place to discover that one was.
+*.env
+!*.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Documentation and server-specific deployment files, none of which the app reads at runtime.
+docs/
+deploy/
+*.md
