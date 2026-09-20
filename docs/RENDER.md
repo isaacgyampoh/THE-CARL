@@ -82,8 +82,17 @@ sign-in fail with nothing useful in the logs.
 
 | Field | What to put |
 |---|---|
-| `Portal__PublicBaseUrl` | `https://app.getzazi.com` |
+| `Portal__PublicBaseUrl` | the service's own `onrender.com` address — **not** `app.getzazi.com` |
 | `RESEND_API_KEY` | the rotated Resend key |
+
+`Portal__PublicBaseUrl` is the address that goes inside every email Zazi sends. Until DNS is
+cut over, `app.getzazi.com` still points at the old server — so setting it to that now would
+send password-reset links to a machine where reset is switched off, and the test would fail
+for a reason that has nothing to do with Render.
+
+It is set to the Render address while testing and changed to `https://app.getzazi.com` as
+part of the DNS cutover, not before. The service's address is only known once the service
+exists, so this variable is added after creation rather than during it.
 
 ### 3. The connection string
 
