@@ -270,10 +270,31 @@ if (!app.Environment.IsDevelopment())
     {
         // So the cookie's Secure policy and the sign-in rate limiter see the client's scheme
         // and address rather than the proxy's.
-        app.UseForwardedHeaders(new ForwardedHeadersOptions
+        var forwarded = new ForwardedHeadersOptions
         {
             ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-        });
+        };
+
+        // Without these two lines the options above do nothing.
+        //
+        // ASP.NET only honours X-Forwarded-* from a proxy it already trusts, and the default
+        // trust list is loopback alone. Behind Caddy on the same host that was satisfied, so
+        // this was never noticed. On a managed platform the proxy is a different machine, the
+        // headers are silently discarded, and the symptoms are quiet: no HSTS header is sent
+        // because the request looks like plain HTTP, and the per-IP rate limiter buckets every
+        // visitor under the proxy's address — so one person hammering sign-in locks out
+        // unrelated agents.
+        //
+        // Clearing the lists trusts whatever forwards to us, which is safe here and only here:
+        // the process is never directly reachable. Kestrel binds loopback behind Caddy, and on
+        // a managed platform the container is only addressable through the platform's own
+        // edge. If Zazi is ever exposed directly, this must be narrowed to known proxy
+        // addresses first — a caller that can reach Kestrel can otherwise choose its own
+        // apparent IP.
+        forwarded.KnownNetworks.Clear();
+        forwarded.KnownProxies.Clear();
+
+        app.UseForwardedHeaders(forwarded);
     }
 
     // Parameterless, so the path comes from the options configured above rather than being
