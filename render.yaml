@@ -1,0 +1,95 @@
+# Zazi on Render.
+#
+# A Blueprint, so the services are created from this file rather than by clicking through
+# forms — which means the setup is reviewable, repeatable, and recorded in the repository.
+#
+# Nothing secret is in here. Every value that must stay private is marked `sync: false`,
+# which tells Render to prompt for it in the dashboard instead of reading it from git.
+
+databases:
+  - name: zazi-postgres
+    databaseName: zazi
+    user: zazi
+    # NOT the free plan. Render deletes a free database after 30 days, which for the system
+    # of record of somebody's takings is not a tier, it is a deadline.
+    plan: basic-256mb
+
+services:
+  # ─── API ───────────────────────────────────────────────────────────────────
+  # What the Android handsets talk to. It is also the only service that applies EF
+  # migrations, so it must be healthy before the portal is allowed up.
+  - type: web
+    name: zazi-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    dockerContext: .
+    # Starter, not free: a free instance sleeps after inactivity, and the first agent to open
+    # the app after a quiet spell would wait through a cold start before anything responded.
+    plan: starter
+    healthCheckPath: /ready
+    autoDeploy: false
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # TLS is terminated by Render's edge, so the app sees plain HTTP from the proxy. Without
+      # this it refuses to start rather than serve cleartext unknowingly.
+      - key: Zazi__BehindTlsProxy
+        value: "true"
+      # Applies pending migrations at startup. The API refuses to start while any are pending,
+      # so on a fresh database — where all of them are — this is what lets it come up at all.
+      - key: Database__MigrateOnStartup
+        value: "true"
+      # Pasted in the dashboard. Npgsql cannot read Render's postgres:// URL, so this is the
+      # keyword form composed from the database's own fields.
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      # Must be byte-for-byte identical to the web service's copy: the portal validates tokens
+      # the API signed, and a mismatch fails every sign-in with nothing useful in the logs.
+      - key: ZAZI_JWT_KEY
+        sync: false
+
+  # ─── Web portal ────────────────────────────────────────────────────────────
+  - type: web
+    name: zazi-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile.web
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /ready
+    autoDeploy: false
+    # Where the data-protection key ring lives. Without it the container's filesystem is
+    # rebuilt on every deploy, the keys are regenerated, and every signed-in agent is logged
+    # out — plus any form open at that moment fails when submitted.
+    #
+    # Two consequences worth knowing: a disk requires a paid instance, and a service with a
+    # disk cannot run more than one copy, so deploys briefly interrupt rather than rolling
+    # over. Zazi is pinned to one copy anyway — its rate limiting counts per process, and a
+    # second copy would silently double every limit.
+    disk:
+      name: zazi-keys
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Zazi__BehindTlsProxy
+        value: "true"
+      # Must sit inside the disk's mount path above.
+      - key: Zazi__DataProtectionKeyPath
+        value: /data/keys
+      - key: Email__Provider
+        value: Resend
+      # Deliberately absent until a real password-reset email has been received. Public
+      # registration is switched on by adding SignUp__Enabled=true in the dashboard, and not
+      # before — an account nobody can verify is an account nobody can use.
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: ZAZI_JWT_KEY
+        sync: false
+      # Every emailed link is built from this, and it is read from configuration rather than
+      # the request's Host header — those links verify accounts and reset passwords, so a URL
+      # the caller chooses is a URL pointing wherever they like.
+      - key: Portal__PublicBaseUrl
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false

@@ -1,10 +1,13 @@
 # Zazi: build, test, then deploy.
 #
-# Railway can deploy on its own whenever main changes, and that is deliberately NOT how this
-# is set up. Auto-deploy ships whatever was pushed, including a commit whose tests fail —
-# which for a system holding other people's financial records is the wrong default. Turn
-# Railway's "Auto Deploy" OFF and let this workflow be the only thing that deploys, so the
-# tests are a gate rather than a report.
+# Render can deploy on its own whenever main changes, and that is deliberately NOT how this
+# is set up (render.yaml sets autoDeploy: false). Auto-deploy ships whatever was pushed,
+# including a commit whose tests fail — which for a system holding other people's financial
+# records is the wrong default. This workflow is the only thing that deploys, so the tests
+# are a gate rather than a report.
+#
+# Deploy hooks rather than the Render CLI: a hook is a single authenticated POST with nothing
+# to install, version or keep working. Fewer moving parts in the path to production.
 
 name: Deploy
 
@@ -80,7 +83,7 @@ jobs:
           fi
 
   deploy:
-    name: Deploy to Railway
+    name: Deploy to Render
     needs: test
     runs-on: ubuntu-latest
     # Belt and braces: `needs` already blocks this on failure, and this makes it explicit
@@ -88,24 +91,24 @@ jobs:
     if: success()
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
       - name: Deploy API
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         # The API first, always. It is the service that applies EF migrations on startup, and
-        # the web portal reads the same database — so a web instance started against an
-        # unmigrated schema would fail on the first query touching a new column.
-        run: railway up --service "${{ vars.RAILWAY_API_SERVICE }}" --detach
+        # the web portal reads the same database — so a portal started against an unmigrated
+        # schema fails on the first query touching a new column.
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_API_DEPLOY_HOOK }}" > /dev/null
+          echo "API deploy triggered."
 
       - name: Wait for the API to become ready
         run: |
-          # Polls the public health endpoint rather than assuming the deploy finished. A
-          # migration on a large table is not instant, and deploying the web portal before
-          # the schema is in place is exactly the race this ordering exists to avoid.
+          # Polls rather than assuming the deploy finished. A deploy hook returns as soon as
+          # Render accepts the request, not when the new build is live, and a migration on a
+          # large table is not instant.
+          #
+          # The first minute is skipped deliberately: until the new container swaps in, this
+          # endpoint answers 200 from the OLD one, and polling immediately would "succeed"
+          # against the build we are replacing.
+          sleep 60
           for attempt in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.API_HEALTH_URL }}" || true)
             if [ "$code" = "200" ]; then echo "API ready after ${attempt} attempt(s)"; exit 0; fi
@@ -115,17 +118,18 @@ jobs:
           exit 1
 
       - name: Deploy Web
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service "${{ vars.RAILWAY_WEB_SERVICE }}" --detach
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_WEB_DEPLOY_HOOK }}" > /dev/null
+          echo "Web deploy triggered."
 
       - name: Verify the portal is serving
         run: |
+          sleep 60
           for attempt in $(seq 1 60); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.WEB_SIGNIN_URL }}" || true)
             if [ "$code" = "200" ]; then echo "Portal ready after ${attempt} attempt(s)"; exit 0; fi
             sleep 10
           done
-          echo "Portal did not come up. Roll back in the Railway dashboard: open the service," >&2
-          echo "choose the previous deployment, and press Redeploy." >&2
+          echo "Portal did not come up. Roll back in the Render dashboard: open the service," >&2
+          echo "go to Events, find the last good deploy and choose Rollback." >&2
           exit 1

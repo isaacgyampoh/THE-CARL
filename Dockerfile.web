@@ -39,9 +39,13 @@ COPY --from=build /app/publish .
 # root. Once the volume's ownership is confirmed writable by uid $APP_UID, restore:
 #     USER $APP_UID
 
-# Railway assigns a port at runtime and expects the process to listen on it. There is no
-# fixed 5055 here the way there was under systemd — the platform decides.
-#   ASPNETCORE_URLS=http://0.0.0.0:${PORT}
 ENV ASPNETCORE_ENVIRONMENT=Production
 
-ENTRYPOINT ["dotnet", "Zazi.Web.dll"]
+# The platform assigns the port, not us — there is no fixed 5055/5056 the way there was under
+# systemd. Render injects $PORT (10000 by default).
+#
+# Shell form on purpose: the exec form does no variable expansion, so a literal "$PORT" would
+# reach Kestrel unexpanded and it would bind the wrong port or fail outright. `exec` hands PID 1
+# to dotnet so SIGTERM still reaches it and in-flight requests drain on deploy instead of being
+# cut off.
+ENTRYPOINT ["sh", "-c", "exec dotnet Zazi.Web.dll --urls http://0.0.0.0:${PORT:-10000}"]
