@@ -8,6 +8,8 @@
 @inject IDeviceEnrollmentService Enrollment
 @inject IOrganizationService Organizations
 @inject ICurrentUserContext CurrentUser
+@inject ILogger<Team> Log
+@using Microsoft.EntityFrameworkCore
 
 @* The owner's side of worker activation: create a worker, hand them a code, see their
    device, take it away again. Deliberately one page — these four things are one job, and
@@ -87,6 +89,48 @@ else
         </tbody>
     </table>
 }
+
+<h2>Branches</h2>
+
+@* Gated separately from the page itself. /team requires StaffManage, which a branch manager
+   holds — but creating branches is BranchManage, which they do not. Without this the page's
+   own permission would quietly grant a wider one. *@
+<AuthorizeView Policy="@ZaziPolicies.BranchRead">
+    <ul class="estate">
+        @foreach (var branch in _branches ?? Array.Empty<BranchDto>())
+        {
+            <li>
+                <span>@branch.Name</span>
+                <strong>@(string.IsNullOrWhiteSpace(branch.Location) ? "—" : branch.Location)</strong>
+            </li>
+        }
+        @if ((_branches?.Count ?? 0) == 0)
+        {
+            <li><span class="muted">No branches yet.</span></li>
+        }
+    </ul>
+</AuthorizeView>
+
+<AuthorizeView Policy="@ZaziPolicies.BranchManage">
+    <p class="muted">
+        A branch is a place you trade from. Every worker and every device belongs to one, and
+        figures are reported per branch.
+    </p>
+
+    <EditForm Model="_newBranch" OnValidSubmit="CreateBranchAsync" FormName="add-branch">
+        <p>
+            <label for="branch-name">Branch name</label>
+            <InputText id="branch-name" @bind-Value="_newBranch.Name" />
+        </p>
+
+        <p>
+            <label for="branch-location">Location <span class="muted">(optional)</span></label>
+            <InputText id="branch-location" @bind-Value="_newBranch.Location" />
+        </p>
+
+        <button id="add-branch-submit" type="submit" disabled="@_busy">Add branch</button>
+    </EditForm>
+</AuthorizeView>
 
 <h2>Add a worker</h2>
 
@@ -190,6 +234,76 @@ else
 }
 
 @code {
+    /// <summary>
+    /// Records a failure and returns what the owner should see.
+    /// </summary>
+    /// <remarks>
+    /// The screen deliberately shows no exception detail — it carries identifiers and internal
+    /// state, and an owner can act on neither. What was missing is the other half: the detail
+    /// was not written anywhere either, so a failure left no trace at all and "please try
+    /// again" was the entire record of it. Now the exception goes to the log with a short
+    /// reference the owner can quote, which ties their report to the actual stack trace.
+    /// </remarks>
+    private string Fail(Exception exception, string operation, string message)
+    {
+        var reference = Guid.NewGuid().ToString("N")[..8];
+        Log.LogError(exception, "Team page: {Operation} failed. Reference {Reference}.", operation, reference);
+        return $"{message} (reference {reference})";
+    }
+
+    [SupplyParameterFromForm(FormName = "add-branch")]
+    private NewBranch _newBranch { get; set; } = new();
+
+    private async Task CreateBranchAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var created = await Organizations.CreateBranchAsync(
+                new CreateBranchRequest(
+                    CurrentUser.OrganizationId,
+                    _newBranch.Name ?? string.Empty,
+                    string.IsNullOrWhiteSpace(_newBranch.Location) ? null : _newBranch.Location));
+
+            if (created is null)
+            {
+                _error = "That organization no longer exists.";
+                return;
+            }
+
+            _newBranch = new NewBranch();
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            // Validation messages are the caller's own words and safe to show.
+            _error = exception.Message;
+        }
+        catch (DbUpdateException exception)
+        {
+            // Branch names are unique per organization. Saying so is more useful than a generic
+            // failure, and reveals nothing the owner cannot already see in the list above.
+            _error = Fail(exception, "creating a branch",
+                $"A branch called \"{_newBranch.Name}\" already exists. Choose a different name.");
+        }
+        catch (Exception exception)
+        {
+            _error = Fail(exception, "creating a branch", "The branch could not be created. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed class NewBranch
+    {
+        public string? Name { get; set; }
+        public string? Location { get; set; }
+    }
+
     private sealed class NewWorker
     {
         public string FullName { get; set; } = string.Empty;
@@ -232,11 +346,9 @@ else
             _devices = CurrentUser.LimitToVisibleBranch(
                 await Devices.GetDevicesAsync(organizationId), d => d.BranchId);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // No exception detail on screen: it can carry identifiers and internal state, and
-            // an owner can do nothing with either.
-            _error = "The team could not be loaded. Please try again.";
+            _error = Fail(exception, "loading the team", "The team could not be loaded. Please try again.");
         }
     }
 
@@ -268,9 +380,9 @@ else
             // Validation messages are the caller's own words and safe to show.
             _error = exception.Message;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            _error = "The worker could not be created. Please try again.";
+            _error = Fail(exception, "creating a worker", "The worker could not be created. Please try again.");
         }
         finally
         {
@@ -300,9 +412,9 @@ else
             _issuedForName = worker.FullName;
             _issuedExpiry = issued.ExpiresAtUtc;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            _error = "The activation code could not be generated. Please try again.";
+            _error = Fail(exception, "issuing an activation code", "The activation code could not be generated. Please try again.");
         }
         finally
         {
@@ -337,9 +449,9 @@ else
             _confirmingRevokeOf = null;
             await LoadAsync();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            _error = "The device could not be revoked. Please try again.";
+            _error = Fail(exception, "revoking a device", "The device could not be revoked. Please try again.");
         }
         finally
         {

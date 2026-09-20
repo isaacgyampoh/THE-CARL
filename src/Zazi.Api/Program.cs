@@ -322,6 +322,23 @@ if (!app.Environment.IsDevelopment())
         // edge. If Zazi is ever exposed directly, this must be narrowed to known proxy
         // addresses first — a caller that can reach Kestrel can otherwise choose its own
         // apparent IP.
+        // Which header carries the real client address.
+        //
+        // X-Forwarded-For is a chain, and ASP.NET reads its rightmost entry — the nearest
+        // proxy. Behind a CDN that entry is an internal address which changes between
+        // requests, so a per-IP rate limiter ends up with a fresh bucket every time and never
+        // limits anything. Cloudflare publishes the true client in a single-valued header of
+        // its own, which has no chain to misread.
+        //
+        // Configured rather than hard-coded: naming Cloudflare in the source would make the
+        // application wrong the day it sits behind something else. Unset means the standard
+        // header, which is correct when the only proxy is one we run ourselves.
+        var clientIpHeader = builder.Configuration["Zazi:ClientIpHeader"];
+        if (!string.IsNullOrWhiteSpace(clientIpHeader))
+        {
+            forwarded.ForwardedForHeaderName = clientIpHeader;
+        }
+
         forwarded.KnownNetworks.Clear();
         forwarded.KnownProxies.Clear();
 

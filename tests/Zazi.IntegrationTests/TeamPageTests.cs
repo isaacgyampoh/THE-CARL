@@ -31,6 +31,7 @@ public class TeamPageTests : TestContext
     private readonly RecordingDevices _devices = new();
     private readonly RecordingAuth _auth = new();
     private readonly RecordingEnrollment _enrollment = new();
+    private readonly Bunit.TestDoubles.TestAuthorizationContext _authorization;
 
     private static readonly Guid OrganizationId = Guid.NewGuid();
     private static readonly Guid BranchId = Guid.NewGuid();
@@ -48,7 +49,12 @@ public class TeamPageTests : TestContext
         Services.AddSingleton<IDeviceEnrollmentService>(_enrollment);
         Services.AddSingleton<IOrganizationService>(new StubOrganizations());
         Services.AddSingleton<ICurrentUserContext>(new StubCurrentUser(organizationWide: true));
-        this.AddTestAuthorization().SetAuthorized("Kwame Mensah");
+        _authorization = this.AddTestAuthorization();
+        _authorization.SetAuthorized("Kwame Mensah");
+        // The existing tests predate policy-gated sections and assume the owner can do
+        // everything the page offers, which is what an owner's roles actually grant.
+        _authorization.SetPolicies(ZaziPolicies.BranchRead, ZaziPolicies.BranchManage,
+            ZaziPolicies.StaffManage, ZaziPolicies.DeviceManage);
     }
 
     // ─── Revocation takes two deliberate steps ───────────────────────────────
@@ -374,4 +380,99 @@ public class TeamPageTests : TestContext
             }
         }
     }
+
+    // ─── Branches ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SomeoneWhoMayManageBranchesIsOfferedTheForm()
+    {
+        _authorization.SetAuthorized("Kwame Mensah");
+        _authorization.SetPolicies(ZaziPolicies.BranchRead, ZaziPolicies.BranchManage);
+
+        var page = RenderComponent<portal::Zazi.Web.Components.Pages.Team>();
+
+        Assert.Contains("Add branch", page.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreatingBranchesIsNotSomethingABranchManagerMayDo()
+    {
+        // The page requires StaffManage, which a branch manager holds. The branch form is gated
+        // on BranchManage, which they must not — otherwise reaching the page would quietly
+        // grant the wider permission.
+        //
+        // Asserted against the policy table rather than the rendered markup, because bUnit's
+        // fake authorization does not evaluate AuthorizeView policies at all: it renders
+        // authorized content whatever policy is asked for. A markup assertion here would pass
+        // no matter what the page did, which is worse than no test.
+        var mayManageBranches = ZaziPolicies.RolesByPolicy[ZaziPolicies.BranchManage];
+        var mayManageStaff = ZaziPolicies.RolesByPolicy[ZaziPolicies.StaffManage];
+
+        Assert.Contains(ZaziRoles.BranchManager, mayManageStaff);
+        Assert.DoesNotContain(ZaziRoles.BranchManager, mayManageBranches);
+
+        // And an owner, who the page is really for, may do both.
+        Assert.Contains(ZaziRoles.Owner, mayManageBranches);
+    }
+
+    [Fact]
+    public void CreatingABranchPassesTheOwnersOrganizationNotTheFormsWord()
+    {
+        var organizations = new RecordingOrganizations();
+        Services.AddSingleton<IOrganizationService>(organizations);
+        _authorization.SetAuthorized("Kwame Mensah");
+        _authorization.SetPolicies(ZaziPolicies.BranchRead, ZaziPolicies.BranchManage);
+
+        var page = RenderComponent<portal::Zazi.Web.Components.Pages.Team>();
+        page.Find("#branch-name").Change("Kumasi Central");
+        page.Find("#branch-location").Change("Adum");
+        page.Find("#add-branch-submit").Click();
+
+        var created = Assert.Single(organizations.Created);
+        Assert.Equal("Kumasi Central", created.Name);
+        Assert.Equal("Adum", created.Location);
+
+        // The organization comes from the signed-in identity, never from the posted form —
+        // otherwise creating a branch inside someone else's business would be a field edit.
+        Assert.Equal(OrganizationId, created.OrganizationId);
+    }
+
+    [Fact]
+    public void AnEmptyLocationIsStoredAsNothingRatherThanBlank()
+    {
+        var organizations = new RecordingOrganizations();
+        Services.AddSingleton<IOrganizationService>(organizations);
+        _authorization.SetAuthorized("Kwame Mensah");
+        _authorization.SetPolicies(ZaziPolicies.BranchRead, ZaziPolicies.BranchManage);
+
+        var page = RenderComponent<portal::Zazi.Web.Components.Pages.Team>();
+        page.Find("#branch-name").Change("Tema");
+        page.Find("#add-branch-submit").Click();
+
+        Assert.Null(Assert.Single(organizations.Created).Location);
+    }
+
+    private sealed class RecordingOrganizations : IOrganizationService
+    {
+        public List<CreateBranchRequest> Created { get; } = new();
+
+        public Task<BranchDto?> CreateBranchAsync(CreateBranchRequest request, CancellationToken cancellationToken = default)
+        {
+            Created.Add(request);
+            return Task.FromResult<BranchDto?>(new BranchDto(Guid.NewGuid(), request.OrganizationId, request.Name, request.Location, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        }
+
+        public Task<IReadOnlyList<BranchDto>> GetBranchesAsync(Guid organizationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<BranchDto>>(new[] { new BranchDto(BranchId, organizationId, "Main branch", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) });
+
+        public Task<OrganizationDto?> GetOrganizationAsync(Guid organizationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<OrganizationDto?>(null);
+
+        public Task<OrganizationDto> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<OrganizationDto>> GetOrganizationsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<OrganizationDto>>(Array.Empty<OrganizationDto>());
+    }
+
 }
