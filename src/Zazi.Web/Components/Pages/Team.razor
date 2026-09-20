@@ -96,8 +96,10 @@ else
 </p>
 
 <EditForm Model="_newWorker" OnValidSubmit="CreateWorkerAsync" FormName="add-worker">
-    <AntiforgeryToken />
-
+    @* No <AntiforgeryToken /> here. EditForm with a FormName emits one itself, and adding a
+       second renders the hidden field twice — which posts the value twice, so the framework
+       reads "token,token" and rejects the submission with a 400. A plain <form>, like the one
+       on the sign-in page, does need the explicit tag. *@
     <p>
         <label for="worker-name">Full name</label>
         <InputText id="worker-name" @bind-Value="_newWorker.FullName" />

@@ -45,7 +45,10 @@
         }
 
         <EditForm Model="_resend" OnValidSubmit="ResendAsync" FormName="resend-verification">
-            <AntiforgeryToken />
+    @* No <AntiforgeryToken /> here. EditForm with a FormName emits one itself, and adding a
+       second renders the hidden field twice — which posts the value twice, so the framework
+       reads "token,token" and rejects the submission with a 400. A plain <form>, like the one
+       on the sign-in page, does need the explicit tag. *@
             <InputText id="resend-email" @bind-Value="_resend.Email" type="hidden" />
             <button type="submit" disabled="@_busy">Send the link again</button>
         </EditForm>
@@ -62,8 +65,6 @@
         <p class="subtitle">Create your account</p>
 
         <EditForm Model="_input" OnValidSubmit="SubmitAsync" FormName="sign-up">
-            <AntiforgeryToken />
-
             <label for="business">Business name</label>
             <InputText id="business" @bind-Value="_input.BusinessName" autocomplete="organization" />
 

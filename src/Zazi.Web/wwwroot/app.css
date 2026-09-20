@@ -11,6 +11,9 @@
     /* Text drawn on the accent. In dark mode the accent lightens, so white on it would
        fail contrast — the pairing has to flip with the palette, not stay fixed. */
     --on-accent: #fff;
+    /* The accent under the pointer. A token rather than a filter, because the accent is dark
+       in light mode and light in dark mode — "brighter" is the wrong answer in one of them. */
+    --accent-hover: #24490e;
 
     /* Status colours are tokens too, so dark mode redefines them in one place rather than
        each rule carrying a hard-coded pair. */
@@ -34,6 +37,7 @@
         --surface: #0e140a;
         --card: #171e12;
         --on-accent: #16250a;
+        --accent-hover: #d4f95e;
 
         --ok-bg: #2e4d12;   --ok-fg: #b8e86a;
         --warn-bg: #362a15; --warn-fg: #f0c274;
@@ -74,12 +78,116 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
 .attention li:last-child, .estate li:last-child { border-bottom: 0; }
 .attention strong, .estate strong { font-variant-numeric: tabular-nums; }
 
-.signin { max-width: 22rem; margin: 4rem auto; padding: 0 1.5rem; }
-.signin .subtitle { color: var(--muted); margin-top: -.5rem; }
-.signin label { display: block; margin-top: 1rem; font-size: .9rem; color: var(--muted); }
-.signin input { width: 100%; padding: .6rem .7rem; border: 1px solid var(--line); border-radius: .5rem; font: inherit; }
-.signin button { width: 100%; margin-top: 1.5rem; padding: .7rem; border: 0; border-radius: 999px;
-                 background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+/* ─── Account pages ─────────────────────────────────────────────────────────
+   Sign in, sign up, email verification and password reset. These are the only pages
+   reached by someone who is not signed in — often someone locked out, on a phone, in a
+   hurry — so they get a card of their own rather than sitting bare on the page
+   background the way they used to. Every other surface in this app is a --card with a
+   border; these were the exception, and looked unfinished next to the dashboard. */
+
+.signin {
+    /* 25rem, not 22: the signup form carries five fields and a password rule, and at the
+       old width the rule wrapped to three lines under the input. */
+    max-width: 25rem;
+    margin: 3rem auto;
+    padding: 2rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+}
+
+.signin h1 { font-size: 1.35rem; letter-spacing: -.01em; margin-bottom: .25rem; }
+.signin .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; }
+.signin p { margin: 0 0 1rem; }
+
+.signin label {
+    display: block;
+    margin-top: 1rem;
+    margin-bottom: .3rem;
+    font-size: .9rem;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+.signin input {
+    width: 100%;
+    padding: .6rem .7rem;
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    font: inherit;
+    color: var(--ink);
+    background: var(--surface);
+}
+
+/* The field being typed into, for people using a pointer. :focus-visible already handles
+   keyboard navigation and deliberately does not fire on click, so without this a mouse
+   user gets no indication of where the cursor went. */
+.signin input:focus {
+    outline: none;
+    border-color: var(--accent);
+    /* Two declarations, not one. color-mix is unsupported on older Android Chrome, which is
+       squarely in this product's audience — a browser that cannot parse the second line
+       keeps the first and still shows a ring, rather than dropping the rule and showing
+       nothing. */
+    box-shadow: 0 0 0 3px var(--line);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* The password rule, sitting between the input and the next label. Tightened against the
+   field it describes so it reads as part of it rather than as a new paragraph. */
+.signin input + .muted { margin-top: .4rem; font-size: .85rem; }
+
+.signin button {
+    width: 100%;
+    margin-top: 1.5rem;
+    padding: .7rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.signin button:hover { background: var(--accent-hover); }
+
+/* Submitting is the one thing on these pages that talks to a mail provider, so it can take
+   a second. Without a disabled state the button looks exactly as clickable while it works,
+   and people click it again — which on the signup form is how one person ends up trying to
+   create two accounts. */
+.signin button:disabled {
+    opacity: .55;
+    cursor: progress;
+    background: var(--accent);
+}
+
+/* 16 links across these pages had no rule at all, so they rendered in browser-default blue
+   against an olive palette. */
+.signin a {
+    color: var(--accent);
+    text-underline-offset: .2rem;
+}
+.signin a:hover { color: var(--accent-hover); }
+
+/* A failure someone has to read and act on, rather than a line of small red text. */
+.signin .error {
+    margin-top: 1rem;
+    padding: .6rem .75rem;
+    background: var(--bad-bg);
+    border-radius: .5rem;
+    font-size: .9rem;
+}
+
+/* Phones. 4rem of empty space above the card cost a quarter of a small screen, and the
+   card's own margin plus its padding left the fields squeezed into the middle. */
+@media (max-width: 480px) {
+    .signin {
+        margin: 1.25rem auto;
+        padding: 1.5rem 1.25rem;
+        border-radius: .625rem;
+    }
+}
 
 .error { color: var(--bad); font-size: .9rem; }
 .muted { color: var(--muted); }
