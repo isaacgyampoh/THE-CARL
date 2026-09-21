@@ -11,6 +11,17 @@
 @inject ILogger<Team> Log
 @using Microsoft.EntityFrameworkCore
 
+@rendermode InteractiveServer
+
+@* Interactive, because this page's buttons are @onclick handlers and a statically rendered
+   page has no circuit to run them on. They rendered, they looked enabled, and clicking them
+   did nothing at all — issuing an activation code, revoking a device, none of it worked.
+
+   Safe here specifically because the page requires sign-in: the Blazor framework files sit
+   behind the same deny-by-default policy as everything else, so an anonymous visitor cannot
+   load them, but an authenticated one can. Verified rather than assumed — signed in,
+   /_framework/blazor.web.js returns 200 and the circuit endpoint answers. *@
+
 @* The owner's side of worker activation: create a worker, hand them a code, see their
    device, take it away again. Deliberately one page — these four things are one job, and
    splitting them across an admin section would make the common case (a new hire on Monday)
