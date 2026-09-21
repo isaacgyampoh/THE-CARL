@@ -843,6 +843,39 @@ public class CustomerJourneyTests
             StringComparison.Ordinal);
     }
 
+    [SkippableFact]
+    public async Task TodayShowsFloatPerNetworkForANewOwner()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+
+        var inbox = new Inbox();
+        using var factory = new PortalFactory(_postgres.ConnectionString!, inbox);
+        using var client = Browser(factory);
+        var email = UniqueEmail();
+
+        await SignUpAsync(client, email, Password);
+        await client.GetAsync($"/verify-email?token={Uri.EscapeDataString(inbox.LatestToken())}");
+        Assert.Equal("/", await SignInAsync(client, email, Password));
+
+        var html = await client.GetStringAsync("/");
+
+        // The page reads three services now; any of them failing shows the unavailable notice
+        // rather than zeroes, so its absence is what proves the reads worked.
+        Assert.DoesNotContain("could not be loaded", html, StringComparison.Ordinal);
+
+        // One figure per network. The old single "network float" total could look healthy
+        // while one network had run dry.
+        Assert.Contains("Money on hand", html, StringComparison.Ordinal);
+        foreach (var network in new[] { "MTN float", "Telecel float", "AirtelTigo float" })
+        {
+            Assert.Contains(network, html, StringComparison.Ordinal);
+        }
+
+        // A brand-new business says so in words rather than showing empty boxes.
+        Assert.Contains("Nothing needs attention", html, StringComparison.Ordinal);
+        Assert.Contains("No transactions yet today", html, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The fields of one form on a page, chosen by its handler name.
     /// </summary>

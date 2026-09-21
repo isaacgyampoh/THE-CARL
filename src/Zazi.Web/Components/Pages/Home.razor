@@ -1,7 +1,11 @@
 @page "/"
 @using Zazi.Application
+@using Zazi.Application.Float
 @using Zazi.Application.Security
+@using Zazi.Domain
 @inject IDashboardService Dashboard
+@inject IFloatService Float
+@inject ITransactionService Transactions
 @inject ICurrentUserContext CurrentUser
 
 <PageTitle>Today · Zazi</PageTitle>
@@ -36,60 +40,188 @@ else
     @* A dashboard that cannot say when it was read invites being trusted as live. These
        are figures someone may act on, so the page says how old they are. *@
     <p class="muted asof">
-        Updated @_readAt.ToString("HH:mm:ss") · refreshes every @RefreshSeconds seconds ·
+        Updated @_readAt.ToString("HH:mm") · refreshes every minute ·
         <a href="/">refresh now</a>
     </p>
 
-    <section class="tiles">
-        @* Balances are read from the server's ledger. This page never computes a balance of
-           its own, so it cannot disagree with what the ledger says moved. *@
-        <div class="tile">
-            <span class="label">Cash position</span>
-            <span class="value">@Money(_summary.CashPosition)</span>
+    @* The question an owner opens this page to answer: is there enough money in the right
+       places? Float is held per network and an agent cannot pay out MTN money from a Telecel
+       wallet, so a single "network float" total — the old headline — could look healthy
+       while one network had run dry. Each network gets its own figure, and cash sits beside
+       them because it is the other half of every transaction. *@
+    <h2 class="first">Money on hand</h2>
+    <section class="tiles money">
+        <div class="tile cash">
+            <span class="label">Cash in hand</span>
+            <span class="value">@Money(CashInHand)</span>
         </div>
-        <div class="tile">
-            <span class="label">Network float</span>
-            <span class="value">@Money(_summary.TotalNetworkFloat)</span>
-        </div>
-        <div class="tile">
-            <span class="label">Transactions today</span>
-            <span class="value">@_summary.TodayTransactions</span>
-        </div>
-        <div class="tile">
-            <span class="label">Volume today</span>
-            <span class="value">@Money(_summary.TodayVolume)</span>
-        </div>
+        @foreach (var network in Networks.All)
+        {
+            var amount = FloatOn(network);
+            <div class="tile network @Tone(amount)">
+                <span class="label">@NetworkName(network) float</span>
+                <span class="value">@Money(amount)</span>
+                @if (amount < 0)
+                {
+                    @* Below zero is not a figure to admire, it is a question: usually a
+                       transaction recorded against the wrong network, or float given out and
+                       never logged. Said on the tile, where the number is. *@
+                    <span class="note">Below zero — check recent entries</span>
+                }
+                else if (amount == 0)
+                {
+                    <span class="note">None held</span>
+                }
+            </div>
+        }
     </section>
 
-    <section class="attention">
-        <h2>Needs attention</h2>
-        <ul>
-            <li><span>Discrepancies</span><strong>@_summary.Discrepancies</strong></li>
-            <li><span>Low float alerts</span><strong>@_summary.LowFloatAlerts</strong></li>
-            <li>
-                <span>Balance variance</span>
-                @* Surfaced even when zero. A reconciliation figure that only appears when it
-                   is bad teaches people that a blank screen means "not checked". *@
-                <strong>@Money(_summary.BalanceVariance)</strong>
-            </li>
-        </ul>
-    </section>
+    @* Only when there is something. Three rows reading "0" every day teach an owner that this
+       section is furniture, and then it is ignored on the day it matters. *@
+    @if (_summary.Discrepancies > 0 || _summary.LowFloatAlerts > 0 || _summary.BalanceVariance != 0)
+    {
+        <section class="callout warn" role="status">
+            <h2>Needs attention</h2>
+            <ul>
+                @if (_summary.Discrepancies > 0)
+                {
+                    <li><strong>@_summary.Discrepancies</strong> @(Plural(_summary.Discrepancies, "discrepancy", "discrepancies")) to reconcile</li>
+                }
+                @if (_summary.LowFloatAlerts > 0)
+                {
+                    <li><strong>@_summary.LowFloatAlerts</strong> low float @(Plural(_summary.LowFloatAlerts, "alert", "alerts"))</li>
+                }
+                @if (_summary.BalanceVariance != 0)
+                {
+                    <li>Balances differ from the count by <strong>@Money(_summary.BalanceVariance)</strong></li>
+                }
+            </ul>
+        </section>
+    }
+    else
+    {
+        <p class="all-clear">
+            <span aria-hidden="true">✓</span> Nothing needs attention — no discrepancies, no low
+            float alerts, and balances agree.
+        </p>
+    }
 
-    <section class="estate">
-        <h2>Estate</h2>
-        <ul>
-            <li><span>Branches</span><strong>@_summary.TotalBranches</strong></li>
-            <li><span>Active devices</span><strong>@_summary.ActiveDevices</strong></li>
-            <li><span>Active sessions</span><strong>@_summary.ActiveSessions</strong></li>
-        </ul>
+    <h2>Today's trading</h2>
+    <section class="tiles trading">
+        <div class="tile">
+            <span class="label">Transactions</span>
+            <span class="value">@TodayCount</span>
+        </div>
+        <div class="tile">
+            <span class="label">Volume</span>
+            <span class="value">@Money(TodayVolume)</span>
+        </div>
+        @* Split by direction because the two move money oppositely: a busy cash-out day drains
+           cash and fills float, and the owner planning tomorrow's float needs to know which
+           kind of day it was. *@
+        <div class="tile">
+            <span class="label">Cash in <small>(deposits)</small></span>
+            <span class="value">@Money(_cashInTotal)</span>
+            <span class="note">@_cashInCount @Plural(_cashInCount, "transaction", "transactions")</span>
+        </div>
+        <div class="tile">
+            <span class="label">Cash out <small>(withdrawals)</small></span>
+            <span class="value">@Money(_cashOutTotal)</span>
+            <span class="note">@_cashOutCount @Plural(_cashOutCount, "transaction", "transactions")</span>
+        </div>
     </section>
+    @if (_splitIsPartial)
+    {
+        <p class="muted small">The deposit and withdrawal split covers the latest @_scanned transactions.</p>
+    }
+
+    <h2>Who is holding what</h2>
+    @if (_holdings.Count == 0)
+    {
+        <p class="muted">Nobody holds anything yet. Add workers on the <a href="/team">Team</a> page.</p>
+    }
+    else
+    {
+        <ul class="people">
+            @foreach (var person in _holdings.OrderByDescending(h => h.Cash + h.Floats.Sum(f => f.Amount)))
+            {
+                <li>
+                    <div class="who-line">
+                        <span class="name">@person.AgentName</span>
+                        <span class="branch muted">@person.BranchName</span>
+                    </div>
+                    <div class="held">
+                        <span class="cash-figure"><span class="muted">Cash</span> @Money(person.Cash)</span>
+                        <span class="chips">
+                            @foreach (var f in person.Floats.OrderBy(f => f.Network))
+                            {
+                                <span class="float-chip @(f.Amount < 0 ? "negative" : "")">
+                                    <span class="net">@NetworkName(f.Network)</span>
+                                    <span class="amt">@f.Amount.ToString("N2")</span>
+                                </span>
+                            }
+                        </span>
+                    </div>
+                </li>
+            }
+        </ul>
+        <p class="more"><a href="/float">Record cash or float given →</a></p>
+    }
+
+    <h2>Latest transactions</h2>
+    @if (_latest.Count == 0)
+    {
+        <p class="muted">No transactions yet today. They appear here as agents record them.</p>
+    }
+    else
+    {
+        <ul class="feed">
+            @foreach (var t in _latest)
+            {
+                var incoming = t.CashDelta >= 0;
+                <li>
+                    <span class="time">@t.TransactionAt.ToLocalTime().ToString("HH:mm")</span>
+                    <span class="what">
+                        <span class="kind">@Describe(t.Type)</span>
+                        <span class="meta">@NetworkName(t.Network) · @AgentName(t.AgentId)</span>
+                    </span>
+                    @* Signed by the cash it moved, which is what the agent's till felt. *@
+                    <span class="amount @(incoming ? "in" : "out")">
+                        @(incoming ? "+" : "−")@Money(t.Amount)
+                    </span>
+                </li>
+            }
+        </ul>
+    }
+
+    @* Housekeeping, not news. It was two cards of its own; it is one line at the foot. *@
+    <p class="estate-line muted">
+        @_summary.TotalBranches @Plural(_summary.TotalBranches, "branch", "branches") ·
+        @_summary.ActiveDevices active @Plural(_summary.ActiveDevices, "phone", "phones") ·
+        @_summary.ActiveSessions open @Plural(_summary.ActiveSessions, "session", "sessions")
+    </p>
 }
 
 @code {
     /// <summary>How often the page reloads. Long enough not to churn, short enough to act on.</summary>
     private const int RefreshSeconds = 60;
 
+    /// <summary>How many of today's transactions to read for the direction split.</summary>
+    /// <remarks>
+    /// Bounded, because an unbounded read of a busy estate's day is how a dashboard becomes
+    /// the slowest page in the product. Ten pages of the service's 200 is far above any single
+    /// agent business's day, and when it is exceeded the page says so rather than presenting a
+    /// partial split as the whole.
+    /// </remarks>
+    private const int MaxPagesForSplit = 10;
+
     private DashboardSummaryDto? _summary;
+    private IReadOnlyList<AgentHoldingsDto> _holdings = Array.Empty<AgentHoldingsDto>();
+    private List<TransactionDto> _latest = new();
+    private decimal _cashInTotal, _cashOutTotal;
+    private int _cashInCount, _cashOutCount, _scanned;
+    private long _todayTotal;
+    private bool _splitIsPartial;
     private bool _failed;
     private DateTimeOffset _readAt;
 
@@ -98,9 +230,43 @@ else
         try
         {
             // The organization comes from the signed-in principal, never from the URL or a
-            // form field, so a caller cannot ask for another tenant's figures.
-            _summary = await Dashboard.GetOrganizationDashboardAsync(CurrentUser.OrganizationId);
-            // Stamped after the read returns, so it is the age of these figures rather than
+            // form field, so a caller cannot ask for another tenant's figures. A branch-scoped
+            // manager sees their branch's people and transactions, not the whole estate's.
+            var organizationId = CurrentUser.OrganizationId;
+            var branchId = CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId;
+
+            _summary = await Dashboard.GetOrganizationDashboardAsync(organizationId);
+            _holdings = await Float.GetHoldingsAsync(organizationId, branchId);
+
+            // Ghana keeps UTC all year, so the UTC day is the business day.
+            var dayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
+            var page = 1;
+            PagedResult<TransactionDto> result;
+            do
+            {
+                result = await Transactions.GetTransactionsAsync(
+                    new TransactionQuery(organizationId, branchId, page, 200, FromUtc: dayStart));
+
+                if (page == 1)
+                {
+                    _latest = result.Items.Take(8).ToList();
+                    _todayTotal = result.TotalCount;
+                }
+
+                foreach (var t in result.Items)
+                {
+                    _scanned++;
+                    if (t.Type == TransactionType.CashIn) { _cashInTotal += t.Amount; _cashInCount++; }
+                    else if (t.Type == TransactionType.CashOut) { _cashOutTotal += t.Amount; _cashOutCount++; }
+                }
+
+                page++;
+            }
+            while (result.HasMore && page <= MaxPagesForSplit);
+
+            _splitIsPartial = result.HasMore;
+
+            // Stamped after the reads return, so it is the age of these figures rather than
             // the age of the request.
             _readAt = DateTimeOffset.Now;
         }
@@ -113,5 +279,49 @@ else
         }
     }
 
-    private static string Money(decimal value) => $"₵{value:N2}";
+    /// <summary>
+    /// Total float on one network across everyone shown. A sum of the ledger's own balances,
+    /// not a balance computed here — the page still cannot disagree with what moved.
+    /// </summary>
+    private decimal FloatOn(string network) => _holdings
+        .SelectMany(h => h.Floats)
+        .Where(f => string.Equals(f.Network, network, StringComparison.OrdinalIgnoreCase))
+        .Sum(f => f.Amount);
+
+    // Every figure follows the viewer's scope. A branch manager's float tiles are their
+    // branch's, so cash and trading must be too — the organisation-wide summary beside them
+    // would put two scopes on one screen and invite adding them up.
+    private bool BranchScoped => !CurrentUser.HasOrganizationWideScope;
+
+    private decimal CashInHand => BranchScoped ? _holdings.Sum(h => h.Cash) : _summary!.CashPosition;
+
+    private long TodayCount => BranchScoped ? _todayTotal : _summary!.TodayTransactions;
+
+    private decimal TodayVolume => BranchScoped ? _cashInTotal + _cashOutTotal : _summary!.TodayVolume;
+
+    private static string Tone(decimal amount) => amount < 0 ? "negative" : amount == 0 ? "empty" : "";
+
+    private string AgentName(Guid agentId) =>
+        _holdings.FirstOrDefault(h => h.AgentId == agentId)?.AgentName ?? "Unknown";
+
+    private static string Describe(TransactionType type) => type switch
+    {
+        TransactionType.CashIn => "Cash in",
+        TransactionType.CashOut => "Cash out",
+        TransactionType.Adjustment => "Cash or float given",
+        _ => type.ToString()
+    };
+
+    private static string NetworkName(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        _ => network
+    };
+
+    private static string Plural(long count, string one, string many) => count == 1 ? one : many;
+
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
 }

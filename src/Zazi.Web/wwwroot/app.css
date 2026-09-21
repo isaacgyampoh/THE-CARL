@@ -715,3 +715,89 @@ ul.estate li:last-child, ul.attention li:last-child { border-bottom: 0; }
 /* Links in page content were browser-default blue against an olive palette. */
 main a { color: var(--accent); text-underline-offset: .2rem; }
 main a:hover { color: var(--accent-hover); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Today
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+main > h2.first { margin-top: 1.25rem; }
+
+/* A note under a figure — "None held", "Below zero — check recent entries". */
+.tile .note { display: block; margin-top: .3rem; font-size: .78rem; color: var(--muted); }
+.tile .label small { font-size: .72rem; color: var(--muted); font-weight: 400; }
+
+/* Cash sits first and slightly heavier: it is the figure an owner checks against the till. */
+.tiles.money .tile.cash { border-color: var(--accent); }
+.tiles.money .tile.cash .value { color: var(--accent); }
+.tiles.money .tile.empty .value { color: var(--muted); }
+.tiles.money .tile.negative { border-color: var(--warn-fg); background: var(--warn-bg); }
+.tiles.money .tile.negative .value,
+.tiles.money .tile.negative .note { color: var(--warn-fg); }
+
+/* Four money tiles: two by two on a phone, one row on a desktop. */
+@media (min-width: 760px) {
+    .tiles.money, .tiles.trading { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* Needs attention, shown only when something does. */
+.callout {
+    margin-top: 1.25rem;
+    padding: .9rem 1.1rem;
+    border-radius: .75rem;
+    border: 1px solid var(--line);
+    background: var(--card);
+}
+.callout.warn { background: var(--warn-bg); border-color: var(--warn-fg); }
+.callout h2 { margin: 0 0 .4rem; color: var(--warn-fg); }
+.callout ul { margin: 0; padding-left: 1.1rem; }
+.callout li { margin: .15rem 0; }
+
+.all-clear {
+    margin: 1.25rem 0 0;
+    padding: .7rem 1rem;
+    border-radius: .75rem;
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+    font-size: .92rem;
+}
+
+.small { font-size: .85rem; margin-top: .5rem; }
+
+/* Who is holding what: one card per person, their cash and a chip per network. */
+.people, .feed {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+}
+.people li, .feed li { padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
+.people li:last-child, .feed li:last-child { border-bottom: 0; }
+
+.people .who-line { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.people .name { font-weight: 600; }
+.people .branch { font-size: .85rem; }
+.people .held { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: .45rem; }
+.people .cash-figure { font-variant-numeric: tabular-nums; font-weight: 600; }
+.people .cash-figure .muted { font-weight: 400; font-size: .82rem; margin-right: .2rem; }
+.people .chips .float-chip { margin-bottom: 0; }
+
+.more { margin: .6rem 0 0; font-size: .92rem; }
+
+/* Latest transactions: time, what and who, amount — the shape of a till roll. */
+.feed li {
+    display: grid;
+    grid-template-columns: 3.2rem minmax(0, 1fr) auto;
+    gap: .75rem;
+    align-items: baseline;
+}
+.feed .time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .88rem; }
+.feed .kind { display: block; font-weight: 600; }
+.feed .meta { display: block; color: var(--muted); font-size: .82rem; }
+.feed .amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+/* Money into the till is tinted; money out stays ordinary ink. The sign carries the meaning,
+   so colour adds emphasis rather than being the only signal. */
+.feed .amount.in { color: var(--ok-fg); }
+
+.estate-line { margin-top: 2rem; font-size: .85rem; text-align: center; }
