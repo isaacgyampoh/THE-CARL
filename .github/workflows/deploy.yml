@@ -90,66 +90,50 @@ jobs:
     # that nothing deploys from a red build.
     if: success()
 
-    steps:
-      - name: Check the deploy hooks are configured
-        # Both hooks were unset for the whole of 21 Sep 2026. The workflow POSTed to an empty
-        # string and curl failed with "URL rejected: Malformed input to a URL function", which
-        # reads like a network fault rather than a missing secret — so the real cause went
-        # unnoticed and every deploy that day was made by hand. Say which secret is missing,
-        # and say it before anything has been deployed rather than between the two services.
-        env:
-          API_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
-          WEB_HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK }}
-        run: |
-          missing=
-          [ -n "$API_HOOK" ] || missing="$missing RENDER_API_DEPLOY_HOOK"
-          [ -n "$WEB_HOOK" ] || missing="$missing RENDER_WEB_DEPLOY_HOOK"
-          if [ -n "$missing" ]; then
-            echo "Not deploying: these repository secrets are empty or unset:$missing" >&2
-            echo "Each is a Render deploy hook URL, found under the service's Settings." >&2
-            exit 1
-          fi
-          echo "Both deploy hooks are set."
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      # Service ids, not secrets — they appear in every dashboard URL. Keeping them here
+      # rather than in secrets means a missing deploy is a missing *key*, one thing to check.
+      API_SERVICE_ID: srv-dao4jrugekts73asa6ig
+      WEB_SERVICE_ID: srv-dao4kqmgekts73asdkkg
 
-      - name: Deploy API
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy the API
         # The API first, always. It is the service that applies EF migrations on startup, and
         # the web portal reads the same database — so a portal started against an unmigrated
         # schema fails on the first query touching a new column.
-        run: |
-          curl -fsS -X POST "${{ secrets.RENDER_API_DEPLOY_HOOK }}" > /dev/null
-          echo "API deploy triggered."
+        #
+        # The script waits for Render's own verdict on the build rather than inferring one
+        # from a health endpoint, which answers from the outgoing container until the swap.
+        run: ./scripts/render-deploy.sh "$API_SERVICE_ID" "API"
 
-      - name: Wait for the API to become ready
+      - name: Check the API is serving
+        # Separate from the deploy above, and deliberately so: "the build went live" and "it
+        # answers requests" are different claims, and a container that starts and then falls
+        # over on its first real request satisfies only the first.
         run: |
-          # Polls rather than assuming the deploy finished. A deploy hook returns as soon as
-          # Render accepts the request, not when the new build is live, and a migration on a
-          # large table is not instant.
-          #
-          # The first minute is skipped deliberately: until the new container swaps in, this
-          # endpoint answers 200 from the OLD one, and polling immediately would "succeed"
-          # against the build we are replacing.
-          sleep 60
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.API_HEALTH_URL }}" || true)
-            if [ "$code" = "200" ]; then echo "API ready after ${attempt} attempt(s)"; exit 0; fi
+            if [ "$code" = "200" ]; then echo "API healthy after ${attempt} attempt(s)."; exit 0; fi
             sleep 10
           done
-          echo "API did not become ready; not deploying the web portal." >&2
+          echo "The API deployed but is not serving; not deploying the web portal." >&2
           exit 1
 
-      - name: Deploy Web
-        run: |
-          curl -fsS -X POST "${{ secrets.RENDER_WEB_DEPLOY_HOOK }}" > /dev/null
-          echo "Web deploy triggered."
+      - name: Deploy the web portal
+        run: ./scripts/render-deploy.sh "$WEB_SERVICE_ID" "Web portal"
 
-      - name: Verify the portal is serving
+      - name: Check the portal is serving
         run: |
-          sleep 60
-          for attempt in $(seq 1 60); do
+          # A first request after the swap can land on a container that is still warming and
+          # come back 502, so this retries rather than judging on one attempt.
+          for attempt in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.WEB_SIGNIN_URL }}" || true)
-            if [ "$code" = "200" ]; then echo "Portal ready after ${attempt} attempt(s)"; exit 0; fi
+            if [ "$code" = "200" ]; then echo "Portal healthy after ${attempt} attempt(s)."; exit 0; fi
             sleep 10
           done
-          echo "Portal did not come up. Roll back in the Render dashboard: open the service," >&2
-          echo "go to Events, find the last good deploy and choose Rollback." >&2
+          echo "The portal deployed but is not serving. To roll back: open the service in the" >&2
+          echo "Render dashboard, go to Events, find the last good deploy and choose Rollback." >&2
           exit 1

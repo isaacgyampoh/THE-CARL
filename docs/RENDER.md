@@ -120,18 +120,32 @@ actually arrived, and not before.
 
 | Secret | Where it comes from |
 |---|---|
-| `RENDER_API_DEPLOY_HOOK` | API service → Settings → Deploy Hook |
-| `RENDER_WEB_DEPLOY_HOOK` | Web service → Settings → Deploy Hook |
+| `RENDER_API_KEY` | Render → Account Settings → API Keys → Create API Key |
+
+One key covers both services. This used to be two deploy hook URLs, one per service, and both
+were unset for the whole of 21 Sep 2026: the workflow POSTed to an empty string, curl answered
+`URL rejected: Malformed input to a URL function` — which reads like a network fault — and
+every deploy that day was made by hand without anyone noticing the pipeline had never worked.
+The API key is also the more honest mechanism. A hook returns 200 when Render *accepts* the
+request, so the old workflow had to guess at the outcome by sleeping and polling a health URL,
+which answers from the outgoing container until the swap; the API returns a deploy id whose
+status can be read directly. See `scripts/render-deploy.sh`.
+
+The service ids are in `.github/workflows/deploy.yml`, not in secrets — they are visible in
+every dashboard URL and are not credentials. That also means a deploy that does not happen has
+exactly one thing to check.
 
 **Variables** (same page, Variables tab — not secret):
 
 | Variable | Value |
 |---|---|
-| `API_HEALTH_URL` | the API's `onrender.com` address + `/ready` |
-| `WEB_SIGNIN_URL` | the web service's `onrender.com` address + `/sign-in` |
+| `API_HEALTH_URL` | `https://api.getzazi.com/health` |
+| `WEB_SIGNIN_URL` | `https://app.getzazi.com/sign-in` |
 
-Use the Render addresses here, not getzazi.com, until DNS has been cut over — otherwise the
-pipeline would "verify" the deploy by testing the old Hetzner server.
+Before DNS was cut over these had to be the `onrender.com` addresses, or the pipeline would
+have "verified" a Render deploy by testing the old Hetzner server. Now that both custom domains
+resolve to Render, the public addresses are the right ones: they test what a user reaches,
+including the proxy in front of the service.
 
 ## How a deploy works afterwards
 
