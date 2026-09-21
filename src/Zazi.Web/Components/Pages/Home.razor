@@ -8,6 +8,7 @@
 @inject IFloatService Float
 @inject ITransactionService Transactions
 @inject Zazi.Application.Closing.IDayCloseService Closes
+@inject Zazi.Application.Growth.IFloatRequestService FloatRequests
 @inject ICurrentUserContext CurrentUser
 @inject AuthenticationStateProvider AuthState
 
@@ -136,6 +137,16 @@ else
             <span aria-hidden="true">✓</span> Nothing needs attention — no discrepancies, no low
             float alerts, and balances agree.
         </p>
+    }
+
+    @if (_floatRequests > 0)
+    {
+        @* Waiting on the owner: an agent out of float is turning customers away. *@
+        <a class="closing-strip attention-strip" href="/float">
+            <span class="cs-title">Float requests</span>
+            <span class="cs-facts"><span class="warn">@_floatRequests waiting for you</span></span>
+            <span class="cs-go" aria-hidden="true">→</span>
+        </a>
     }
 
     @if (_closes.Count > 0 || _notClosed.Count > 0)
@@ -289,6 +300,7 @@ else
     private DashboardSummaryDto? _summary;
     private IReadOnlyList<Zazi.Application.Closing.DayCloseResult> _closes = [];
     private IReadOnlyList<string> _notClosed = [];
+    private int _floatRequests;
     private IReadOnlyList<AgentHoldingsDto> _holdings = Array.Empty<AgentHoldingsDto>();
     private List<TransactionDto> _latest = new();
     private decimal _cashInTotal, _cashOutTotal;
@@ -314,6 +326,7 @@ else
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             _closes = await Closes.ForDayAsync(organizationId, branchId, today);
             _notClosed = await Closes.NotClosedAsync(organizationId, branchId, today);
+            _floatRequests = (await FloatRequests.PendingAsync(organizationId, branchId)).Count;
 
             // Ghana keeps UTC all year, so the UTC day is the business day.
             var dayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);

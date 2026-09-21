@@ -195,6 +195,11 @@ builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 // Day, week, month, year or any range, as PDF or CSV, for an agent or the whole business.
 builder.Services.AddScoped<IStatementService, StatementService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IBusinessSettingsService, Zazi.Infrastructure.Growth.BusinessSettingsService>();
+builder.Services.AddScoped<Zazi.Application.Growth.ICustomerReceipts, Zazi.Infrastructure.Growth.CustomerReceipts>();
+builder.Services.AddScoped<Zazi.Application.Growth.IFloatRequestService, Zazi.Infrastructure.Growth.FloatRequestService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IReportService, Zazi.Infrastructure.Growth.ReportService>();
+builder.Services.AddScoped<Zazi.Application.Float.IFloatService, Zazi.Infrastructure.Float.FloatService>();
 builder.Services.AddScoped<Zazi.Application.Closing.IDayCloseService, DayCloseService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();

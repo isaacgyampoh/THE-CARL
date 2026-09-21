@@ -2,6 +2,9 @@ package app.zazi
 
 import app.zazi.core.data.repository.StatementDownload
 import app.zazi.core.data.repository.DayCloseOutcome
+import app.zazi.core.data.repository.FloatRequestOutcome
+import app.zazi.core.data.network.FloatRequestInfo
+import app.zazi.ui.FloatRequestDialog
 import app.zazi.core.data.network.DayCloseResponse
 import app.zazi.ui.CloseDayScreen
 import androidx.core.content.FileProvider
@@ -280,6 +283,11 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     var closeBusy by remember { mutableStateOf(false) }
     var closeError by remember { mutableStateOf<String?>(null) }
     var closeResult by remember { mutableStateOf<DayCloseResponse?>(null) }
+    var floatOpen by remember { mutableStateOf(false) }
+    var floatBusy by remember { mutableStateOf(false) }
+    var floatError by remember { mutableStateOf<String?>(null) }
+    var floatSent by remember { mutableStateOf<FloatRequestInfo?>(null) }
+    var floatRecent by remember { mutableStateOf<List<FloatRequestInfo>>(emptyList()) }
 
     val activationState by activationViewModel.state.collectAsState()
     val justActivated = activationState.activated
@@ -451,27 +459,23 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                             scope.launch {
                                 statementBusy = true
                                 statementError = null
-                                when (val result = container.statementRepository.download(range, kind)) {
-                                    is StatementDownload.Saved -> {
-                                        // Through the share sheet, so the agent sends it where they
-                                        // keep things: WhatsApp, email, Files. The grant covers this
-                                        // one file and nothing else in the app's storage.
-                                        val uri = FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.statements",
-                                            result.file
-                                        )
-                                        val send = Intent(Intent.ACTION_SEND).apply {
-                                            type = result.mimeType
-                                            putExtra(Intent.EXTRA_STREAM, uri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(Intent.createChooser(send, "Send or save statement"))
-                                    }
-                                    is StatementDownload.Failed -> statementError = result.reason
-                                }
+                                shareDownload(context, container.statementRepository.download(range, kind)) { statementError = it }
                                 statementBusy = false
                             }
+                        },
+                        onDownloadTradingRecord = {
+                            scope.launch {
+                                statementBusy = true
+                                statementError = null
+                                shareDownload(context, container.statementRepository.downloadTradingRecord()) { statementError = it }
+                                statementBusy = false
+                            }
+                        },
+                        onRequestFloat = {
+                            floatSent = null
+                            floatError = null
+                            floatOpen = true
+                            scope.launch { floatRecent = container.floatRequestRepository.mine() }
                         },
                         onActivitySelected = { item ->
                             scope.launch {
@@ -496,6 +500,30 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                             permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                         }
                     )
+                    if (floatOpen) {
+                        FloatRequestDialog(
+                            busy = floatBusy,
+                            error = floatError,
+                            sent = floatSent,
+                            recent = floatRecent,
+                            isOnline = isOnline,
+                            onSend = { network, amountMinor ->
+                                scope.launch {
+                                    floatBusy = true
+                                    floatError = null
+                                    when (val outcome = container.floatRequestRepository.request(network, amountMinor)) {
+                                        is FloatRequestOutcome.Sent -> {
+                                            floatSent = outcome.request
+                                            floatRecent = container.floatRequestRepository.mine()
+                                        }
+                                        is FloatRequestOutcome.Failed -> floatError = outcome.reason
+                                    }
+                                    floatBusy = false
+                                }
+                            },
+                            onDismiss = { floatOpen = false }
+                        )
+                    }
                 }
 
                 AuthenticatedScreen.CLOSE_DAY -> {
@@ -521,6 +549,7 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         },
                         onBack = { screen = AuthenticatedScreen.DASHBOARD }
                     )
+
                 }
 
                 AuthenticatedScreen.TRANSACTION -> {
@@ -707,6 +736,25 @@ private fun startOfDayUtcMillis(): Long =
 private fun Context.hasSmsPermission(): Boolean =
     ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) ==
         PackageManager.PERMISSION_GRANTED
+
+/**
+ * Hands a downloaded file to the share sheet, so the agent sends it where they keep things:
+ * WhatsApp, email, Files. The grant covers this one file and nothing else in the app's storage.
+ */
+private fun shareDownload(context: Context, result: StatementDownload, onFailed: (String) -> Unit) {
+    when (result) {
+        is StatementDownload.Saved -> {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.statements", result.file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = result.mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(send, "Send or save"))
+        }
+        is StatementDownload.Failed -> onFailed(result.reason)
+    }
+}
 
 /** The server's rows for this agent that this handset does not already hold. */
 private suspend fun recordedElsewhere(

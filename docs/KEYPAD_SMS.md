@@ -15,6 +15,9 @@ everything in the portal.
 | `FIND 0244123456` | The customer's last five transactions with times — for a complaint at the counter. |
 | `TODAY` | Today's totals and what the agent is holding. |
 | `CLOSE 1200 3500` | Closes the day: cash counted, then float on all SIMs. The reply says OK, SHORT or OVER against everything recorded since the last close. The owner sees it on the Closing page. |
+| `FLOAT 500 MTN` | Asks the owner for float. The owner is texted at once and answers by SMS or in the portal. |
+| `COMM` | This month's commission, by network. |
+| `LANG TWI` | Replies in Twi (or `LANG GA`, `LANG EWE`, `LANG EN`) — only languages the service has switched on. |
 | `HELP` | The list above. |
 
 Every message gets a reply. Agents who traded get a summary each evening at 20:00, and if they
@@ -28,6 +31,25 @@ have not closed the day it ends with a reminder to send `CLOSE cash float`.
 - **A text when someone closes short.** If an agent's count is short by a cedi or more, the
   business's phone number (the one given at sign-up) gets an SMS straight away, with the cash
   and float differences. The Closing page and the Today page show it too.
+
+- **Float requests, answered from any phone.** An agent's `FLOAT 500 MTN` texts the owner:
+  "Kofi asks for GHS 500.00 MTN float. Reply OK 4821 to give it, or NO 4821." Replying from the
+  business's SMS number (set on the Settings page) records the float against the agent and
+  tells them. The portal's Cash & float page lists waiting requests with Give / Decline.
+- **Customer receipts (optional).** Switched on in Settings, each cash in and cash out is
+  followed by an SMS to the customer: amount, network, time, a reference and the business's
+  number. Off by default, because each receipt is an SMS the business pays for.
+
+## Languages
+
+English is complete. Twi is a first draft; Ga and Ewe are not written yet and fall back to
+English line by line. A language is offered to agents only when it is listed in
+`Sms__Languages` on the API service (e.g. `EN,TWI`). Before adding one:
+
+1. Have a native speaker read every line in `src/Zazi.Infrastructure/Keypad/KeypadText.cs`
+   for that language, and fill any gaps.
+2. Keep it plain ASCII (write ɛ as e and ɔ as o), so replies stay one GSM SMS.
+3. Add it to `Sms__Languages` and redeploy.
 
 ## Rules that keep it safe
 

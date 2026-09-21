@@ -120,6 +120,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<DeviceEnrollmentCode> DeviceEnrollmentCodes => Set<DeviceEnrollmentCode>();
     public DbSet<ParsingReport> ParsingReports => Set<ParsingReport>();
     public DbSet<DayClose> DayCloses => Set<DayClose>();
+    public DbSet<FloatRequest> FloatRequests => Set<FloatRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -237,6 +238,7 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.DeviceIdentifier).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Platform).IsRequired().HasMaxLength(50);
+            builder.Property(x => x.PreferredLanguage).HasMaxLength(8);
             builder.Property(x => x.Network).IsRequired().HasMaxLength(50);
             builder.Property(x => x.AppVersion).HasMaxLength(50);
             builder.Property(x => x.OsVersion).HasMaxLength(80);
@@ -427,6 +429,19 @@ public class ApplicationDbContext : DbContext
             // Evidence is intentionally NOT uniquely constrained on fingerprint: every
             // observation is recorded, including duplicates, because the fact that a
             // duplicate arrived is itself auditable. Uniqueness is enforced on the ledger.
+        });
+
+        modelBuilder.Entity<FloatRequest>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Network).IsRequired().HasMaxLength(32);
+            builder.Property(x => x.Code).IsRequired().HasMaxLength(8);
+            builder.Property(x => x.Channel).IsRequired().HasMaxLength(16);
+            builder.Property(x => x.DecidedVia).HasMaxLength(16);
+            builder.Property(x => x.Amount).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            // The owner's list of what is waiting, and an SMS answer found by its code.
+            builder.HasIndex(x => new { x.OrganizationId, x.Status, x.Code });
+            builder.HasIndex(x => new { x.OrganizationId, x.AgentId, x.RequestedAtUtc });
         });
 
         modelBuilder.Entity<DayClose>(builder =>

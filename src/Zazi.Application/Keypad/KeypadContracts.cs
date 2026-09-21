@@ -97,4 +97,12 @@ public sealed class SmsGatewayOptions
     public int DailySummaryHourUtc { get; set; } = 20;
 
     public bool DailySummaryEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Languages keypad agents may choose with LANG, comma-separated: EN, TWI, GA, EWE.
+    /// English only by default. A language is switched on here only after a native speaker
+    /// has checked its wording — a reply about money that is misunderstood is worse than one
+    /// in English.
+    /// </summary>
+    public string Languages { get; set; } = "EN";
 }

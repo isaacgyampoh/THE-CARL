@@ -16,6 +16,7 @@ import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
 import app.zazi.core.data.repository.DayCloseRepository
+import app.zazi.core.data.repository.FloatRequestRepository
 import app.zazi.core.data.repository.ParsingReportRepository
 import app.zazi.core.data.repository.RemoteActivityRepository
 import app.zazi.core.data.repository.StatementRepository
@@ -139,6 +140,8 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     val remoteActivityRepository: RemoteActivityRepository by lazy { RemoteActivityRepository(api) }
 
     val dayCloseRepository: DayCloseRepository by lazy { DayCloseRepository(api) }
+
+    val floatRequestRepository: FloatRequestRepository by lazy { FloatRequestRepository(api) }
 
     val parsingReportRepository: ParsingReportRepository by lazy {
         ParsingReportRepository(database, api, BuildConfigCompat.versionName)

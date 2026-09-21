@@ -84,6 +84,19 @@ interface ZaziApi {
         @Query("format") format: String
     ): Response<ResponseBody>
 
+    /** The agent's own trading record, as a PDF, to show a lender. */
+    @Streaming
+    @GET("api/v1/reports/trading-record")
+    suspend fun tradingRecord(): Response<ResponseBody>
+
+    /** Asks the owner for float. Answered in the portal or by the owner's SMS. */
+    @POST("api/v1/float-requests")
+    suspend fun requestFloat(@Body request: FloatRequestBody): Response<FloatRequestInfo>
+
+    /** The agent's latest float requests and what became of them. */
+    @GET("api/v1/float-requests/mine")
+    suspend fun myFloatRequests(): Response<List<FloatRequestInfo>>
+
     @POST("api/v1/parsing-reports")
     suspend fun reportParsing(
         @Body request: SubmitParsingReportRequest
@@ -377,4 +390,18 @@ data class DayCloseResponse(
     val isBaseline: Boolean = false,
     /** Balanced, Short, Over or Baseline. */
     val status: String = ""
+)
+
+@Serializable
+data class FloatRequestBody(val network: String, val amount: Double)
+
+@Serializable
+data class FloatRequestInfo(
+    val id: String,
+    val network: String = "",
+    val amount: Double = 0.0,
+    val code: String = "",
+    /** 0 waiting, 1 given, 2 declined. */
+    val status: Int = 0,
+    val requestedAtUtc: String = ""
 )

@@ -5,6 +5,7 @@
 @rendermode InteractiveServer
 @inject IFloatService Floats
 @inject Zazi.Application.IAlertService Alerts
+@inject Zazi.Application.Growth.IFloatRequestService FloatRequests
 @inject ICurrentUserContext CurrentUser
 @inject ILogger<Float> Log
 
@@ -28,6 +29,29 @@
 @if (_recorded is not null)
 {
     <p class="muted" role="status">@_recorded</p>
+}
+
+@if (_requests.Count > 0)
+{
+    @* Agents asking for float, from the app or by SMS. Giving it here records it against them
+       in the same step, so the float given and the request cannot disagree. *@
+    <h2>Float requests</h2>
+    <ul class="requests">
+        @foreach (var request in _requests)
+        {
+            <li>
+                <span class="net-badge @NetworkKey(request.Network)" aria-hidden="true">@NetworkShort(request.Network)</span>
+                <span class="rq-what">
+                    <strong>@request.AgentName</strong> asks for <strong>@Money(request.Amount)</strong> @NetworkName(request.Network)
+                    <span class="sub">@request.RequestedAtUtc.ToLocalTime().ToString("d MMM HH:mm") · by @(request.Channel == "SMS" ? "SMS" : "the app") · code @request.Code</span>
+                </span>
+                <span class="rq-actions">
+                    <button type="button" class="approve" disabled="@_busy" @onclick="() => DecideAsync(request.Id, true)">Give float</button>
+                    <button type="button" class="decline" disabled="@_busy" @onclick="() => DecideAsync(request.Id, false)">Decline</button>
+                </span>
+            </li>
+        }
+    </ul>
 }
 
 <h2>Holdings</h2>
@@ -205,6 +229,49 @@ else
 
     private readonly Entry _entry = new();
     private readonly Warning _warning = new();
+    private IReadOnlyList<Zazi.Application.Growth.FloatRequestDto> _requests = [];
+
+    private async Task DecideAsync(Guid requestId, bool approve)
+    {
+        _busy = true;
+        _error = null;
+        _recorded = null;
+        try
+        {
+            var decided = await FloatRequests.DecideAsync(CurrentUser.OrganizationId, requestId, approve, CurrentUser.UserId, "Portal");
+            _recorded = approve
+                ? $"{Money(decided.Amount)} {NetworkName(decided.Network)} float recorded for {decided.AgentName}."
+                : $"Request from {decided.AgentName} declined.";
+            await LoadAsync();
+        }
+        catch (Zazi.Application.Growth.FloatRequestRejectedException rejected)
+        {
+            _error = rejected.Message;
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message.Split(" (Parameter")[0];
+        }
+        catch (Exception exception)
+        {
+            _error = Fail(exception, "answering a float request", "That could not be done. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string NetworkKey(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "mtn", "TELECEL" => "telecel", "AIRTELTIGO" => "airteltigo", _ => "other"
+    };
+
+    private static string NetworkShort(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN", "TELECEL" => "T", "AIRTELTIGO" => "AT", _ => "·"
+    };
     private string? _warningSaved;
 
     private sealed class Warning
@@ -276,6 +343,7 @@ else
             _holdings = await Floats.GetHoldingsAsync(
                 CurrentUser.OrganizationId,
                 CurrentUser.VisibleBranchId());
+            _requests = await FloatRequests.PendingAsync(CurrentUser.OrganizationId, CurrentUser.VisibleBranchId());
         }
         catch (Exception exception)
         {

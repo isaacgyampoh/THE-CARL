@@ -42,6 +42,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -228,6 +229,10 @@ fun DashboardScreen(
     onCloseDay: () -> Unit = {},
     /** Opens the capture form with a direction already chosen, from the quick actions. */
     onQuickCapture: (CaptureTransactionType) -> Unit = {},
+    /** Opens "ask for float". */
+    onRequestFloat: () -> Unit = {},
+    /** Downloads the agent's own trading record, for a lender. */
+    onDownloadTradingRecord: () -> Unit = {},
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
     onRequestSmsPermission: () -> Unit = {},
@@ -301,6 +306,7 @@ fun DashboardScreen(
             QuickActions(
                 onCashIn = { onQuickCapture(CaptureTransactionType.CASH_IN) },
                 onCashOut = { onQuickCapture(CaptureTransactionType.CASH_OUT) },
+                onFloat = onRequestFloat,
                 onCloseDay = onCloseDay,
                 onStatement = { statementOpen = true }
             )
@@ -333,6 +339,10 @@ fun DashboardScreen(
             StatementDialog(
                 open = statementOpen,
                 onDismiss = { statementOpen = false },
+                onTradingRecord = {
+                    statementOpen = false
+                    onDownloadTradingRecord()
+                },
                 onDownload = { range, kind ->
                     statementOpen = false
                     onDownloadStatement(range, kind)
@@ -477,12 +487,14 @@ private fun signed(minor: Long?): String =
 private fun QuickActions(
     onCashIn: () -> Unit,
     onCashOut: () -> Unit,
+    onFloat: () -> Unit,
     onCloseDay: () -> Unit,
     onStatement: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth()) {
         QuickAction(Icons.Filled.KeyboardArrowDown, "Cash in", onCashIn, Modifier.weight(1f))
         QuickAction(Icons.Filled.KeyboardArrowUp, "Cash out", onCashOut, Modifier.weight(1f))
+        QuickAction(Icons.Filled.Add, "Float", onFloat, Modifier.weight(1f))
         QuickAction(Icons.Filled.CheckCircle, "Close day", onCloseDay, Modifier.weight(1f))
         QuickAction(Icons.Filled.DateRange, "Statement", onStatement, Modifier.weight(1f))
     }
@@ -1480,6 +1492,7 @@ fun DataLostNotice(onDismiss: () -> Unit) {
 private fun StatementDialog(
     open: Boolean,
     onDismiss: () -> Unit,
+    onTradingRecord: () -> Unit,
     onDownload: (StatementRange, StatementKind) -> Unit
 ) {
     var range by rememberSaveable { mutableStateOf(StatementRange.TODAY) }
@@ -1510,6 +1523,11 @@ private fun StatementDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    HorizontalDivider(Modifier.padding(vertical = Spacing.small), color = MaterialTheme.colorScheme.outlineVariant)
+                    // For a loan: twelve months of trading on one page, from the ledger.
+                    TextButton(onClick = onTradingRecord, modifier = Modifier.fillMaxWidth()) {
+                        Text("Trading record for a loan (PDF)")
+                    }
                 }
             },
             confirmButton = {

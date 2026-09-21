@@ -27,18 +27,20 @@ public static class PdfStatementWriter
     private static string Count(int n) => n == 1 ? "1 transaction" : $"{n:N0} transactions";
 
     // A4 portrait, in points.
-    private const float PageWidth = 595.28f;
-    private const float PageHeight = 841.89f;
-    private const float Margin = 32f;
+    internal const float PageWidth = 595.28f;
+    internal const float PageHeight = 841.89f;
+    internal const float Margin = 32f;
     private const float RowHeight = 14f;
     private const float TableFont = 7.5f;
 
-    // The accent from the portal, so a printed statement looks like the product it came from.
-    private const string Accent = "0.184 0.365 0.071";
-    private const string Ink = "0.094 0.114 0.071";
-    private const string Muted = "0.373 0.420 0.322";
-    private const string Line = "0.890 0.914 0.839";
-    private const string Zebra = "0.969 0.976 0.953";
+    // The portal's navy and greys, so a printed statement looks like the product it came from.
+    internal const string Accent = "0.043 0.122 0.200";
+    internal const string Gold = "0.949 0.663 0.000";
+    internal const string Ink = "0.055 0.090 0.149";
+    internal const string Muted = "0.357 0.400 0.463";
+    internal const string Line = "0.890 0.910 0.937";
+    internal const string Zebra = "0.957 0.965 0.976";
+    internal const string MoneyIn = "0.024 0.463 0.278";
 
     private sealed record Column(string Title, float Width, bool RightAligned);
 
@@ -230,23 +232,23 @@ public static class PdfStatementWriter
         }
     }
 
-    private static void Text(StringBuilder page, float x, float y, float size, bool bold, string colour, string text) =>
+    internal static void Text(StringBuilder page, float x, float y, float size, bool bold, string colour, string text) =>
         page.Append(CultureInfo.InvariantCulture,
             $"BT {colour} rg /{(bold ? "F2" : "F1")} {F(size)} Tf {F(x)} {F(y)} Td ({Escape(text)}) Tj ET\n");
 
-    private static void TextRight(StringBuilder page, float right, float y, float size, bool bold, string colour, string text) =>
+    internal static void TextRight(StringBuilder page, float right, float y, float size, bool bold, string colour, string text) =>
         Text(page, right - Measure(text, size, bold), y, size, bold, colour, text);
 
-    private static void Rect(StringBuilder page, float x, float y, float w, float h, string colour) =>
+    internal static void Rect(StringBuilder page, float x, float y, float w, float h, string colour) =>
         page.Append(CultureInfo.InvariantCulture, $"{colour} rg {F(x)} {F(y)} {F(w)} {F(h)} re f\n");
 
-    private static void StrokeRect(StringBuilder page, float x, float y, float w, float h, string colour) =>
+    internal static void StrokeRect(StringBuilder page, float x, float y, float w, float h, string colour) =>
         page.Append(CultureInfo.InvariantCulture, $"{colour} RG 0.6 w {F(x)} {F(y)} {F(w)} {F(h)} re S\n");
 
-    private static void HLine(StringBuilder page, float x, float y, float w, string colour) =>
+    internal static void HLine(StringBuilder page, float x, float y, float w, string colour) =>
         page.Append(CultureInfo.InvariantCulture, $"{colour} RG 0.6 w {F(x)} {F(y)} m {F(x + w)} {F(y)} l S\n");
 
-    private static string F(float value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    internal static string F(float value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string Money(decimal value) => value.ToString("N2", CultureInfo.InvariantCulture);
 
@@ -269,7 +271,7 @@ public static class PdfStatementWriter
         334, 260, 334, 584                                                              // { – ~
     ];
 
-    private static float Measure(string text, float size, bool bold)
+    internal static float Measure(string text, float size, bool bold)
     {
         var units = 0;
         foreach (var ch in text)
@@ -282,7 +284,7 @@ public static class PdfStatementWriter
     }
 
     /// <summary>Shortens text to fit a column, ending in an ellipsis rather than overrunning.</summary>
-    private static string Fit(string text, float width, float size, bool bold)
+    internal static string Fit(string text, float width, float size, bool bold)
     {
         if (Measure(text, size, bold) <= width)
         {
@@ -304,7 +306,7 @@ public static class PdfStatementWriter
     /// Escapes a string for a PDF literal and maps it into WinAnsi, the encoding the built-in
     /// fonts use. Characters it cannot show become "?" rather than corrupting the stream.
     /// </summary>
-    private static string Escape(string text)
+    internal static string Escape(string text)
     {
         var escaped = new StringBuilder(text.Length);
         foreach (var ch in text)
@@ -335,7 +337,7 @@ public static class PdfStatementWriter
         return escaped.ToString();
     }
 
-    private static byte[] Assemble(IReadOnlyList<string> contents)
+    internal static byte[] Assemble(IReadOnlyList<string> contents)
     {
         // Objects: 1 catalog, 2 page tree, 3 regular font, 4 bold font, then a page and its
         // content stream for each page.

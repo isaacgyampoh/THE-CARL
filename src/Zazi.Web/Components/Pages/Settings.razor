@@ -1,0 +1,149 @@
+@page "/settings"
+@using Microsoft.Extensions.Options
+@using Zazi.Application.Growth
+@using Zazi.Application.Keypad
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.OrganizationManage)]
+@rendermode InteractiveServer
+@inject IBusinessSettingsService BusinessSettings
+@inject ICurrentUserContext CurrentUser
+@inject IOptions<SmsGatewayOptions> Sms
+@inject ILogger<Settings> Log
+
+<PageTitle>Settings · Zazi</PageTitle>
+
+<h1>Settings</h1>
+<p class="lead">How Zazi reaches you, your agents and your customers by SMS.</p>
+
+@if (_error is not null)
+{
+    <p class="error" role="alert">@_error</p>
+}
+@if (_saved is not null)
+{
+    <p class="muted" role="status">@_saved</p>
+}
+
+@if (_model is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync" FormName="business-settings">
+        <h2>Your SMS number</h2>
+        <p class="muted">
+            Zazi texts this number when an agent closes the day short or asks for float, and you
+            can answer a float request from it by replying <strong>OK</strong> or <strong>NO</strong>
+            with the code. Works on any phone.
+        </p>
+        <p>
+            <label for="sms-number">Mobile number</label>
+            <InputText id="sms-number" @bind-Value="_model.Phone" type="tel" inputmode="tel" placeholder="024 412 3456" />
+        </p>
+
+        <h2>Customer receipts</h2>
+        <p class="muted">
+            Text each customer a receipt for their cash in or cash out — the amount, network, time
+            and a reference, with your business name. Customers with a receipt have proof, which
+            settles most disputes at the counter. Each receipt is one SMS your business pays for.
+        </p>
+        <p class="check-row">
+            <InputCheckbox id="receipts" @bind-Value="_model.Receipts" />
+            <label for="receipts">Send customers a receipt by SMS</label>
+        </p>
+        <div class="receipt-preview" aria-label="Example receipt">
+            <span class="rp-from">@_model.Name</span>
+            <span>@Preview</span>
+        </div>
+
+        <button type="submit" disabled="@_busy">Save settings</button>
+    </EditForm>
+
+    <h2>Languages for keypad agents</h2>
+    <p class="muted">
+        Agents on keypad phones can choose their language by texting <strong>LANG TWI</strong>,
+        <strong>LANG GA</strong>, <strong>LANG EWE</strong> or <strong>LANG EN</strong>.
+    </p>
+    <ul class="estate">
+        @foreach (var language in new[] { ("EN", "English"), ("TWI", "Twi"), ("GA", "Ga"), ("EWE", "Ewe") })
+        {
+            <li>
+                <span>@language.Item2</span>
+                @if (_languages.Contains(language.Item1))
+                {
+                    <span class="pill ok">On</span>
+                }
+                else
+                {
+                    <span class="pill">Being translated</span>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private Model? _model;
+    private string? _error;
+    private string? _saved;
+    private bool _busy;
+    private HashSet<string> _languages = ["EN"];
+
+    private sealed class Model
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public bool Receipts { get; set; }
+    }
+
+    private string Preview =>
+        Zazi.Infrastructure.Growth.CustomerReceipts.Compose(_model!.Name, _model.Phone, Zazi.Domain.TransactionType.CashOut,
+            50m, "MTN", DateTimeOffset.UtcNow, Guid.Parse("8f3a21c4-0000-0000-0000-000000000000"));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _languages = Sms.Value.Languages.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.ToUpperInvariant()).Append("EN").ToHashSet();
+        try
+        {
+            var settings = await BusinessSettings.GetAsync(CurrentUser.OrganizationId);
+            _model = new Model
+            {
+                Name = settings.Name,
+                Phone = settings.SmsPhoneNumber is { } p ? Zazi.Domain.GhanaPhoneNumber.Display(p) : null,
+                Receipts = settings.SendCustomerReceipts
+            };
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Loading business settings failed.");
+            _error = "Settings could not be loaded. Please try again.";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        _saved = null;
+        try
+        {
+            await BusinessSettings.SaveAsync(CurrentUser.OrganizationId, _model!.Phone, _model.Receipts, CurrentUser.UserId);
+            _saved = "Saved.";
+        }
+        catch (ArgumentException invalid)
+        {
+            _error = invalid.Message;
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Saving business settings failed.");
+            _error = "Settings could not be saved. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

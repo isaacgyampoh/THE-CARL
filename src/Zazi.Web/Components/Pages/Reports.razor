@@ -1,0 +1,137 @@
+@page "/reports"
+@using System.Globalization
+@using Zazi.Application.Float
+@using Zazi.Application.Growth
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.DashboardBranch)]
+@inject IReportService ReportService
+@inject IFloatService Float
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Reports · Zazi</PageTitle>
+
+<h1>Reports</h1>
+<p class="lead">
+    Commission earned, month by month and network by network — and a trading record to show a
+    lender when you need money for float. Both come straight from the ledger.
+</p>
+
+@* A GET form, so a report is a link that survives a refresh and can be sent. *@
+<form method="get" action="/reports" class="search-row">
+    <label for="agent" class="visually-hidden">Person</label>
+    <select id="agent" name="agent">
+        <option value="">Whole business</option>
+        @foreach (var person in _people)
+        {
+            <option value="@person.AgentId" selected="@(person.AgentId == Agent)">@person.AgentName</option>
+        }
+    </select>
+    <button type="submit">Show</button>
+</form>
+
+@if (_record is not null)
+{
+    <section class="balance-card report-card" aria-labelledby="record-title">
+        <p class="bc-label" id="record-title">Trading record · @_record.SubjectLabel</p>
+        <p class="bc-amount">@Cedis(_record.Volume)</p>
+        <p class="bc-sub">
+            Volume over the last 12 months · trading with Zazi since @_record.FirstTransactionAtUtc.ToString("MMMM yyyy", CultureInfo.InvariantCulture)
+        </p>
+        <ul class="bc-split">
+            <li><span class="bc-net">Transactions</span><span class="bc-val">@_record.Transactions.ToString("N0")</span></li>
+            <li><span class="bc-net">Commission</span><span class="bc-val">@Cedis(_record.Commission)</span></li>
+            <li><span class="bc-net">Days traded</span><span class="bc-val">@_record.ActiveDays.ToString("N0")</span></li>
+            <li>
+                <span class="bc-net">Closes balanced</span>
+                <span class="bc-val">@(_record.Closes == 0 ? "—" : $"{_record.BalancedCloses} of {_record.Closes}")</span>
+            </li>
+        </ul>
+    </section>
+
+    <div class="result-head">
+        <span class="muted">
+            The trading record is a one-page PDF a microfinance officer can read at a glance.
+        </span>
+        <span class="downloads">
+            <a class="download" href="@($"/reports/trading-record.pdf{AgentQuery}")">Trading record (PDF)</a>
+            <a class="download" href="@($"/reports/commission.csv{AgentQuery}")">Commission (Excel)</a>
+        </span>
+    </div>
+}
+
+<h2>Commission by month</h2>
+@if (_commission is null || _commission.Rows.Count == 0)
+{
+    <p class="empty">
+        No commission recorded in the last 12 months. Commission appears here when the network's
+        commission messages are captured by the app, forwarded from a keypad phone, or recorded by hand.
+    </p>
+}
+else
+{
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Month</th>
+                    @foreach (var network in Networks)
+                    {
+                        <th scope="col" class="n">@NetworkName(network)</th>
+                    }
+                    <th scope="col" class="n">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var month in _commission.Rows.Select(r => r.Month).Distinct().OrderByDescending(m => m))
+            {
+                var inMonth = _commission.Rows.Where(r => r.Month == month).ToList();
+                <tr>
+                    <td data-label="Month">@month.ToString("MMMM yyyy", CultureInfo.InvariantCulture)</td>
+                    @foreach (var network in Networks)
+                    {
+                        <td class="n" data-label="@NetworkName(network)">@Cedis(inMonth.Where(r => r.Network == network).Sum(r => r.Amount))</td>
+                    }
+                    <td class="n" data-label="Total"><strong>@Cedis(inMonth.Sum(r => r.Amount))</strong></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted small">Total over 12 months: <strong>@Cedis(_commission.Total)</strong></p>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "agent")]
+    public Guid? Agent { get; set; }
+
+    private static readonly string[] Networks = ["MTN", "TELECEL", "AIRTELTIGO"];
+
+    private IReadOnlyList<AgentHoldingsDto> _people = [];
+    private CommissionReport? _commission;
+    private TradingRecord? _record;
+
+    private string AgentQuery => Agent is { } id ? $"?agent={id}" : string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var branch = CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId;
+        _people = await Float.GetHoldingsAsync(CurrentUser.OrganizationId, branch);
+        if (Agent is { } chosen && _people.All(p => p.AgentId != chosen))
+        {
+            // Someone outside the viewer's scope is not reported on, whatever the link says.
+            Agent = null;
+        }
+
+        _commission = await ReportService.CommissionAsync(CurrentUser.OrganizationId, branch, Agent);
+        _record = await ReportService.TradingRecordAsync(CurrentUser.OrganizationId, branch, Agent);
+    }
+
+    private static string Cedis(decimal value) => value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
+
+    private static string NetworkName(string network) => network switch
+    {
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        _ => network
+    };
+}

@@ -14,6 +14,18 @@ public static class KeypadServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddZaziKeypad(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddZaziSms(configuration);
+        services.AddScoped<IKeypadSmsService, KeypadSmsService>();
+        services.AddHostedService<KeypadDailySummaryService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Only the ability to send an SMS — for the portal, where an owner's decision on a float
+    /// request is texted to a keypad agent — without the inbound router or the nightly job.
+    /// </summary>
+    public static IServiceCollection AddZaziSms(this IServiceCollection services, IConfiguration configuration)
+    {
         services.Configure<SmsGatewayOptions>(configuration.GetSection(SmsGatewayOptions.SectionName));
 
         var provider = configuration[$"{SmsGatewayOptions.SectionName}:Provider"] ?? "Disabled";
@@ -30,8 +42,6 @@ public static class KeypadServiceCollectionExtensions
                 break;
         }
 
-        services.AddScoped<IKeypadSmsService, KeypadSmsService>();
-        services.AddHostedService<KeypadDailySummaryService>();
         return services;
     }
 }

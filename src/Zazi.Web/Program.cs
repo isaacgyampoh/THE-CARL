@@ -237,6 +237,11 @@ builder.Services.AddScoped<ILedgerService, LedgerService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 // Day, week, month, year or any range, as PDF or CSV, for an agent or the whole business.
 builder.Services.AddScoped<IStatementService, StatementService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IBusinessSettingsService, Zazi.Infrastructure.Growth.BusinessSettingsService>();
+builder.Services.AddScoped<Zazi.Application.Growth.ICustomerReceipts, Zazi.Infrastructure.Growth.CustomerReceipts>();
+builder.Services.AddScoped<Zazi.Application.Growth.IFloatRequestService, Zazi.Infrastructure.Growth.FloatRequestService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IReportService, Zazi.Infrastructure.Growth.ReportService>();
+Zazi.Infrastructure.Keypad.KeypadServiceCollectionExtensions.AddZaziSms(builder.Services, builder.Configuration);
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<Zazi.Application.Closing.IDayCloseService, DayCloseService>();
 // Only for the number shown next to activation codes; the portal sends no SMS itself.
@@ -420,6 +425,7 @@ app.MapGet("/ready", async (ApplicationDbContext db, CancellationToken cancellat
 
 app.MapAuthEndpoints();
 app.MapStatementEndpoints();
+app.MapReportEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 // Checked against the endpoints that were actually built, after everything is mapped.

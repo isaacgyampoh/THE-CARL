@@ -35,8 +35,30 @@ class StatementRepository(
     private val api: ZaziApi,
     private val cacheDir: File
 ) {
-    suspend fun download(range: StatementRange, kind: StatementKind): StatementDownload {
-        val response = runCatching { api.statement(range.wireName, kind.wireName) }
+    suspend fun download(range: StatementRange, kind: StatementKind): StatementDownload =
+        save(
+            request = { api.statement(range.wireName, kind.wireName) },
+            fallbackName = "zazi-statement-${range.wireName.lowercase()}.${kind.extension}",
+            mimeType = kind.mimeType
+        )
+
+    /**
+     * A one-page record of the last twelve months' trading — volume, commission, days traded,
+     * balanced closes — for a microfinance officer deciding whether to lend for float.
+     */
+    suspend fun downloadTradingRecord(): StatementDownload =
+        save(
+            request = { api.tradingRecord() },
+            fallbackName = "zazi-trading-record.pdf",
+            mimeType = StatementKind.PDF.mimeType
+        )
+
+    private suspend fun save(
+        request: suspend () -> retrofit2.Response<okhttp3.ResponseBody>,
+        fallbackName: String,
+        mimeType: String
+    ): StatementDownload {
+        val response = runCatching { request() }
             .getOrElse {
                 return StatementDownload.Failed("No connection. Statements need data or Wi-Fi to download.")
             }
@@ -53,12 +75,11 @@ class StatementRepository(
         // little storage runs out of it.
         folder.listFiles()?.forEach { it.delete() }
 
-        val name = fileNameFrom(response.headers()["Content-Disposition"])
-            ?: "zazi-statement-${range.wireName.lowercase()}.${kind.extension}"
+        val name = fileNameFrom(response.headers()["Content-Disposition"]) ?: fallbackName
         val file = File(folder, name)
 
         body.byteStream().use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-        return StatementDownload.Saved(file, kind.mimeType)
+        return StatementDownload.Saved(file, mimeType)
     }
 
     /** The server's own name for the file, which carries the business and the dates. */

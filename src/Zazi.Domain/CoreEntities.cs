@@ -110,6 +110,12 @@ public sealed class Organization : AggregateRoot
     /// </summary>
     public MfaPolicy MfaPolicy { get; set; } = MfaPolicy.Optional;
 
+    /// <summary>
+    /// Whether a customer is texted a receipt for each cash in and cash out. Off by default:
+    /// every receipt is an SMS the business pays for, so it is the owner's choice.
+    /// </summary>
+    public bool SendCustomerReceipts { get; set; }
+
     public List<Branch> Branches { get; set; } = new();
     public List<User> Users { get; set; } = new();
 }
@@ -276,6 +282,12 @@ public sealed class Device : AggregateRoot
     /// field keep working; new code should read <see cref="DeviceType"/>.
     /// </remarks>
     public string Platform { get; set; } = "Android";
+
+    /// <summary>
+    /// The language a keypad phone is answered in: "EN", "TWI", "GA" or "EWE". Null is English.
+    /// Only meaningful for keypad phones; the app follows the handset's own settings.
+    /// </summary>
+    public string? PreferredLanguage { get; set; }
 
     /// <summary>
     /// Validated platform and form factor. The authority for

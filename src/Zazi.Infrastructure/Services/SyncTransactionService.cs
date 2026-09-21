@@ -36,13 +36,18 @@ public sealed class SyncTransactionService : ISyncTransactionService
         ApplicationDbContext dbContext,
         ILedgerService ledgerService,
         IOptions<SyncOptions> options,
-        ILogger<SyncTransactionService> logger)
+        ILogger<SyncTransactionService> logger,
+        IEnumerable<Zazi.Application.Growth.ICustomerReceipts>? receipts = null)
     {
         _dbContext = dbContext;
         _ledgerService = ledgerService;
         _options = options.Value;
         _logger = logger;
+        _receipts = receipts?.LastOrDefault();
     }
+
+    /// <summary>Optional, so the sync engine can be built without a messaging stack in tests.</summary>
+    private readonly Zazi.Application.Growth.ICustomerReceipts? _receipts;
 
     public async Task<SyncTransactionsResponse> SynchronizeAsync(
         SyncTransactionsRequest request,
@@ -77,6 +82,16 @@ public sealed class SyncTransactionService : ISyncTransactionService
         var conflict = results.Count(r => r.Status == SyncItemStatus.Conflict);
 
         await WriteBatchAuditAsync(batchId, caller, resolver, items.Count, accepted, duplicate, rejected, conflict, cancellationToken);
+
+        // Receipts only for what this batch newly recorded: a retried batch reports its items
+        // as duplicates, so a customer is never texted twice for one transaction.
+        if (_receipts is not null)
+        {
+            foreach (var result in results.Where(r => r.Status == SyncItemStatus.Accepted && r.TransactionId is not null))
+            {
+                await _receipts.SendAsync(result.TransactionId!.Value, cancellationToken);
+            }
+        }
 
         var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(startedAt);
 
