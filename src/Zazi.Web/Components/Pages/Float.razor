@@ -174,7 +174,9 @@ else
 
     private readonly Entry _entry = new();
 
-    private static string Money(decimal value) => value.ToString("N2");
+    // With the cedi sign, as every other page writes money. This one alone wrote "2,020.00".
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
 
     /// <summary>How the networks spell themselves, rather than the stored upper-case key.</summary>
     private static string NetworkName(string network) => network.ToUpperInvariant() switch

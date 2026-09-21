@@ -10,11 +10,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -36,12 +36,9 @@ private object Kente {
     val Red = Color(0xFFB8321F)
     val Leaf = Color(0xFF3E7A1A)
 
-    /** The deep-green wash laid over the pattern wherever words sit on it. */
-    val Wash = Brush.verticalGradient(
-        0f to Color(0xCC0E1E06),
-        0.55f to Color(0xEB0E1E06),
-        1f to Color(0xF70A1604)
-    )
+    /** Solid deep green; the pattern is drawn faintly on top of it. Flat colour, no gradient. */
+    val Ground = Color(0xFF0E1E06)
+    const val PatternStrength = 0.12f
 }
 
 /** One 160 × 160 tile, in tile units, at [scale]. */
@@ -129,8 +126,17 @@ fun KenteBackground(
 ) {
     Box(modifier.clipToBounds()) {
         Canvas(Modifier.matchParentSize()) {
-            kente(tileSize.toPx())
-            drawRect(Kente.Wash)
+            drawRect(Kente.Ground)
+            // The pattern on a layer of its own at low strength, so the words on the band read
+            // against a flat colour.
+            drawIntoCanvas { canvas ->
+                canvas.saveLayer(
+                    androidx.compose.ui.geometry.Rect(Offset.Zero, size),
+                    androidx.compose.ui.graphics.Paint().apply { alpha = Kente.PatternStrength }
+                )
+                kente(tileSize.toPx())
+                canvas.restore()
+            }
         }
         content()
     }
