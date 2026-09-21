@@ -10,18 +10,25 @@
 <PageTitle>Confirm your email · Zazi</PageTitle>
 
 <div class="signin">
-    <h1>Zazi</h1>
+    @* The mark and the name, not a heading. These pages are reached by someone who is
+       often locked out, on a phone, in a hurry — the product identity reassures them they
+       are in the right place, but the heading below is what tells them what this page does.
+       "Zazi" as the h1 said the same thing on all six of them. *@
+    <div class="masthead">
+        <ZaziMark Size="24" />
+        <span class="wordmark">Zazi</span>
+    </div>
 
     @switch (_outcome)
     {
         case EmailVerificationOutcome.Verified:
-            <p class="subtitle">Email confirmed</p>
+            <h1 class="purpose">Email confirmed</h1>
             <p>Your account is ready. Sign in to set up your business.</p>
             <p><a href="/sign-in">Sign in</a></p>
             break;
 
         case EmailVerificationOutcome.Expired:
-            <p class="subtitle">That link has expired</p>
+            <h1 class="purpose">That link has expired</h1>
             <p>
                 Verification links last 24 hours. Request a new one and we will send another.
             </p>
@@ -29,7 +36,7 @@
             break;
 
         default:
-            <p class="subtitle">That link did not work</p>
+            <h1 class="purpose">That link did not work</h1>
             @* One message for a token that never existed, one already used, and one whose
                account is gone. Distinguishing them would only help someone trying tokens they
                were never sent. *@

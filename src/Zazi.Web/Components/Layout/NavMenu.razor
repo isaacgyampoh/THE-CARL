@@ -3,7 +3,13 @@
 @* <header>/<nav> rather than divs, so a screen reader can announce the banner and the
    navigation as landmarks and skip between them. *@
 <header class="nav">
-    <a class="brand" href="/">Zazi</a>
+    @* The mark and the word, not the word alone. An agent who sees the handset and the
+       portal in the same afternoon should be looking at one product; until now the phone had
+       a drawn mark and the portal had bold text. *@
+    <a class="brand" href="/">
+        <ZaziMark Size="20" />
+        <span>Zazi</span>
+    </a>
 
     <AuthorizeView>
         <Authorized>

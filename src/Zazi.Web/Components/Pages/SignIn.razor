@@ -5,8 +5,15 @@
 <PageTitle>Sign in · Zazi</PageTitle>
 
 <div class="signin">
-    <h1>Zazi</h1>
-    <p class="subtitle">Sign in to your account</p>
+    @* The mark and the name, not a heading. These pages are reached by someone who is
+       often locked out, on a phone, in a hurry — the product identity reassures them they
+       are in the right place, but the heading below is what tells them what this page does.
+       "Zazi" as the h1 said the same thing on all six of them. *@
+    <div class="masthead">
+        <ZaziMark Size="24" />
+        <span class="wordmark">Zazi</span>
+    </div>
+    <h1 class="purpose">Sign in to your account</h1>
 
     @* A plain form post, not an interactive submit: the sign-in response is what writes the
        authentication cookie, and a Blazor circuit has already sent its headers. *@

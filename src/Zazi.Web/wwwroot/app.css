@@ -51,9 +51,18 @@
 
 body {
     margin: 0;
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* A named face rather than system-ui. Not decoration: system-ui renders the portal in a
+       different typeface on every machine that opens it, so nobody is looking at the same
+       product, and figures set in one metric do not line up with the same figures set in
+       another. Source Sans 3 is a UI face with real tabular numerals, which is what a page
+       of cedi amounts in a column actually needs. The stack behind it keeps the page legible
+       on a handset that blocks web fonts, which is squarely in this audience. */
+    font: 16px/1.5 "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: var(--ink);
     background: var(--surface);
+    /* Amounts, references and timestamps sit in columns throughout. Lining figures of equal
+       width keep them aligned without every cell needing its own rule. */
+    font-variant-numeric: tabular-nums;
 }
 
 h1 { font-size: 1.6rem; margin: 0 0 1rem; }
@@ -63,7 +72,20 @@ h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: v
     display: flex; align-items: center; gap: 1rem;
     padding: .75rem 1.5rem; border-bottom: 1px solid var(--line); background: var(--card);
 }
-.nav .brand { font-weight: 700; font-size: 1.1rem; color: var(--ink); text-decoration: none; }
+.nav .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--ink);
+    text-decoration: none;
+    /* The wordmark reads as a name, not as running text. */
+    letter-spacing: -.01em;
+}
+/* The mark takes the accent; the word stays ink. Colouring both would make the header
+   shout, and the header is not what anyone came to this page for. */
+.nav .brand .mark { color: var(--accent); flex: none; }
 .nav .who { margin-left: auto; color: var(--muted); font-size: .9rem; }
 .nav form { margin: 0; }
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
@@ -96,8 +118,30 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
     border-radius: .75rem;
 }
 
-.signin h1 { font-size: 1.35rem; letter-spacing: -.01em; margin-bottom: .25rem; }
-.signin .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 1.5rem; }
+/* Mark and name above the heading. Identity, so someone who followed an emailed link knows
+   where they have landed — while the h1 below says what the page is for. */
+.masthead {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: 1.25rem;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -.01em;
+}
+.masthead .wordmark { color: var(--ink); }
+
+.signin h1,
+.signin h1.purpose {
+    font-size: 1.35rem;
+    letter-spacing: -.01em;
+    margin: 0 0 1.25rem;
+    /* Overrides the global h2-ish treatment these inherited as subtitles: a purpose is the
+       page's heading now, so it is set as one rather than as quiet grey type. */
+    color: var(--ink);
+    text-transform: none;
+}
 .signin p { margin: 0 0 1rem; }
 
 .signin label {

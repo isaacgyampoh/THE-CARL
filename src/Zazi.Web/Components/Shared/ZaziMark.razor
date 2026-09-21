@@ -1,0 +1,37 @@
+@*
+    The Zazi mark, the same shape the handset draws.
+
+    Two bars and the stroke that joins them. The upper bar sits left, the lower one right,
+    because the product's whole job is reconciling two sides that do not line up, and the
+    diagonal is what brings them together. It reads as a Z without being a letter dropped
+    into a circle.
+
+    The geometry is ZaziBrand.kt's, multiplied by 100: the Kotlin expresses it as fractions
+    of the canvas (bar 0.20, shift 0.12) so one path serves a 24dp mark and a launcher icon,
+    and the same fractions serve any size here. Keep the two in step — an agent who sees the
+    handset and the portal in the same afternoon should see one product.
+
+    Inline SVG rather than an image file: it recolours with the theme through currentColor,
+    stays crisp at any size, and costs no request. Solid fill only — there is no gradient
+    anywhere in the identity.
+
+    aria-hidden because it is decoration wherever it appears; the wordmark beside it carries
+    the name, so announcing the shape as well would say "Zazi" twice.
+*@
+
+<svg class="mark @Class"
+     viewBox="0 0 100 100"
+     width="@Size" height="@Size"
+     fill="currentColor"
+     aria-hidden="true"
+     focusable="false">
+    <path d="M0,0 L88,0 L88,20 L30,80 L100,80 L100,100 L12,100 L12,80 L70,20 L0,20 Z" />
+</svg>
+
+@code {
+    /// <summary>Rendered size in pixels, square.</summary>
+    [Parameter] public int Size { get; set; } = 22;
+
+    /// <summary>Extra classes, for the rare case a page needs to position it.</summary>
+    [Parameter] public string? Class { get; set; }
+}

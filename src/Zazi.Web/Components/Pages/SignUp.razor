@@ -14,11 +14,18 @@
 <PageTitle>Create an account · Zazi</PageTitle>
 
 <div class="signin">
-    <h1>Zazi</h1>
+    @* The mark and the name, not a heading. These pages are reached by someone who is
+       often locked out, on a phone, in a hurry — the product identity reassures them they
+       are in the right place, but the heading below is what tells them what this page does.
+       "Zazi" as the h1 said the same thing on all six of them. *@
+    <div class="masthead">
+        <ZaziMark Size="24" />
+        <span class="wordmark">Zazi</span>
+    </div>
 
     @if (!Options.Value.Enabled)
     {
-        <p class="subtitle">Accounts are not open</p>
+        <h1 class="purpose">Accounts are not open</h1>
         <p>
             This Zazi deployment does not accept self-service signups. Ask whoever runs it to
             create an account for you.
@@ -27,7 +34,7 @@
     }
     else if (_submitted)
     {
-        <p class="subtitle">Check your email</p>
+        <h1 class="purpose">Check your email</h1>
         <p>
             If that address can receive mail, a confirmation link is on its way to
             <strong>@_sentTo</strong>. Open it to finish setting up your account.
@@ -62,7 +69,7 @@
     }
     else
     {
-        <p class="subtitle">Create your account</p>
+        <h1 class="purpose">Create your account</h1>
 
         <EditForm Model="_input" OnValidSubmit="SubmitAsync" FormName="sign-up">
             <label for="business">Business name</label>
