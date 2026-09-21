@@ -310,7 +310,18 @@ else
         public string BranchId { get; set; } = string.Empty;
     }
 
-    private readonly NewWorker _newWorker = new();
+    // [SupplyParameterFromForm], like the branch form below it.
+    //
+    // Without it this form could never work. These pages render statically, so submitting one
+    // rebuilds the component from scratch — a plain field comes back as a fresh, empty object
+    // and whatever was typed is gone before the handler runs. BranchId was therefore always
+    // blank, Guid.TryParse always failed, and every attempt to add a worker was refused with
+    // "Choose a branch for this worker" no matter what had been chosen.
+    //
+    // It survived because the bUnit tests render interactively, where the field does persist.
+    // Those tests passed against behaviour that could not happen in a browser.
+    [SupplyParameterFromForm(FormName = "add-worker")]
+    private NewWorker _newWorker { get; set; } = new();
 
     private IReadOnlyList<UserDto>? _users;
     private IReadOnlyList<DeviceDto>? _devices;
@@ -371,8 +382,7 @@ else
                     _newWorker.FullName,
                     new[] { ZaziRoles.Agent }));
 
-            _newWorker.FullName = string.Empty;
-            _newWorker.BranchId = string.Empty;
+            _newWorker = new NewWorker();
             await LoadAsync();
         }
         catch (ArgumentException exception)
