@@ -318,6 +318,9 @@ public class TeamPageTests : TestContext
         public Task<DeviceActivationResult> ActivateAsync(ActivateDeviceRequest request, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<KeypadPhoneLink> LinkKeypadPhoneAsync(string code, string phoneNumber, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<DeviceSelfDto?> GetDeviceSelfAsync(Guid organizationId, string deviceIdentifier, CancellationToken ct = default) =>
             Task.FromResult<DeviceSelfDto?>(null);
     }

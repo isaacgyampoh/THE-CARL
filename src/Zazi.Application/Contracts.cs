@@ -501,6 +501,15 @@ public record ActivateDeviceRequest(
 /// business — because the first screen after activation shows it. It carries nothing about
 /// the code, nothing about other users, and no internal security state.
 /// </remarks>
+/// <summary>A keypad phone, linked to its worker by SMS.</summary>
+public sealed record KeypadPhoneLink(
+    Guid DeviceId,
+    Guid OrganizationId,
+    Guid BranchId,
+    Guid WorkerId,
+    string WorkerName,
+    string OrganizationName);
+
 public record DeviceActivationResult(
     AuthTokenResult Session,
     Guid DeviceId,
@@ -518,6 +527,21 @@ public interface IDeviceEnrollmentService
     /// </summary>
     Task<DeviceActivationResult> ActivateAsync(
         ActivateDeviceRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Links a keypad phone to the worker an activation code was issued to, by the phone's
+    /// number, when the worker texts the code to Zazi.
+    /// </summary>
+    /// <remarks>
+    /// The same rules as <see cref="ActivateAsync"/> — single use, expiring, bound to a named
+    /// worker, and the phone is revocable from the Team page like any other device — but no
+    /// app session is issued, because a keypad phone has nowhere to keep one. Everything it
+    /// does afterwards arrives by SMS from the linked number.
+    /// </remarks>
+    Task<KeypadPhoneLink> LinkKeypadPhoneAsync(
+        string code,
+        string phoneNumber,
         CancellationToken cancellationToken = default);
 
     Task<EnrollmentCodeIssuedDto> IssueCodeAsync(

@@ -1168,3 +1168,13 @@ main form button[type="submit"].secondary:not(.link) {
     border: 1.5px solid var(--accent);
 }
 main form button[type="submit"].secondary:not(.link):hover { background: var(--code-bg); }
+
+/* How to link a keypad phone, shown under a freshly issued activation code. */
+.keypad-hint {
+    margin: .75rem 0 0;
+    padding: .7rem .9rem;
+    border: 1px solid var(--line);
+    border-radius: .5rem;
+    background: var(--surface);
+    font-size: .9rem;
+}

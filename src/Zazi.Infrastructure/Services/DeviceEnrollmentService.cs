@@ -376,6 +376,71 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
         ActivateDeviceRequest request,
         CancellationToken cancellationToken = default)
     {
+        var outcome = await ActivateCoreAsync(request, issueSession: true, cancellationToken);
+        return new DeviceActivationResult(
+            outcome.Session!,
+            outcome.DeviceId,
+            outcome.DeviceName,
+            outcome.BranchId,
+            outcome.BranchName,
+            outcome.OrganizationName,
+            outcome.WorkerName);
+    }
+
+    /// <summary>The prefix a keypad phone's identifier carries, so it can never collide with a handset's.</summary>
+    public const string KeypadIdentifierPrefix = "sms:";
+
+    /// <summary>The platform a keypad phone is recorded with.</summary>
+    public const string KeypadPlatform = "SMS";
+
+    public async Task<KeypadPhoneLink> LinkKeypadPhoneAsync(
+        string code,
+        string phoneNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var number = GhanaPhoneNumber.Normalise(phoneNumber)
+            ?? throw new ArgumentException("A Ghanaian mobile number is required.", nameof(phoneNumber));
+
+        var outcome = await ActivateCoreAsync(
+            new ActivateDeviceRequest(
+                code,
+                KeypadIdentifierPrefix + number,
+                "Keypad phone " + GhanaPhoneNumber.Display(number),
+                KeypadPlatform,
+                // The agent SIM's own network, read from its prefix. A default for text
+                // commands that do not name one, stated back in every reply so a wrong guess
+                // is seen at once; numbers are portable, so it is never taken as certain.
+                KeypadNetworks.FromPrefix(number),
+                "sms",
+                "keypad"),
+            issueSession: false,
+            cancellationToken);
+
+        return new KeypadPhoneLink(
+            outcome.DeviceId,
+            outcome.OrganizationId,
+            outcome.BranchId,
+            outcome.WorkerId,
+            outcome.WorkerName,
+            outcome.OrganizationName);
+    }
+
+    private sealed record ActivationOutcome(
+        AuthTokenResult? Session,
+        Guid DeviceId,
+        string DeviceName,
+        Guid OrganizationId,
+        Guid BranchId,
+        string BranchName,
+        string OrganizationName,
+        Guid WorkerId,
+        string WorkerName);
+
+    private async Task<ActivationOutcome> ActivateCoreAsync(
+        ActivateDeviceRequest request,
+        bool issueSession,
+        CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(request.Code))
         {
             throw new ArgumentException("An activation code is required.", nameof(request));
@@ -577,7 +642,11 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
                 "The activation could not be completed because the code or device identifier was already used.");
         }
 
-        var session = await _authService.IssueActivationSessionAsync(worker.Id, device.Id, cancellationToken);
+        // A keypad phone has nowhere to keep a session: everything it does afterwards arrives
+        // by SMS from the linked number, so none is issued.
+        var session = issueSession
+            ? await _authService.IssueActivationSessionAsync(worker.Id, device.Id, cancellationToken)
+            : null;
 
         if (transaction is not null)
         {
@@ -604,13 +673,15 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             "branch {BranchId} via code {CodePrefix}",
             device.Id, worker.Id, code.OrganizationId, code.BranchId, code.CodePrefix);
 
-        return new DeviceActivationResult(
+        return new ActivationOutcome(
             session,
             device.Id,
             device.Name,
+            code.OrganizationId,
             code.BranchId,
             branchName,
             organizationName,
+            worker.Id,
             worker.FullName);
     }
 

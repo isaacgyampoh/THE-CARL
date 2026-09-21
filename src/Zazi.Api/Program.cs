@@ -1,3 +1,4 @@
+using Zazi.Infrastructure.Keypad;
 using Zazi.Infrastructure.Statements;
 using Zazi.Application.Statements;
 using System.Text;
@@ -199,6 +200,8 @@ builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
 // The one path by which a real provider message reaches whoever maintains the parser.
 builder.Services.AddScoped<IParsingReportService, ParsingReportService>();
+// Zazi by SMS, for agents on keypad phones with no internet.
+builder.Services.AddZaziKeypad(builder.Configuration);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOfflineSyncService, OfflineSyncService>();
 builder.Services.AddScoped<IDeviceLinkService, DeviceLinkService>();

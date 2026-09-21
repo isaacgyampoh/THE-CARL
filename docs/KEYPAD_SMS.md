@@ -1,0 +1,74 @@
+# Zazi for keypad phones (SMS)
+
+Most Ghanaian MoMo agents work on a keypad phone with no internet. Zazi reaches them by SMS,
+which works on any phone, anywhere, with no data. The agent never needs the app; the owner sees
+everything in the portal.
+
+## What an agent does
+
+| Text to Zazi's number | What happens |
+|---|---|
+| `ZAZI <activation code>` | Links this phone to the agent. Once. |
+| *(forward any MoMo confirmation)* | Recorded automatically — amount, customer number, MTN transaction ID and time read from the network's own message. |
+| `CO 50 0244123456` | Cash out recorded by hand. |
+| `CI 200 0201234567` | Cash in recorded by hand. Add `MTN`, `TELECEL` or `AT` at the end to name the network. |
+| `FIND 0244123456` | The customer's last five transactions with times — for a complaint at the counter. |
+| `TODAY` | Today's totals and what the agent is holding. |
+| `HELP` | The list above. |
+
+Every message gets a reply. Agents who traded get a summary each evening at 20:00.
+
+## Rules that keep it safe
+
+- Only a number linked with a valid, single-use activation code can record anything.
+- Revoking the phone on the Team page, or disabling the worker, stops it at the next text.
+- The same MoMo message forwarded twice is recorded once; a gateway re-delivering a typed
+  command is recorded once.
+- The gateway's callback URL must carry a secret; without it every request is refused.
+- The network is read from the message itself first, so a Telecel message forwarded from an
+  MTN-numbered phone is filed under Telecel. Only when the message names no network is the
+  agent SIM's own network used — and every reply says which network was used.
+- Replies are plain GSM text, so each is one SMS rather than a costlier Unicode one.
+
+## Going live — checklist
+
+1. **Open an account** with an SMS provider that offers **two-way (inbound) SMS on a Ghana
+   number**. Zazi supports Africa's Talking today; the sender is one small class, so another
+   provider can be added.
+2. **Get a number agents can text.** Ask the provider for a two-way long code or shortcode.
+3. **Set these on the API service** (Render → zazi-api → Environment):
+
+   | Variable | Value |
+   |---|---|
+   | `Sms__Provider` | `AfricasTalking` |
+   | `Sms__Username` | your Africa's Talking username (`sandbox` while testing) |
+   | `AFRICASTALKING_API_KEY` | your API key — **only here, never in code or chat** |
+   | `Sms__SenderId` | the sender name or shortcode, if the provider assigned one |
+   | `Sms__InboundSecret` | a long random string you generate |
+
+4. **Set on the web service** (so owners see the number next to activation codes):
+
+   | Variable | Value |
+   |---|---|
+   | `Sms__InboundNumber` | the number agents text, e.g. `020 000 0000` |
+
+5. **Point the provider's inbound SMS callback at:**
+
+   ```
+   https://api.getzazi.com/api/v1/sms-gateway/inbound?key=<your Sms__InboundSecret>
+   ```
+
+6. **Test:** issue an activation code on the Team page, text `ZAZI <code>` from a keypad phone,
+   then forward a MoMo message. Both should get a reply, and the transaction should appear on
+   the Transactions page.
+
+## Trying it without a gateway
+
+In development the API has a simulator:
+
+```
+POST /api/v1/sms-gateway/simulate
+{ "from": "0244000111", "text": "ZAZI ABCD-..." }
+```
+
+It returns the reply that would have been texted. It does not exist outside development.

@@ -9,6 +9,7 @@
 @inject IOrganizationService Organizations
 @inject ICurrentUserContext CurrentUser
 @inject ILogger<Team> Log
+@inject Microsoft.Extensions.Options.IOptions<Zazi.Application.Keypad.SmsGatewayOptions> Sms
 @using Microsoft.EntityFrameworkCore
 
 @rendermode InteractiveServer
@@ -48,6 +49,18 @@
             Give this to @_issuedForName now. It is shown once and cannot be recovered —
             generate a new one if it is lost. Expires @_issuedExpiry?.ToLocalTime().ToString("g").
         </p>
+        @* Most agents work on a keypad phone with no internet. The same code links that phone
+           by SMS, so the owner is told how, right where the code is. Shown only once a Zazi
+           SMS number is configured — an instruction to text a number that does not exist yet
+           would strand the agent. *@
+        @if (!string.IsNullOrWhiteSpace(Sms.Value.InboundNumber))
+        {
+            <p class="keypad-hint">
+                <strong>On a keypad phone?</strong> Text <code>ZAZI @_issuedCode</code> to
+                <strong>@Sms.Value.InboundNumber</strong>. Then forward every MoMo message to that
+                number to record it.
+            </p>
+        }
     </section>
 }
 
