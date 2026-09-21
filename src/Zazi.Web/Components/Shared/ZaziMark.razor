@@ -19,7 +19,7 @@
     the name, so announcing the shape as well would say "Zazi" twice.
 *@
 
-<svg class="mark @Class"
+<svg class="@CssClass"
      viewBox="0 0 100 100"
      width="@Size" height="@Size"
      fill="currentColor"
@@ -34,4 +34,7 @@
 
     /// <summary>Extra classes, for the rare case a page needs to position it.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Joined rather than interpolated, so an absent Class leaves no trailing space.</summary>
+    private string CssClass => string.IsNullOrWhiteSpace(Class) ? "mark" : $"mark {Class}";
 }
