@@ -170,6 +170,34 @@ interface LocalTransactionDao {
     )
     fun observeDetail(clientTransactionId: String): Flow<TransactionDetailRow?>
 
+    /**
+     * The provider message behind one transaction, for an agent reporting it was read wrongly.
+     *
+     * <p>Read only at the moment an agent taps to report. The body never leaves the handset
+     * otherwise — the sync payload carries the parsed result and not the text — so this query
+     * exists to serve one deliberate, per-transaction act of consent and nothing else.</p>
+     *
+     * <p>Returns null once the retention purge has cleared the body, which is a real outcome
+     * rather than an error: the transaction is still there, the message that produced it is
+     * not, and the agent is told that instead of being shown a report form that would send an
+     * empty message.</p>
+     */
+    @Query(
+        """
+        SELECT e.rawMessage      AS rawMessage,
+               e.sourceType      AS sourceType,
+               e.senderIdentity  AS senderIdentity,
+               e.parserVersion   AS parserVersion,
+               t.provider        AS provider,
+               t.transactionType AS transactionType,
+               t.amountMinor     AS amountMinor
+        FROM local_transactions t
+        JOIN transaction_evidence e ON e.evidenceId = t.evidenceId
+        WHERE t.clientTransactionId = :clientTransactionId
+        """
+    )
+    suspend fun findReportableMessage(clientTransactionId: String): ReportableMessageRow?
+
     @Query(
         """
         SELECT * FROM local_transactions

@@ -277,3 +277,26 @@ data class TransactionDetailRow(
     val lastReasonCode: String?,
     val lastAttemptAtUtcMillis: Long?
 )
+
+/**
+ * What a parsing report needs: the message, and what this build made of it.
+ *
+ * <p>[rawMessage] is nullable because the retention purge clears bodies on a schedule. A
+ * transaction whose message has been purged cannot be reported usefully, and the screen says
+ * so rather than sending an empty report.</p>
+ */
+data class ReportableMessageRow(
+    val rawMessage: String?,
+    /**
+     * EvidenceSourceType.name. Needed to tell "typed in by hand" from "the message was
+     * purged": a manual capture writes an evidence row too, with no body, so a null
+     * [rawMessage] alone cannot distinguish the two and would tell an agent their message
+     * had been deleted when there never was one.
+     */
+    val sourceType: String,
+    val senderIdentity: String?,
+    val parserVersion: String?,
+    val provider: String,
+    val transactionType: String,
+    val amountMinor: Long
+)

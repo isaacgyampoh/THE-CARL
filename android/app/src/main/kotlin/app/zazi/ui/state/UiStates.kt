@@ -395,3 +395,20 @@ enum class ActivationError {
                 "Activation is unavailable right now. Please try again shortly."
         }
 }
+
+/**
+ * What the transaction screen knows about reporting this transaction.
+ *
+ * <p>[canReport] is false for a transaction typed in by hand, which has no provider message
+ * behind it, and for one whose message the retention purge has cleared. In both cases the
+ * button is not shown at all rather than shown and then refusing — an action that appears and
+ * then declines teaches an agent to stop trying.</p>
+ */
+data class ParsingReportUiState(
+    val canReport: Boolean = false,
+    val isSending: Boolean = false,
+    /** True once the server has it, including when this agent had already sent it. */
+    val sent: Boolean = false,
+    /** Set when the send failed, phrased for the agent rather than quoting a status code. */
+    val failure: String? = null
+)

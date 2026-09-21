@@ -118,6 +118,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncQueueEntry> SyncQueue => Set<SyncQueueEntry>();
     public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
     public DbSet<DeviceEnrollmentCode> DeviceEnrollmentCodes => Set<DeviceEnrollmentCode>();
+    public DbSet<ParsingReport> ParsingReports => Set<ParsingReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -421,6 +422,34 @@ public class ApplicationDbContext : DbContext
             // Evidence is intentionally NOT uniquely constrained on fingerprint: every
             // observation is recorded, including duplicates, because the fact that a
             // duplicate arrived is itself auditable. Uniqueness is enforced on the ledger.
+        });
+
+        modelBuilder.Entity<ParsingReport>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.ClientTransactionId).IsRequired().HasMaxLength(100);
+            builder.Property(x => x.SenderIdentity).HasMaxLength(50);
+            builder.Property(x => x.ObservedNetwork).IsRequired().HasMaxLength(32);
+            builder.Property(x => x.ParserVersion).HasMaxLength(40);
+            builder.Property(x => x.AppVersion).HasMaxLength(40);
+            builder.Property(x => x.Note).HasMaxLength(1000);
+
+            // text, not a bounded string. A provider is free to lengthen its own messages, and
+            // truncating the body would quietly destroy the one thing the report exists to
+            // carry — most likely at the end, which is where the balance reminder that caused
+            // the direction defect sat.
+            builder.Property(x => x.RawMessage).IsRequired().HasColumnType("text");
+
+            builder.HasIndex(x => x.OrganizationId);
+
+            // The working queue: unreviewed first, oldest first. Filtered so the index stays
+            // the size of the backlog rather than the size of the history.
+            builder.HasIndex(x => new { x.ReviewedAtUtc, x.CreatedAt })
+                .HasFilter("\"ReviewedAtUtc\" IS NULL");
+
+            // One agent reporting the same transaction twice is a double tap, not two reports.
+            builder.HasIndex(x => new { x.OrganizationId, x.ReportedByUserId, x.ClientTransactionId })
+                .IsUnique();
         });
 
         modelBuilder.Entity<SyncAttempt>(builder =>

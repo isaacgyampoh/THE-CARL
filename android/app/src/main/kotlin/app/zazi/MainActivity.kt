@@ -28,6 +28,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.zazi.core.data.repository.ReportOutcome
+import app.zazi.ui.state.ParsingReportUiState
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.session.SessionState
 import app.zazi.core.data.sync.SyncWorker
@@ -449,6 +451,20 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     // figure should land where they came from.
                     BackHandler { leave() }
 
+                    // Asked once per transaction, before the screen offers anything. A
+                    // transaction typed in by hand has no provider message behind it, and one
+                    // whose message the retention purge has cleared has nothing left to send.
+                    var reporting by remember(transactionId) {
+                        mutableStateOf(ParsingReportUiState())
+                    }
+
+                    LaunchedEffect(transactionId) {
+                        val target = transactionId ?: return@LaunchedEffect
+                        reporting = reporting.copy(
+                            canReport = container.parsingReportRepository.canReport(target) == null
+                        )
+                    }
+
                     TransactionDetailScreen(
                         detail = detail,
                         isRetrying = isRetrying,
@@ -463,7 +479,43 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                                 isRetrying = false
                             }
                         },
-                        onBack = { leave() }
+                        onBack = { leave() },
+                        reporting = reporting,
+                        onReport = { verdict, note ->
+                            val target = transactionId ?: return@TransactionDetailScreen
+                            scope.launch {
+                                reporting = reporting.copy(isSending = true, failure = null)
+                                val outcome = container.parsingReportRepository.report(
+                                    clientTransactionId = target,
+                                    verdict = verdict,
+                                    note = note
+                                )
+                                reporting = when (outcome) {
+                                    // Already reported counts as sent. From where the agent is
+                                    // standing both taps worked, and telling them otherwise is
+                                    // how they learn to stop reporting.
+                                    is ReportOutcome.Sent ->
+                                        reporting.copy(isSending = false, sent = true)
+
+                                    is ReportOutcome.Unavailable ->
+                                        reporting.copy(
+                                            isSending = false,
+                                            canReport = false,
+                                            failure = "The message for this transaction is no longer on this phone."
+                                        )
+
+                                    // Not queued for retry: the outbox retries indefinitely,
+                                    // and a customer's message re-sending itself while the
+                                    // network flaps is not what the agent agreed to.
+                                    is ReportOutcome.Failed ->
+                                        reporting.copy(
+                                            isSending = false,
+                                            failure = "Could not send just now. Try again when you have signal."
+                                        )
+                                }
+                            }
+                        },
+                        onReportDismissed = { reporting = reporting.copy(failure = null) }
                     )
                 }
 

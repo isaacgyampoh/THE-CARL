@@ -15,6 +15,7 @@ import app.zazi.core.data.network.ZaziApi
 import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
+import app.zazi.core.data.repository.ParsingReportRepository
 import app.zazi.core.data.repository.OutboxRepository
 import app.zazi.core.data.security.AndroidKeystoreCryptoBox
 import app.zazi.core.data.security.KeystoreCredentialStore
@@ -118,6 +119,17 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     private val telemetryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val dashboardRepository: DashboardRepository by lazy { DashboardRepository(database) }
+
+    /**
+     * The one path by which a provider's message leaves this handset.
+     *
+     * <p>Not wired into sync, and deliberately: sync carries the parsed result and never the
+     * text. This sends one body, about one transaction, at the moment an agent taps to say it
+     * was read wrongly.</p>
+     */
+    val parsingReportRepository: ParsingReportRepository by lazy {
+        ParsingReportRepository(database, api, BuildConfigCompat.versionName)
+    }
 
     // ─── Network ─────────────────────────────────────────────────────────────
 

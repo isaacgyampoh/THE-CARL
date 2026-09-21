@@ -160,3 +160,25 @@ public sealed record CreateWorkerApiRequest(
     string FullName,
     string[] Roles,
     string? PhoneNumber = null);
+
+/// <summary>
+/// An agent reporting that Zazi read one of their messages wrongly, with the message.
+/// </summary>
+/// <remarks>
+/// The organisation, the reporting agent and their branch are taken from the token and are
+/// deliberately absent here: a body that could name its own tenant would let one agent file a
+/// report against another organisation's transaction.
+/// </remarks>
+public sealed record SubmitParsingReportApiRequest(
+    [Required, StringLength(100, MinimumLength = 1)] string ClientTransactionId,
+    [Required, StringLength(4000, MinimumLength = 1)] string RawMessage,
+    ParsingReportVerdict Verdict,
+    /// <summary>The handset this was reported from, if it knows its own registration.</summary>
+    Guid? DeviceId = null,
+    [StringLength(50)] string? SenderIdentity = null,
+    [StringLength(32)] string? ObservedNetwork = null,
+    TransactionType ObservedType = TransactionType.Unknown,
+    long ObservedAmountMinor = 0,
+    [StringLength(1000)] string? Note = null,
+    [StringLength(40)] string? ParserVersion = null,
+    [StringLength(40)] string? AppVersion = null);

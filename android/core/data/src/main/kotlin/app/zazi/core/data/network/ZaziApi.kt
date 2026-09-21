@@ -44,6 +44,18 @@ interface ZaziApi {
     @POST("api/v1/telemetry/events")
     suspend fun recordTelemetry(@Body request: TelemetryBatchRequest): Response<Unit>
 
+    /**
+     * Sends one provider message an agent says was read wrongly.
+     *
+     * <p>The only call that carries a message body off this handset. Everything else — sync
+     * included — sends the parsed result and leaves the text here. This one is sent because
+     * an agent tapped a button about a specific transaction, and never in the background.</p>
+     */
+    @POST("api/v1/parsing-reports")
+    suspend fun reportParsing(
+        @Body request: SubmitParsingReportRequest
+    ): Response<ParsingReportReceipt>
+
     @GET("api/v1/devices/me")
     suspend fun deviceSelf(
         @Header("X-Device-Identifier") deviceIdentifier: String
@@ -256,4 +268,34 @@ data class ClientTelemetryEvent(
     val appVersion: String? = null,
     val platform: String? = null,
     val occurredAtUtc: String? = null
+)
+
+/**
+ * An agent's report that Zazi read one of their messages wrongly.
+ *
+ * <p>No organisation, branch or user field: all three come from the access token, so a handset
+ * cannot file a report against another tenant's transaction.</p>
+ */
+@Serializable
+data class SubmitParsingReportRequest(
+    val clientTransactionId: String,
+    val rawMessage: String,
+    /** ParsingReportVerdict as its server-side name. */
+    val verdict: String,
+    val deviceId: String? = null,
+    val senderIdentity: String? = null,
+    val observedNetwork: String? = null,
+    /** TransactionType as its server-side name. */
+    val observedType: String? = null,
+    val observedAmountMinor: Long = 0,
+    val note: String? = null,
+    val parserVersion: String? = null,
+    val appVersion: String? = null
+)
+
+@Serializable
+data class ParsingReportReceipt(
+    val reportId: String,
+    /** True when this agent had already reported this transaction. Not an error. */
+    val alreadyReported: Boolean = false
 )

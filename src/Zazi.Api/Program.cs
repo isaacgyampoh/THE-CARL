@@ -12,12 +12,14 @@ using Microsoft.IdentityModel.Tokens;
 using Zazi.Api.Middleware;
 using Zazi.Api.Security;
 using Zazi.Application;
+using Zazi.Application.Parsing;
 using Zazi.Application.Security;
 using Zazi.Application.Evidence;
 using Zazi.Application.Sync;
 using Zazi.Infrastructure.Evidence;
 using Zazi.Infrastructure;
 using Zazi.Infrastructure.Email;
+using Zazi.Infrastructure.Parsing;
 using Zazi.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -191,6 +193,8 @@ builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
+// The one path by which a real provider message reaches whoever maintains the parser.
+builder.Services.AddScoped<IParsingReportService, ParsingReportService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IOfflineSyncService, OfflineSyncService>();
 builder.Services.AddScoped<IDeviceLinkService, DeviceLinkService>();

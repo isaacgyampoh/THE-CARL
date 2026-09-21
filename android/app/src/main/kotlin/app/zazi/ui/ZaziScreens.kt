@@ -41,6 +41,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import app.zazi.core.data.repository.ParsingVerdict
+import app.zazi.ui.state.ParsingReportUiState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -877,8 +881,12 @@ fun TransactionDetailScreen(
     detail: TransactionDetail?,
     isRetrying: Boolean,
     onRetry: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    reporting: ParsingReportUiState = ParsingReportUiState(),
+    onReport: (ParsingVerdict, String) -> Unit = { _, _ -> },
+    onReportDismissed: () -> Unit = {}
 ) {
+    var reportOpen by rememberSaveable(detail?.clientTransactionId) { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -985,9 +993,135 @@ fun TransactionDetailScreen(
                 }
             }
 
+            // Offered only where it can do something. A transaction typed in by hand has no
+            // provider message behind it, and one whose message the retention purge has
+            // cleared has nothing left to send — in both cases the button would be a promise
+            // the app cannot keep.
+            if (reporting.canReport) {
+                Spacer(Modifier.height(16.dp))
+
+                Text("Is this right?", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "You know what happened at the counter. If Zazi read this message wrongly, "
+                        + "telling us sends the message itself so it can be fixed.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                when {
+                    reporting.sent -> Text(
+                        "Thank you — we have this message.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+
+                    else -> OutlinedButton(
+                        onClick = { reportOpen = true },
+                        enabled = !reporting.isSending,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
+                    ) {
+                        Text("This is wrong")
+                    }
+                }
+
+                reporting.failure?.let { failure ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        failure,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    if (reportOpen && detail != null) {
+        ReportParsingDialog(
+            isSending = reporting.isSending,
+            onDismiss = {
+                reportOpen = false
+                onReportDismissed()
+            },
+            onSubmit = { verdict, note ->
+                reportOpen = false
+                onReport(verdict, note)
+            }
+        )
+    }
+}
+
+/**
+ * What an agent is told before a provider's message leaves their handset.
+ *
+ * <p>Message bodies do not sync. This dialog is the moment that rule is set aside, so it says
+ * plainly what will be sent and asks for a deliberate tap rather than burying consent in a
+ * setting somebody agreed to once.</p>
+ */
+@Composable
+private fun ReportParsingDialog(
+    isSending: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: (ParsingVerdict, String) -> Unit
+) {
+    var verdict by rememberSaveable { mutableStateOf(ParsingVerdict.WRONG_DIRECTION) }
+    var note by rememberSaveable { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("What did Zazi get wrong?") },
+        text = {
+            Column {
+                ParsingVerdict.entries.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { verdict = option }
+                            .heightIn(min = Sizing.minimumTouchTarget),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = verdict == option, onClick = { verdict = option })
+                        Spacer(Modifier.width(Spacing.snug))
+                        Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+
+                Spacer(Modifier.height(Spacing.small))
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(200) },
+                    label = { Text("Anything to add (optional)") },
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(Spacing.small))
+
+                // Said before the tap, not after. An agent agreeing to send one message should
+                // know that is what they are agreeing to.
+                Text(
+                    "This sends the provider's message for this transaction, and nothing else. "
+                        + "No other messages are sent.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSubmit(verdict, note) }, enabled = !isSending) {
+                Text("Send message")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
