@@ -87,9 +87,9 @@ public class FailureInjectionTests : IDisposable
 
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"""
-                 INSERT INTO "CashBalances" ("Id", "OrganizationId", "BranchId", "OpeningCash", "CurrentCash", "CreatedAt", "UpdatedAt")
-                 VALUES ({Guid.NewGuid()}, {tenant.OrganizationId}, {tenant.BranchId}, 0, 500, {DateTimeOffset.UtcNow}, {DateTimeOffset.UtcNow})
-                 ON CONFLICT ("OrganizationId", "BranchId")
+                 INSERT INTO "CashBalances" ("Id", "OrganizationId", "BranchId", "AgentId", "OpeningCash", "CurrentCash", "CreatedAt", "UpdatedAt")
+                 VALUES ({Guid.NewGuid()}, {tenant.OrganizationId}, {tenant.BranchId}, {tenant.UserId}, 0, 500, {DateTimeOffset.UtcNow}, {DateTimeOffset.UtcNow})
+                 ON CONFLICT ("OrganizationId", "BranchId", "AgentId")
                  DO UPDATE SET "CurrentCash" = "CashBalances"."CurrentCash" + 500;
                  """);
 

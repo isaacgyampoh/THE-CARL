@@ -38,7 +38,14 @@ public record CreateSessionRequest(
     Guid UserId,
     Guid? DeviceId,
     decimal OpeningCash,
-    decimal OpeningFloat);
+    decimal OpeningFloat,
+    /// <summary>
+    /// Which network the opening float is held on. Optional, defaulting to unknown rather
+    /// than to a network: guessing MTN filed a Telecel agent's opening float against a
+    /// balance their own transactions never touched, so the figure they were given and the
+    /// figure that moved were two different rows.
+    /// </summary>
+    string? Network = null);
 
 public record SessionDto(
     Guid Id,

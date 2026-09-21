@@ -102,9 +102,9 @@ public class LedgerService : ILedgerService
 
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""
-             INSERT INTO "CashBalances" ("Id", "OrganizationId", "BranchId", "OpeningCash", "CurrentCash", "CreatedAt", "UpdatedAt")
-             VALUES ({Guid.NewGuid()}, {transaction.OrganizationId}, {transaction.BranchId}, 0, {transaction.CashDelta}, {now}, {now})
-             ON CONFLICT ("OrganizationId", "BranchId")
+             INSERT INTO "CashBalances" ("Id", "OrganizationId", "BranchId", "AgentId", "OpeningCash", "CurrentCash", "CreatedAt", "UpdatedAt")
+             VALUES ({Guid.NewGuid()}, {transaction.OrganizationId}, {transaction.BranchId}, {transaction.AgentId}, 0, {transaction.CashDelta}, {now}, {now})
+             ON CONFLICT ("OrganizationId", "BranchId", "AgentId")
              DO UPDATE SET "CurrentCash" = "CashBalances"."CurrentCash" + {transaction.CashDelta},
                            "UpdatedAt" = {now};
              """,
@@ -112,9 +112,9 @@ public class LedgerService : ILedgerService
 
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"""
-             INSERT INTO "FloatBalances" ("Id", "OrganizationId", "BranchId", "Network", "OpeningFloat", "CurrentFloat", "Threshold", "CreatedAt", "UpdatedAt")
-             VALUES ({Guid.NewGuid()}, {transaction.OrganizationId}, {transaction.BranchId}, {transaction.Network}, 0, {transaction.FloatDelta}, 0, {now}, {now})
-             ON CONFLICT ("OrganizationId", "BranchId", "Network")
+             INSERT INTO "FloatBalances" ("Id", "OrganizationId", "BranchId", "AgentId", "Network", "OpeningFloat", "CurrentFloat", "Threshold", "CreatedAt", "UpdatedAt")
+             VALUES ({Guid.NewGuid()}, {transaction.OrganizationId}, {transaction.BranchId}, {transaction.AgentId}, {transaction.Network}, 0, {transaction.FloatDelta}, 0, {now}, {now})
+             ON CONFLICT ("OrganizationId", "BranchId", "AgentId", "Network")
              DO UPDATE SET "CurrentFloat" = "FloatBalances"."CurrentFloat" + {transaction.FloatDelta},
                            "UpdatedAt" = {now};
              """,
@@ -129,15 +129,20 @@ public class LedgerService : ILedgerService
     {
         var cashBalance = await _dbContext.CashBalances
             .SingleOrDefaultAsync(
-                x => x.OrganizationId == transaction.OrganizationId && x.BranchId == transaction.BranchId,
+                x => x.OrganizationId == transaction.OrganizationId
+                    && x.BranchId == transaction.BranchId
+                    && x.AgentId == transaction.AgentId,
                 cancellationToken);
 
         if (cashBalance is null)
         {
+            // Per agent, not per branch: two agents at one counter each hold their own cash,
+            // and a pooled figure cannot answer how much the person in front of you is carrying.
             cashBalance = new CashBalance
             {
                 OrganizationId = transaction.OrganizationId,
-                BranchId = transaction.BranchId
+                BranchId = transaction.BranchId,
+                AgentId = transaction.AgentId
             };
             _dbContext.CashBalances.Add(cashBalance);
         }
@@ -146,6 +151,7 @@ public class LedgerService : ILedgerService
             .SingleOrDefaultAsync(
                 x => x.OrganizationId == transaction.OrganizationId
                     && x.BranchId == transaction.BranchId
+                    && x.AgentId == transaction.AgentId
                     && x.Network == transaction.Network,
                 cancellationToken);
 
@@ -155,6 +161,7 @@ public class LedgerService : ILedgerService
             {
                 OrganizationId = transaction.OrganizationId,
                 BranchId = transaction.BranchId,
+                AgentId = transaction.AgentId,
                 Network = transaction.Network
             };
             _dbContext.FloatBalances.Add(floatBalance);

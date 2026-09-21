@@ -38,6 +38,7 @@ public class SessionService : ISessionService
         {
             OrganizationId = request.OrganizationId,
             BranchId = request.BranchId,
+            AgentId = request.UserId,
             OpeningCash = openingCash,
             CurrentCash = openingCash
         });
@@ -45,7 +46,17 @@ public class SessionService : ISessionService
         {
             OrganizationId = request.OrganizationId,
             BranchId = request.BranchId,
-            Network = "MTN",
+            AgentId = request.UserId,
+            // The caller may now say which network the opening float is on, which a Telecel or
+            // AirtelTigo agent needs — previously it was hardcoded to MTN and their opening
+            // balance sat on a row their own transactions never touched.
+            //
+            // It still falls back to MTN rather than to UNKNOWN when unspecified, and that is
+            // deliberate: a float balance on a network no transaction will ever post to is an
+            // orphaned figure, which is worse than a wrong label because the opening amount
+            // simply vanishes from the agent's books. Until every caller supplies the network,
+            // the wrong-label failure is the recoverable one. See docs for the remaining gap.
+            Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network.ToUpperInvariant(),
             OpeningFloat = openingFloat,
             CurrentFloat = openingFloat,
             Threshold = 0m

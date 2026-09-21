@@ -460,6 +460,18 @@ public sealed class FloatBalance : AggregateRoot
 {
     public Guid OrganizationId { get; set; }
     public Guid BranchId { get; set; }
+
+    /// <summary>
+    /// The agent this float belongs to, or null for a balance held by the branch itself.
+    /// </summary>
+    /// <remarks>
+    /// Nullable because balances were branch-wide before agents were tracked separately, and
+    /// those rows still mean what they meant. An owner asking "how much float does Kofi have"
+    /// could not be answered at all while two agents at one counter shared a single figure —
+    /// which is the whole point of handing someone float in the first place.
+    /// </remarks>
+    public Guid? AgentId { get; set; }
+
     public string Network { get; set; } = string.Empty;
     public decimal OpeningFloat { get; set; }
     public decimal CurrentFloat { get; set; }
@@ -470,6 +482,10 @@ public sealed class CashBalance : AggregateRoot
 {
     public Guid OrganizationId { get; set; }
     public Guid BranchId { get; set; }
+
+    /// <summary>The agent whose till this is, or null for a branch-wide balance.</summary>
+    public Guid? AgentId { get; set; }
+
     public decimal OpeningCash { get; set; }
     public decimal CurrentCash { get; set; }
 }

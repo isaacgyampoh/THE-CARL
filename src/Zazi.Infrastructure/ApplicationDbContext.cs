@@ -496,7 +496,11 @@ public class ApplicationDbContext : DbContext
         {
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Network).IsRequired().HasMaxLength(80);
-            builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.Network }).IsUnique();
+
+            // The agent is part of what makes a float balance unique. Without them in the key
+            // a second agent at the same branch and network could not have a balance at all —
+            // the insert failed on the old unique index rather than giving them their own row.
+            builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.AgentId, x.Network }).IsUnique();
             builder.Property(x => x.CurrentFloat).HasPrecision(18, 4);
             builder.Property(x => x.Threshold).HasPrecision(18, 4);
             builder.Property(x => x.OpeningFloat).HasPrecision(18, 4);
@@ -505,7 +509,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<CashBalance>(builder =>
         {
             builder.HasKey(x => x.Id);
-            builder.HasIndex(x => new { x.OrganizationId, x.BranchId }).IsUnique();
+            builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.AgentId }).IsUnique();
             builder.Property(x => x.CurrentCash).HasPrecision(18, 4);
             builder.Property(x => x.OpeningCash).HasPrecision(18, 4);
         });
