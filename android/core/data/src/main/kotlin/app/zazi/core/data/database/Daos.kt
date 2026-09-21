@@ -62,6 +62,14 @@ interface LocalTransactionDao {
     @Query("SELECT * FROM local_transactions WHERE clientTransactionId = :clientTransactionId")
     suspend fun findByClientId(clientTransactionId: String): LocalTransactionEntity?
 
+    /** Which of these client identities this device already holds. */
+    @Query("SELECT clientTransactionId FROM local_transactions WHERE clientTransactionId IN (:ids)")
+    suspend fun knownClientIds(ids: List<String>): List<String>
+
+    /** Which of these server identities this device already holds, under any client identity. */
+    @Query("SELECT serverTransactionId FROM local_transactions WHERE serverTransactionId IN (:ids)")
+    suspend fun knownServerIds(ids: List<String>): List<String>
+
     @Query("SELECT * FROM local_transactions WHERE fingerprint = :fingerprint LIMIT 1")
     suspend fun findByFingerprint(fingerprint: String): LocalTransactionEntity?
 

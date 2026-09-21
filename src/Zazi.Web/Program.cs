@@ -237,6 +237,7 @@ builder.Services.AddScoped<ILedgerService, LedgerService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 // Day, week, month, year or any range, as PDF or CSV, for an agent or the whole business.
 builder.Services.AddScoped<IStatementService, StatementService>();
+builder.Services.AddScoped<Zazi.Application.Closing.IDayCloseService, DayCloseService>();
 // Only for the number shown next to activation codes; the portal sends no SMS itself.
 builder.Services.Configure<Zazi.Application.Keypad.SmsGatewayOptions>(builder.Configuration.GetSection(Zazi.Application.Keypad.SmsGatewayOptions.SectionName));
 // Recording what an owner hands an agent, and reading back what they hold.

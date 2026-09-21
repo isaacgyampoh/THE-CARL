@@ -1178,3 +1178,6 @@ main form button[type="submit"].secondary:not(.link):hover { background: var(--c
     background: var(--surface);
     font-size: .9rem;
 }
+
+/* A status pill keeps its own width inside a stacked table cell on a phone. */
+td .pill { justify-self: start; width: fit-content; }

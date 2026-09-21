@@ -119,6 +119,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
     public DbSet<DeviceEnrollmentCode> DeviceEnrollmentCodes => Set<DeviceEnrollmentCode>();
     public DbSet<ParsingReport> ParsingReports => Set<ParsingReport>();
+    public DbSet<DayClose> DayCloses => Set<DayClose>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -426,6 +427,24 @@ public class ApplicationDbContext : DbContext
             // Evidence is intentionally NOT uniquely constrained on fingerprint: every
             // observation is recorded, including duplicates, because the fact that a
             // duplicate arrived is itself auditable. Uniqueness is enforced on the ledger.
+        });
+
+        modelBuilder.Entity<DayClose>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Channel).IsRequired().HasMaxLength(16);
+            builder.Property(x => x.Note).HasMaxLength(500);
+            builder.Property(x => x.CountedCash).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.CountedFloat).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.ExpectedCash).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.ExpectedFloat).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.CashMovement).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.FloatMovement).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Ignore(x => x.CashDifference);
+            builder.Ignore(x => x.FloatDifference);
+            // "The agent's last close" and "everyone's close for a day" are the two reads.
+            builder.HasIndex(x => new { x.OrganizationId, x.AgentId, x.ClosedAtUtc });
+            builder.HasIndex(x => new { x.OrganizationId, x.BusinessDate });
         });
 
         modelBuilder.Entity<ParsingReport>(builder =>

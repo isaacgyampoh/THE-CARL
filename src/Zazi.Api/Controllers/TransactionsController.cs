@@ -71,6 +71,40 @@ public class TransactionsController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// The caller's own transactions, from every phone they use.
+    /// </summary>
+    /// <remarks>
+    /// The handset lists what it recorded itself, which is right for working offline — but an
+    /// agent who also forwards messages from a keypad phone, or works a second handset, would
+    /// not see those. With a connection, the app merges this in so the agent sees their whole
+    /// day. Always the caller's own: the agent comes from the token, never the query.
+    /// </remarks>
+    [HttpGet("mine")]
+    [Authorize(Policy = ZaziPolicies.TransactionRead)]
+    [ProducesResponseType(typeof(PagedResult<TransactionDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<TransactionDto>>> GetMine(
+        [FromQuery] DateTimeOffset? fromUtc,
+        [FromQuery] DateTimeOffset? toUtc,
+        [FromQuery] string? customer,
+        [FromQuery] int pageSize = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _transactionService.GetTransactionsAsync(
+            new TransactionQuery(
+                _currentUser.OrganizationId,
+                BranchId: null,
+                Page: 1,
+                PageSize: Math.Clamp(pageSize, 1, 200),
+                FromUtc: fromUtc,
+                ToUtc: toUtc,
+                CustomerPhone: customer,
+                AgentId: _currentUser.UserId),
+            cancellationToken);
+
+        return Ok(result);
+    }
+
     /// <summary>Records a manually entered transaction.</summary>
     /// <remarks>
     /// <see cref="TransactionSource"/> is forced to <see cref="TransactionSource.Manual"/>.

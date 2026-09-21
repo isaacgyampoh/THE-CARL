@@ -15,7 +15,9 @@ import app.zazi.core.data.network.ZaziApi
 import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
+import app.zazi.core.data.repository.DayCloseRepository
 import app.zazi.core.data.repository.ParsingReportRepository
+import app.zazi.core.data.repository.RemoteActivityRepository
 import app.zazi.core.data.repository.StatementRepository
 import app.zazi.core.data.repository.OutboxRepository
 import app.zazi.core.data.security.AndroidKeystoreCryptoBox
@@ -132,6 +134,11 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     val statementRepository: StatementRepository by lazy {
         StatementRepository(api, context.cacheDir)
     }
+
+    /** The agent's transactions from every phone they use, when there is a connection. */
+    val remoteActivityRepository: RemoteActivityRepository by lazy { RemoteActivityRepository(api) }
+
+    val dayCloseRepository: DayCloseRepository by lazy { DayCloseRepository(api) }
 
     val parsingReportRepository: ParsingReportRepository by lazy {
         ParsingReportRepository(database, api, BuildConfigCompat.versionName)

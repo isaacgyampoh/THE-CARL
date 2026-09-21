@@ -54,6 +54,23 @@ interface ZaziApi {
      * included — sends the parsed result and leaves the text here. This one is sent because
      * an agent tapped a button about a specific transaction, and never in the background.</p>
      */
+    /** Closes the signed-in agent's day with their count. Never anyone else's. */
+    @POST("api/v1/day-close")
+    suspend fun closeDay(@Body request: DayCloseRequest): Response<DayCloseResponse>
+
+    /**
+     * The signed-in agent's own transactions from every phone they use — a second handset, or a
+     * keypad phone forwarding MoMo messages by SMS. Merged into the list when there is a
+     * connection; the app works without it.
+     */
+    @GET("api/v1/transactions/mine")
+    suspend fun myTransactions(
+        @Query("fromUtc") fromUtc: String?,
+        @Query("toUtc") toUtc: String?,
+        @Query("customer") customer: String?,
+        @Query("pageSize") pageSize: Int = 200
+    ): Response<RemoteTransactionPage>
+
     /**
      * The signed-in agent's statement for a period, as a PDF or a CSV.
      *
@@ -314,4 +331,50 @@ data class ParsingReportReceipt(
     val reportId: String,
     /** True when this agent had already reported this transaction. Not an error. */
     val alreadyReported: Boolean = false
+)
+
+/** One page of the agent's server-side transactions. Only the fields the list shows. */
+@Serializable
+data class RemoteTransactionPage(
+    val items: List<RemoteTransaction> = emptyList(),
+    val totalCount: Long = 0
+)
+
+@Serializable
+data class RemoteTransaction(
+    val id: String,
+    val deviceId: String? = null,
+    val clientTransactionId: String? = null,
+    val network: String = "",
+    /** TransactionType as the server numbers it: 0 cash in, 1 cash out, 2 transfer, 3 reversal, 4 commission, 5 adjustment. */
+    val type: Int = 6,
+    val amount: Double = 0.0,
+    val cashDelta: Double = 0.0,
+    val floatDelta: Double = 0.0,
+    val customerPhoneNumber: String? = null,
+    val transactionAt: String,
+    /** TransactionSource: 0 manual, 1 read from an SMS, 2 bridge, 3 integration. */
+    val source: Int = 0
+)
+
+@Serializable
+data class DayCloseRequest(
+    val countedCash: Double,
+    val countedFloat: Double,
+    val note: String? = null
+)
+
+/** Where the agent stands at the close. Differences are counted minus expected: negative is short. */
+@Serializable
+data class DayCloseResponse(
+    val countedCash: Double,
+    val countedFloat: Double,
+    val expectedCash: Double? = null,
+    val expectedFloat: Double? = null,
+    val cashDifference: Double? = null,
+    val floatDifference: Double? = null,
+    val transactionCount: Int = 0,
+    val isBaseline: Boolean = false,
+    /** Balanced, Short, Over or Baseline. */
+    val status: String = ""
 )

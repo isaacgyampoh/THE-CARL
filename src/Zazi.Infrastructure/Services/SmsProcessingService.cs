@@ -122,12 +122,20 @@ public class SmsProcessingService : ISmsProcessingService
             .Select(x => new { x.Id })
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (priorTransaction is not null)
+        // Then by the network's own transaction ID, which is the same whichever route the
+        // transaction arrived by — the handset reading it, or a keypad agent forwarding it.
+        // The fingerprint above cannot see across routes: each stamps a different time.
+        var sameEvent = priorTransaction?.Id
+            ?? await CrossRouteDuplicates.FindAsync(
+                _dbContext, request.OrganizationId, provider, observedType,
+                parsed.Amount, parsed.ProviderReference, cancellationToken);
+
+        if (sameEvent is { } existingId)
         {
             evidence.IsDuplicate = true;
             evidence.State = TransactionLifecycleState.Rejected;
             evidence.OutcomeReason = "Duplicate of an already-accepted transaction.";
-            evidence.FinancialTransactionId = priorTransaction.Id;
+            evidence.FinancialTransactionId = existingId;
 
             _dbContext.TransactionEvidence.Add(evidence);
             await _dbContext.SaveChangesAsync(cancellationToken);

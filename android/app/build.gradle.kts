@@ -15,8 +15,8 @@ android {
         // The release this build actually is. It had stayed at the first-commit values while
         // the product was verified and reported as v2, which is the kind of drift that ends
         // with two different builds claiming the same version in a support conversation.
-        versionCode = 5
-        versionName = "2.2.1"
+        versionCode = 6
+        versionName = "2.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a

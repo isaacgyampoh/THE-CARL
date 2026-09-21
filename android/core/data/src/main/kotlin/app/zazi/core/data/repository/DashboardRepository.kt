@@ -60,6 +60,20 @@ class DashboardRepository(private val database: ZaziDatabase) {
         return database.localTransactionDao().searchByCustomer(key, limit)
     }
 
+    /**
+     * The identities, client or server, of these that this device already holds. What the
+     * server returns for "my transactions" includes everything this handset sent; those must
+     * not be shown or counted a second time.
+     */
+    suspend fun alreadyHeld(clientIds: List<String>, serverIds: List<String>): Set<String> {
+        val dao = database.localTransactionDao()
+        val held = HashSet<String>()
+        // SQLite caps bound parameters; the server returns at most 200 per call.
+        clientIds.chunked(500).forEach { held += dao.knownClientIds(it) }
+        serverIds.chunked(500).forEach { held += dao.knownServerIds(it) }
+        return held
+    }
+
     fun observeBetween(
         fromUtcMillis: Long,
         toUtcMillis: Long,

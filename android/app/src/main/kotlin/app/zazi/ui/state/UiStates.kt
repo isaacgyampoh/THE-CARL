@@ -237,7 +237,13 @@ data class ActivityItem(
     val capturedAutomatically: Boolean,
     val delivery: ActivityDelivery,
     /** Shown on every row: it is what an agent checks when a customer disputes a transaction. */
-    val customerPhone: String? = null
+    val customerPhone: String? = null,
+    /**
+     * Where a transaction recorded somewhere other than this handset came from — "keypad
+     * phone", "other phone", "portal". Null for this device's own rows, which are the only ones
+     * with a detail screen behind them.
+     */
+    val recordedElsewhere: String? = null
 ) {
     val shortReference: String get() = clientTransactionId.takeLast(8)
 }

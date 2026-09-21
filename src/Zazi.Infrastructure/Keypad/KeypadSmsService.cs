@@ -1,3 +1,4 @@
+using Zazi.Application.Closing;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -44,6 +45,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
     private readonly ISmsProcessingService _smsProcessing;
     private readonly ITransactionService _transactions;
     private readonly ISmsSender _sms;
+    private readonly IDayCloseService _closes;
     private readonly ILogger<KeypadSmsService> _logger;
     private readonly TimeProvider _clock;
 
@@ -53,6 +55,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
         ISmsProcessingService smsProcessing,
         ITransactionService transactions,
         ISmsSender sms,
+        IDayCloseService closes,
         ILogger<KeypadSmsService> logger,
         TimeProvider? clock = null)
     {
@@ -61,6 +64,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
         _smsProcessing = smsProcessing;
         _transactions = transactions;
         _sms = sms;
+        _closes = closes;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
     }
@@ -116,6 +120,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
             "HELP" or "?" or "MENU" => Help(KeypadOutcome.Answered),
             "TODAY" or "TOTAL" or "TOTALS" => new KeypadReply(KeypadOutcome.Answered, await TodayAsync(phone, cancellationToken)),
             "FIND" or "CHECK" => await FindAsync(phone, words, cancellationToken),
+            "CLOSE" or "COUNT" => await CloseDayAsync(phone, words, cancellationToken),
             "CO" or "OUT" or "CASHOUT" => await RecordByHandAsync(phone, TransactionType.CashOut, words, message, cancellationToken),
             "CI" or "IN" or "CASHIN" => await RecordByHandAsync(phone, TransactionType.CashIn, words, message, cancellationToken),
             _ => await RecordForwardedAsync(phone, from, text, message, cancellationToken)
@@ -353,6 +358,67 @@ public sealed class KeypadSmsService : IKeypadSmsService
             $"Zazi {GhanaPhoneNumber.Display(customer)}:\n" + string.Join("\n", lines));
     }
 
+    /// <summary>
+    /// CLOSE cash float — the end-of-day count, answered with whether it agrees.
+    /// </summary>
+    private async Task<KeypadReply> CloseDayAsync(LinkedPhone phone, IReadOnlyList<string> words, CancellationToken cancellationToken)
+    {
+        const string usage = "Count your cash and all your float, then send: CLOSE cash float, e.g. CLOSE 1200 3500";
+
+        static decimal? Figure(string word) =>
+            decimal.TryParse(word.Replace("GHS", "", StringComparison.OrdinalIgnoreCase).Replace(",", ""),
+                NumberStyles.Number, CultureInfo.InvariantCulture, out var value) && value >= 0 && decimal.Round(value, 2) == value
+                ? value
+                : null;
+
+        if (words.Count != 3 || Figure(words[1]) is not { } cash || Figure(words[2]) is not { } floatCount)
+        {
+            return new KeypadReply(KeypadOutcome.NotUnderstood, "Zazi: " + usage);
+        }
+
+        DayCloseResult result;
+        try
+        {
+            result = await _closes.CloseAsync(
+                new DayCloseRequest(phone.OrganizationId, phone.BranchId, phone.WorkerId, cash, floatCount, DayCloseChannels.Sms),
+                cancellationToken);
+        }
+        catch (DayCloseRejectedException rejected)
+        {
+            return new KeypadReply(KeypadOutcome.NotUnderstood, "Zazi: " + rejected.Message + " " + usage);
+        }
+
+        return new KeypadReply(KeypadOutcome.Closed, DescribeClose(result));
+    }
+
+    /// <summary>One SMS: what was counted, what was expected, and what to do about a gap.</summary>
+    internal static string DescribeClose(DayCloseResult result)
+    {
+        if (result.IsBaseline)
+        {
+            return $"Zazi: day closed. Cash GHS {result.CountedCash:N2}, float GHS {result.CountedFloat:N2}. " +
+                   "This is your starting count - from tomorrow Zazi will tell you if anything is short.";
+        }
+
+        static string Line(string what, decimal counted, decimal? difference) => difference switch
+        {
+            { } d when Math.Abs(d) < DayCloseRules.Tolerance => $"{what} GHS {counted:N2} OK",
+            { } d when d < 0 => $"{what} GHS {counted:N2} SHORT {-d:N2}",
+            { } d => $"{what} GHS {counted:N2} OVER {d:N2}",
+            _ => $"{what} GHS {counted:N2}"
+        };
+
+        var advice = result.Status switch
+        {
+            "Balanced" => "All balanced. Well done.",
+            "Short" => "Check for a transaction you did not record, or forward its MoMo message now. Your owner can see this close.",
+            _ => "Check for a transaction recorded twice or not done. Your owner can see this close."
+        };
+
+        return $"Zazi: day closed. {Line("Cash", result.CountedCash, result.CashDifference)}. " +
+               $"{Line("Float", result.CountedFloat, result.FloatDifference)}. {advice}";
+    }
+
     private async Task<string> TodayAsync(LinkedPhone phone, CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow();
@@ -481,7 +547,8 @@ public sealed class KeypadSmsService : IKeypadSmsService
         "CO 50 0244123456 (cash out)\n" +
         "CI 50 0244123456 (cash in)\n" +
         "FIND 0244123456\n" +
-        "TODAY");
+        "TODAY\n" +
+        "CLOSE cash float (end of day)");
 
     /// <summary>"Fwd:", "FW:" and similar, which some phones add in front of a forwarded text.</summary>
     private static string StripForwardMarkers(string text) =>

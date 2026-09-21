@@ -42,7 +42,10 @@ public enum KeypadOutcome
     UnknownSender,
 
     /// <summary>The activation code was not accepted.</summary>
-    LinkRefused
+    LinkRefused,
+
+    /// <summary>The agent closed the day with a count.</summary>
+    Closed
 }
 
 public interface IKeypadSmsService

@@ -1,6 +1,9 @@
 package app.zazi
 
 import app.zazi.core.data.repository.StatementDownload
+import app.zazi.core.data.repository.DayCloseOutcome
+import app.zazi.core.data.network.DayCloseResponse
+import app.zazi.ui.CloseDayScreen
 import androidx.core.content.FileProvider
 import android.content.Intent
 import app.zazi.core.data.database.RecentTransactionRow
@@ -56,6 +59,8 @@ import app.zazi.ui.state.EntryNavigator
 import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
+import app.zazi.ui.state.RemoteActivity
+import app.zazi.core.data.network.RemoteTransaction
 import app.zazi.ui.state.CaptureTransactionType
 import app.zazi.ui.viewmodel.ActivationViewModel
 import app.zazi.ui.viewmodel.CaptureViewModel
@@ -154,7 +159,7 @@ private val LaunchStateSaver = listSaver<LaunchState, Boolean>(
 )
 
 /** Screen currently shown within the authenticated part of the app. */
-private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION }
+private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION, CLOSE_DAY }
 
 @Composable
 private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
@@ -191,20 +196,36 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 val dayStart = startOfDayUtcMillis()
                 val totals = container.dashboardRepository
                     .totalsBetween(dayStart, dayStart + DAY_MILLIS)
-                totals.cashMinor to totals.floatMinor
+                // Plus what the agent recorded elsewhere today — a keypad phone, a second
+                // handset — so the figure is the agent's day, not this handset's.
+                val (elsewhereCash, elsewhereFloat) = RemoteActivity.totalsMinor(
+                    recordedElsewhere(container, container.remoteActivityRepository.between(dayStart, dayStart + DAY_MILLIS))
+                )
+                (totals.cashMinor + elsewhereCash) to (totals.floatMinor + elsewhereFloat)
             },
             syncedTodayCount = { container.dashboardRepository.syncedCount() },
             recentActivity = { filter ->
                 // Mapped here rather than in the repository so the persistence projection
                 // stays a persistence concern and the screen gets a model in its own terms.
                 val window = filter.windowUtcMillis(System.currentTimeMillis())
-                container.dashboardRepository
+                val local = container.dashboardRepository
                     .observeBetween(window.first, window.last + 1)
                     .first()
                     .map { row -> row.toActivityItem() }
+                val elsewhere = recordedElsewhere(
+                    container,
+                    container.remoteActivityRepository.between(window.first, window.last + 1)
+                ).mapNotNull(RemoteActivity::toActivityItem)
+                RemoteActivity.merge(local, elsewhere)
             },
             searchActivity = { query ->
-                container.dashboardRepository.searchByCustomer(query).map { row -> row.toActivityItem() }
+                val local = container.dashboardRepository.searchByCustomer(query).map { row -> row.toActivityItem() }
+                // A customer's complaint may be about a transaction done on the keypad phone.
+                val elsewhere = recordedElsewhere(
+                    container,
+                    container.remoteActivityRepository.forCustomer(query)
+                ).mapNotNull(RemoteActivity::toActivityItem)
+                RemoteActivity.merge(local, elsewhere)
             },
             transactionDetail = { clientTransactionId ->
                 container.dashboardRepository.findDetail(clientTransactionId)?.toDetail()
@@ -236,6 +257,9 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     var isRetrying by remember { mutableStateOf(false) }
     var statementBusy by remember { mutableStateOf(false) }
     var statementError by remember { mutableStateOf<String?>(null) }
+    var closeBusy by remember { mutableStateOf(false) }
+    var closeError by remember { mutableStateOf<String?>(null) }
+    var closeResult by remember { mutableStateOf<DayCloseResponse?>(null) }
 
     val activationState by activationViewModel.state.collectAsState()
     val justActivated = activationState.activated
@@ -394,6 +418,11 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         },
                         statementBusy = statementBusy,
                         statementError = statementError,
+                        onCloseDay = {
+                            closeResult = null
+                            closeError = null
+                            screen = AuthenticatedScreen.CLOSE_DAY
+                        },
                         onDownloadStatement = { range, kind ->
                             scope.launch {
                                 statementBusy = true
@@ -442,6 +471,31 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         onRequestSmsPermission = {
                             permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
                         }
+                    )
+                }
+
+                AuthenticatedScreen.CLOSE_DAY -> {
+                    val dashboardState by dashboardViewModel.state.collectAsState()
+                    BackHandler { screen = AuthenticatedScreen.DASHBOARD }
+                    CloseDayScreen(
+                        unsentCount = dashboardState.pendingCount + dashboardState.syncingCount +
+                            dashboardState.retryingCount,
+                        isOnline = isOnline,
+                        busy = closeBusy,
+                        error = closeError,
+                        result = closeResult,
+                        onSubmit = { cashMinor, floatMinor ->
+                            scope.launch {
+                                closeBusy = true
+                                closeError = null
+                                when (val outcome = container.dayCloseRepository.close(cashMinor, floatMinor)) {
+                                    is DayCloseOutcome.Closed -> closeResult = outcome.result
+                                    is DayCloseOutcome.Failed -> closeError = outcome.reason
+                                }
+                                closeBusy = false
+                            }
+                        },
+                        onBack = { screen = AuthenticatedScreen.DASHBOARD }
                     )
                 }
 
@@ -629,6 +683,19 @@ private fun startOfDayUtcMillis(): Long =
 private fun Context.hasSmsPermission(): Boolean =
     ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) ==
         PackageManager.PERMISSION_GRANTED
+
+/** The server's rows for this agent that this handset does not already hold. */
+private suspend fun recordedElsewhere(
+    container: AppContainer,
+    remote: List<RemoteTransaction>
+): List<RemoteTransaction> {
+    if (remote.isEmpty()) return emptyList()
+    val held = container.dashboardRepository.alreadyHeld(
+        clientIds = remote.mapNotNull { it.clientTransactionId },
+        serverIds = remote.map { it.id }
+    )
+    return RemoteActivity.notHeldHere(remote, held)
+}
 
 /** A stored row in the screen's own terms. Shared by the day view and the customer search. */
 private fun RecentTransactionRow.toActivityItem(): ActivityItem = ActivityItem(

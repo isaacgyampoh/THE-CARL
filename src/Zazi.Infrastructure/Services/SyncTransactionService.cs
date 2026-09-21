@@ -250,6 +250,16 @@ public sealed class SyncTransactionService : ISyncTransactionService
             return DuplicateOf(existing, clientId);
         }
 
+        // The same real transaction already recorded by another route — forwarded from a keypad
+        // phone, say — carries the same network transaction ID but a different fingerprint,
+        // because each route stamps its own time. Recognised as the same event, not posted twice.
+        if (await CrossRouteDuplicates.FindAsync(
+                _dbContext, caller.OrganizationId, item.Provider, item.TransactionType,
+                item.Amount, item.TransactionReference, cancellationToken) is { } sameEvent)
+        {
+            return DuplicateOf(new ExistingTransaction(sameEvent, false), clientId);
+        }
+
         // ─── 6. Reversal eligibility ─────────────────────────────────────────
         TransactionType? originalType = null;
         if (item.TransactionType == TransactionType.Reversal)

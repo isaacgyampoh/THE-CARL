@@ -1,0 +1,128 @@
+@page "/closing"
+@using Zazi.Application.Closing
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.ReconciliationRead)]
+@inject IDayCloseService Closes
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Closing · Zazi</PageTitle>
+
+<h1>Closing</h1>
+<p class="lead">
+    At the end of the day each agent counts their cash and float — in the app, or by texting
+    <strong>CLOSE cash float</strong> from a keypad phone. Zazi compares the count with
+    everything they recorded since their last close.
+</p>
+
+@* A GET form: a day's closing is a link an owner can send, and it needs no live connection. *@
+<form method="get" action="/closing" class="search-row">
+    <label for="date" class="visually-hidden">Day</label>
+    <input id="date" name="date" type="date" value="@Day.ToString("yyyy-MM-dd")" max="@Today.ToString("yyyy-MM-dd")" />
+    <button type="submit">Show</button>
+</form>
+
+<nav class="periods" aria-label="Day">
+    <a href="/closing" aria-current="@(Day == Today ? "true" : null)">Today</a>
+    <a href="/closing?date=@Today.AddDays(-1).ToString("yyyy-MM-dd")" aria-current="@(Day == Today.AddDays(-1) ? "true" : null)">Yesterday</a>
+</nav>
+
+@if (_notClosed.Count > 0)
+{
+    <section class="callout warn" aria-labelledby="not-closed">
+        <h2 id="not-closed">@(Day == Today ? "Not closed yet" : "Never closed")</h2>
+        <p>@(_notClosed.Count == 1 ? "This person" : "These people") traded @(Day == Today ? "today" : "that day") and did not count up:</p>
+        <ul>
+            @foreach (var name in _notClosed)
+            {
+                <li>@name</li>
+            }
+        </ul>
+    </section>
+}
+
+@if (_closes.Count == 0)
+{
+    <p class="muted">No one has closed @(Day == Today ? "today" : Day.ToString("d MMM yyyy")) yet.</p>
+}
+else
+{
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Person</th>
+                    <th scope="col">Result</th>
+                    <th scope="col" class="n">Cash counted</th>
+                    <th scope="col" class="n">Cash difference</th>
+                    <th scope="col" class="n">Float counted</th>
+                    <th scope="col" class="n">Float difference</th>
+                    <th scope="col">Closed</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var close in _closes)
+            {
+                <tr>
+                    <td data-label="Person">@(close.AgentName ?? "Unknown")</td>
+                    <td data-label="Result"><span class="pill @Tone(close.Status)">@Label(close.Status)</span></td>
+                    <td class="n" data-label="Cash counted">@Money(close.CountedCash)</td>
+                    <td class="n" data-label="Cash difference">@Difference(close.CashDifference)</td>
+                    <td class="n" data-label="Float counted">@Money(close.CountedFloat)</td>
+                    <td class="n" data-label="Float difference">@Difference(close.FloatDifference)</td>
+                    <td data-label="Closed">@close.ClosedAtUtc.ToString("HH:mm") · @(close.Channel == DayCloseChannels.Sms ? "by SMS" : "in the app")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <p class="muted">
+        Short means less was counted than recorded — usually a transaction that was never
+        entered. Over usually means one recorded twice, or not actually done. A first close has
+        nothing to compare with, and sets the starting count.
+    </p>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "date")]
+    public string? Date { get; set; }
+
+    private IReadOnlyList<DayCloseResult> _closes = [];
+    private IReadOnlyList<string> _notClosed = [];
+
+    // Ghana keeps GMT all year, so the UTC date is the business date.
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+
+    private DateOnly Day { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Day = DateOnly.TryParseExact(Date, "yyyy-MM-dd", out var parsed) && parsed <= Today ? parsed : Today;
+
+        // A branch manager or supervisor sees their own branch; an owner sees everyone.
+        var branch = CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId;
+        _closes = await Closes.ForDayAsync(CurrentUser.OrganizationId, branch, Day);
+        _notClosed = await Closes.NotClosedAsync(CurrentUser.OrganizationId, branch, Day);
+    }
+
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
+
+    private static string Difference(decimal? value) => value switch
+    {
+        null => "—",
+        { } v when Math.Abs(v) < DayCloseRules.Tolerance => "OK",
+        { } v when v < 0 => $"short ₵{-v:N2}",
+        { } v => $"over ₵{v:N2}"
+    };
+
+    private static string Tone(string status) => status switch
+    {
+        "Balanced" => "ok",
+        "Short" => "bad",
+        "Over" => "warn",
+        _ => ""
+    };
+
+    private static string Label(string status) => status == "Baseline" ? "First count" : status;
+}

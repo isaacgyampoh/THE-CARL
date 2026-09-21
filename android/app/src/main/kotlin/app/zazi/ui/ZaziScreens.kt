@@ -214,6 +214,8 @@ fun DashboardScreen(
     onDownloadStatement: (StatementRange, StatementKind) -> Unit = { _, _ -> },
     statementBusy: Boolean = false,
     statementError: String? = null,
+    /** Opens the end-of-day count. */
+    onCloseDay: () -> Unit = {},
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
     onRequestSmsPermission: () -> Unit = {},
@@ -313,6 +315,15 @@ fun DashboardScreen(
                 error = statementError,
                 onDownload = onDownloadStatement
             )
+
+            Spacer(Modifier.height(Spacing.small))
+            // Beside the statement, because both are end-of-day jobs.
+            OutlinedButton(
+                onClick = onCloseDay,
+                modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.minimumTouchTarget)
+            ) {
+                Text("Close the day — count cash and float")
+            }
 
             state.device?.let { device ->
                 Spacer(Modifier.height(Spacing.section))
@@ -596,7 +607,8 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
         // inside it — this is tapped on a phone held in one hand at a counter.
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            // A row from another phone has no record on this one to open.
+            .clickable(enabled = item.recordedElsewhere == null, onClick = onClick)
             .heightIn(min = Sizing.minimumTouchTarget)
             .padding(horizontal = Spacing.medium, vertical = Spacing.small),
         verticalAlignment = Alignment.CenterVertically
@@ -626,6 +638,7 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
                     // Worth saying: an agent who did not type this needs to know where it
                     // came from before they trust it.
                     if (item.capturedAutomatically) append(" · SMS")
+                    item.recordedElsewhere?.let { append(" · via "); append(it) }
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

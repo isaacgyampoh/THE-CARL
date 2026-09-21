@@ -14,6 +14,7 @@ everything in the portal.
 | `CI 200 0201234567` | Cash in recorded by hand. Add `MTN`, `TELECEL` or `AT` at the end to name the network. |
 | `FIND 0244123456` | The customer's last five transactions with times — for a complaint at the counter. |
 | `TODAY` | Today's totals and what the agent is holding. |
+| `CLOSE 1200 3500` | Closes the day: cash counted, then float on all SIMs. The reply says OK, SHORT or OVER against everything recorded since the last close. The owner sees it on the Closing page. |
 | `HELP` | The list above. |
 
 Every message gets a reply. Agents who traded get a summary each evening at 20:00.
@@ -24,6 +25,11 @@ Every message gets a reply. Agents who traded get a summary each evening at 20:0
 - Revoking the phone on the Team page, or disabling the worker, stops it at the next text.
 - The same MoMo message forwarded twice is recorded once; a gateway re-delivering a typed
   command is recorded once.
+- A transaction that reaches Zazi by two routes — forwarded from the keypad phone and read by
+  the app on another handset — is recorded once. The network's transaction ID, direction and
+  amount identify it across routes.
+- Everything recorded from the keypad phone also appears in the agent's app (marked "via
+  keypad phone") and in the app's totals, whenever the app has a connection.
 - The gateway's callback URL must carry a secret; without it every request is refused.
 - The network is read from the message itself first, so a Telecel message forwarded from an
   MTN-numbered phone is filed under Telecel. Only when the message names no network is the
