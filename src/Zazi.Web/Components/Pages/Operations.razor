@@ -59,11 +59,11 @@ else
                 @foreach (var group in _errorGroups)
                 {
                     <tr>
-                        <td><code>@group.ErrorCode</code><span class="sub">@group.SampleDetails</span></td>
-                        <td>@group.Action<span class="sub">@group.Source</span></td>
-                        <td class="n"><strong>@group.Occurrences</strong></td>
-                        <td class="n">@group.AffectedDevices</td>
-                        <td>@Ago(group.LastSeen)</td>
+                        <td data-label="Error"><code>@group.ErrorCode</code><span class="sub">@group.SampleDetails</span></td>
+                        <td data-label="Where">@group.Action<span class="sub">@group.Source</span></td>
+                        <td class="n" data-label="Count"><strong>@group.Occurrences</strong></td>
+                        <td class="n" data-label="Devices">@group.AffectedDevices</td>
+                        <td data-label="Last seen">@Ago(group.LastSeen)</td>
                     </tr>
                 }
                 </tbody>
@@ -81,11 +81,11 @@ else
             @foreach (var device in _devices)
             {
                 <tr class="@(device.IsRevoked ? "muted-row" : device.IsStale ? "warn-row" : "")">
-                    <td>@device.Name<span class="sub">@device.DeviceType</span></td>
-                    <td>@device.AppVersion<span class="sub">@device.OsVersion</span></td>
-                    <td>@Ago(device.LastSeenAtUtc)</td>
-                    <td class="n">@device.RecentFailureCount</td>
-                    <td>
+                    <td data-label="Device">@device.Name<span class="sub">@device.DeviceType</span></td>
+                    <td data-label="Version">@device.AppVersion<span class="sub">@device.OsVersion</span></td>
+                    <td data-label="Last seen">@Ago(device.LastSeenAtUtc)</td>
+                    <td class="n" data-label="Failures (24h)">@device.RecentFailureCount</td>
+                    <td data-label="State">
                         @if (device.IsRevoked)
                         {
                             <span class="pill bad">Revoked</span>
@@ -113,7 +113,7 @@ else
     else
     {
         <div class="scroll">
-            <table>
+            <table class="log">
                 <thead>
                 <tr><th>Time</th><th>Severity</th><th>Event</th><th>Source</th><th>Trace</th></tr>
                 </thead>
@@ -121,11 +121,11 @@ else
                 @foreach (var item in _events)
                 {
                     <tr>
-                        <td>@item.OccurredAt.ToLocalTime().ToString("HH:mm:ss")<span class="sub">@item.OccurredAt.ToLocalTime().ToString("dd MMM")</span></td>
-                        <td><span class="pill @SeverityClass(item.Severity)">@item.Severity</span></td>
-                        <td>@item.Action<span class="sub">@item.Details</span></td>
-                        <td>@item.Source</td>
-                        <td>
+                        <td data-label="Time">@item.OccurredAt.ToLocalTime().ToString("HH:mm:ss")<span class="sub">@item.OccurredAt.ToLocalTime().ToString("dd MMM")</span></td>
+                        <td data-label="Severity"><span class="pill @SeverityClass(item.Severity)">@item.Severity</span></td>
+                        <td data-label="Event">@item.Action<span class="sub">@item.Details</span></td>
+                        <td data-label="Source">@item.Source</td>
+                        <td data-label="Trace">
                             @* The correlation id is the thread through the whole incident. *@
                             @if (!string.IsNullOrWhiteSpace(item.CorrelationId))
                             {

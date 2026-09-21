@@ -53,14 +53,14 @@ else
             @foreach (var item in _page.Items)
             {
                 <tr class="@(item.AgeHours >= 24 ? "warn-row" : "")">
-                    <td>@item.ObservedAt.ToLocalTime().ToString("dd MMM HH:mm")<span class="sub">@item.SourceType</span></td>
-                    <td>@item.Provider</td>
-                    <td>@item.TransactionType</td>
-                    <td class="n">@Money(item.Amount, item.Currency)</td>
-                    <td>@(string.IsNullOrWhiteSpace(item.Reference) ? "—" : item.Reference)</td>
-                    <td>@item.OutcomeReason</td>
-                    <td class="n">@item.Confidence.ToString("0.00")</td>
-                    <td>@(item.AgeHours < 1 ? "<1h" : $"{item.AgeHours}h")</td>
+                    <td data-label="Observed">@item.ObservedAt.ToLocalTime().ToString("dd MMM HH:mm")<span class="sub">@item.SourceType</span></td>
+                    <td data-label="Provider">@item.Provider</td>
+                    <td data-label="Type">@item.TransactionType</td>
+                    <td class="n" data-label="Amount">@Money(item.Amount, item.Currency)</td>
+                    <td data-label="Reference">@(string.IsNullOrWhiteSpace(item.Reference) ? "—" : item.Reference)</td>
+                    <td data-label="Why held">@item.OutcomeReason</td>
+                    <td class="n" data-label="Confidence">@item.Confidence.ToString("0.00")</td>
+                    <td data-label="Age">@(item.AgeHours < 1 ? "<1h" : $"{item.AgeHours}h")</td>
                 </tr>
             }
             </tbody>

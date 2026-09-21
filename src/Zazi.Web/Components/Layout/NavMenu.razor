@@ -1,22 +1,26 @@
 @using Microsoft.AspNetCore.Components.Authorization
 
-@* <header>/<nav> rather than divs, so a screen reader can announce the banner and the
-   navigation as landmarks and skip between them. *@
-<header class="nav">
-    @* The mark and the word, not the word alone. An agent who sees the handset and the
-       portal in the same afternoon should be looking at one product; until now the phone had
-       a drawn mark and the portal had bold text. *@
-    <a class="brand" href="/">
-        <ZaziMark Size="20" />
-        <span>Zazi</span>
-    </a>
+@* Only for someone signed in. The account pages carry their own masthead, so a header with
+   nothing in it but the logo put "Zazi" on screen twice, one above the other.
 
-    <AuthorizeView>
-        <Authorized>
-            @* NavLink sets aria-current="page" on the active link, which tells a screen
-               reader which page this is and drives the underline in app.css. Match.All on
-               "/" stops Today staying highlighted on every page, since every path starts
-               with it. *@
+   <header>/<nav> rather than divs, so a screen reader can announce the banner and the
+   navigation as landmarks and skip between them. *@
+<AuthorizeView>
+    <Authorized>
+        <header class="nav">
+            @* The mark and the word. An agent who sees the handset and the portal in the same
+               afternoon should be looking at one product. *@
+            <a class="brand" href="/">
+                <ZaziMark Size="20" />
+                <span>Zazi</span>
+            </a>
+
+            @* NavLink sets aria-current="page" on the active link, which tells a screen reader
+               which page this is and drives the underline in app.css. Match.All on "/" stops
+               Today staying highlighted on every page, since every path starts with it.
+
+               On a phone this becomes one row that scrolls sideways, rather than wrapping the
+               links, the name and "Sign out" onto three lines above every page. *@
             <nav class="links" aria-label="Sections">
                 <NavLink href="/" Match="NavLinkMatch.All">Today</NavLink>
                 <NavLink href="/held">Held</NavLink>
@@ -24,12 +28,15 @@
                 <NavLink href="/float">Cash &amp; float</NavLink>
                 <NavLink href="/operations">Operations</NavLink>
             </nav>
-            <span class="who">@context.User.Identity?.Name</span>
-            @* A form post, because signing out must clear the cookie on a real response. *@
-            <form method="post" action="/auth/sign-out">
-                <AntiforgeryToken />
-                <button type="submit" class="link">Sign out</button>
-            </form>
-        </Authorized>
-    </AuthorizeView>
-</header>
+
+            <div class="account">
+                <span class="who">@context.User.Identity?.Name</span>
+                @* A form post, because signing out must clear the cookie on a real response. *@
+                <form method="post" action="/auth/sign-out">
+                    <AntiforgeryToken />
+                    <button type="submit" class="link">Sign out</button>
+                </form>
+            </div>
+        </header>
+    </Authorized>
+</AuthorizeView>

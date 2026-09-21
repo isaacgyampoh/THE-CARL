@@ -73,17 +73,17 @@ else
         @foreach (var user in _users)
         {
             <tr class="@(user.IsActive ? "" : "muted-row")">
-                <td>@user.FullName</td>
-                <td>
+                <td data-label="Name">@user.FullName</td>
+                <td data-label="Access">
                     @* The distinction the whole change rests on, stated rather than inferred
                        from a blank email column. *@
                     @(user.CredentialType == UserCredentialType.ActivationOnly
                         ? "Activation code"
                         : "Email and password")
                 </td>
-                <td>@BranchName(user.BranchId)</td>
-                <td>@(user.IsActive ? "Active" : "Disabled")</td>
-                <td>
+                <td data-label="Branch">@BranchName(user.BranchId)</td>
+                <td data-label="Status">@(user.IsActive ? "Active" : "Disabled")</td>
+                <td data-label="">
                     @if (user.CredentialType == UserCredentialType.ActivationOnly && user.IsActive)
                     {
                         <button class="link" @onclick="() => IssueCodeAsync(user)" disabled="@_busy">
@@ -112,7 +112,15 @@ else
         {
             <li>
                 <span>@branch.Name</span>
-                <strong>@(string.IsNullOrWhiteSpace(branch.Location) ? "—" : branch.Location)</strong>
+                @* A missing location is not a figure, so it is not set in bold. *@
+                @if (string.IsNullOrWhiteSpace(branch.Location))
+                {
+                    <span class="muted">No location set</span>
+                }
+                else
+                {
+                    <span>@branch.Location</span>
+                }
             </li>
         }
         @if ((_branches?.Count ?? 0) == 0)
@@ -197,11 +205,11 @@ else
         {
             var revoked = device.Status == DeviceStatus.Revoked;
             <tr class="@(revoked ? "muted-row" : "")">
-                <td>@device.Name</td>
-                <td>@BranchName(device.BranchId)</td>
-                <td>@(revoked ? "Revoked" : device.Status.ToString())</td>
-                <td>@device.LastSeenAt.ToLocalTime().ToString("g")</td>
-                <td>
+                <td data-label="Device">@device.Name</td>
+                <td data-label="Branch">@BranchName(device.BranchId)</td>
+                <td data-label="Status">@(revoked ? "Revoked" : device.Status.ToString())</td>
+                <td data-label="Last seen">@device.LastSeenAt.ToLocalTime().ToString("g")</td>
+                <td data-label="">
                     @if (revoked)
                     {
                         <span class="muted">—</span>

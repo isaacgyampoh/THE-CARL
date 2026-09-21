@@ -83,7 +83,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.SlidingExpiration = true;
         options.Cookie.Name = "zazi.web";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Strict;
+        // Lax, not Strict. Strict withholds the cookie on every visit that starts outside the
+        // site — a link in WhatsApp or an email, a home-screen shortcut — so an owner who was
+        // signed in a moment ago lands on the sign-in page each time, and on a phone that is
+        // most visits. Lax still withholds it from cross-site form posts, which is the forgery
+        // Strict was guarding against, and every form here carries an antiforgery token too.
+        options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;

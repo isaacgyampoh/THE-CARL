@@ -359,24 +359,24 @@ private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
     ) {
         if (stacked) {
             Column(Modifier.fillMaxWidth().padding(Spacing.large)) {
-                PositionFigure("Cash", cashMinor)
+                PositionFigure("Net cash today", cashMinor)
                 Spacer(Modifier.height(Spacing.medium))
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
                 )
                 Spacer(Modifier.height(Spacing.medium))
-                PositionFigure("Float", floatMinor)
+                PositionFigure("Net float today", floatMinor)
             }
         } else {
             Row(Modifier.fillMaxWidth().padding(Spacing.large)) {
-                PositionFigure("Cash", cashMinor, Modifier.weight(1f))
+                PositionFigure("Net cash today", cashMinor, Modifier.weight(1f))
                 // A hairline rather than a gap: the two are read together and move in
                 // opposite directions, so they should look like one statement, not two panels.
                 VerticalDivider(
                     modifier = Modifier.heightIn(min = Sizing.secondaryAction),
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
                 )
-                PositionFigure("Float", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
+                PositionFigure("Net float today", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
             }
         }
     }
@@ -388,7 +388,11 @@ private fun PositionFigure(label: String, minor: Long?, modifier: Modifier = Mod
         Text(label, style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(Spacing.tight))
         Text(
-            minor?.let { MoneyFormat.format(it) } ?: "—",
+            // These are today's net movement, not balances — the panel sums the day's stored
+            // deltas. Labelled "Cash" with a bare "−₵50.00", an agent read it as holding
+            // negative cash. So the label says "net … today", and a rise carries its "+" as a
+            // fall carries its "−", which is how a change reads rather than an amount held.
+            minor?.let { (if (it > 0) "+" else "") + MoneyFormat.format(it) } ?: "—",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
             // Deliberately not capped to one line. At a large font scale on a narrow screen

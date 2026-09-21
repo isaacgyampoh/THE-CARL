@@ -68,26 +68,6 @@ body {
 h1 { font-size: 1.6rem; margin: 0 0 1rem; }
 h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 2rem 0 .5rem; }
 
-.nav {
-    display: flex; align-items: center; gap: 1rem;
-    padding: .75rem 1.5rem; border-bottom: 1px solid var(--line); background: var(--card);
-}
-.nav .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: .45rem;
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--ink);
-    text-decoration: none;
-    /* The wordmark reads as a name, not as running text. */
-    letter-spacing: -.01em;
-}
-/* The mark takes the accent; the word stays ink. Colouring both would make the header
-   shout, and the header is not what anyone came to this page for. */
-.nav .brand .mark { color: var(--accent); flex: none; }
-.nav .who { margin-left: auto; color: var(--muted); font-size: .9rem; }
-.nav form { margin: 0; }
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; }
@@ -310,19 +290,7 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
 .timeline .what { display: inline-block; vertical-align: top; }
 .timeline .meta { display: block; color: var(--muted); font-size: .8rem; margin-top: .1rem; }
 
-.nav .links { display: flex; gap: 1rem; }
-.nav .links a { color: var(--ink); text-decoration: none; font-size: .92rem; }
-.nav .links a:hover { color: var(--accent); }
 
-/* Narrow screens: the nav wraps, and dense tables scroll rather than being crushed. */
-@media (max-width: 640px) {
-    .nav { flex-wrap: wrap; gap: .5rem .9rem; padding: .6rem 1rem; }
-    .nav .who { margin-left: 0; order: 3; width: 100%; }
-    main { padding: 1rem; }
-    table { min-width: 34rem; }
-    .timeline .when { display: block; min-width: 0; }
-    .timeline .what { display: block; }
-}
 
 /* ─── Keyboard access ───────────────────────────────────────────────────── */
 
@@ -353,14 +321,6 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
     left: 0;
 }
 
-/* Which page you are on, for people who cannot see which link looks different. The
-   underline carries the same information visually. */
-.nav .links a[aria-current="page"] {
-    color: var(--accent);
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: .35rem;
-}
 
 /* Respect a reduced-motion preference rather than assuming everyone wants transitions. */
 @media (prefers-reduced-motion: reduce) {
@@ -376,3 +336,382 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
    how old they are rather than leaving the reader to assume they are live. */
 .asof { margin-top: -.5rem; font-size: .88rem; }
 .asof a { color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Signed-in portal
+   The owner pages were built before any of this existed, and on a phone — where most
+   owners read them — it showed: raw browser inputs and grey system buttons, a header that
+   wrapped onto three lines, tables cut off mid-number, and a Team page wider than the
+   screen. Everything below is written phone-first; wider screens are the enhancement.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Header ───────────────────────────────────────────────────────────────
+   Phone: logo and sign-out on one row, the sections on a second row that scrolls sideways.
+   Desktop: all three on one row. A grid rather than wrapping flex, so the arrangement is
+   decided rather than left to whatever happens to fit. */
+.nav {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "brand account"
+        "links links";
+    align-items: center;
+    column-gap: 1rem;
+    padding: .6rem 1rem 0;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+.nav .brand {
+    grid-area: brand;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: -.01em;
+    color: var(--ink);
+    text-decoration: none;
+}
+/* The mark takes the accent; the word stays ink. The header is not what anyone came for. */
+.nav .brand .mark { color: var(--accent); flex: none; }
+
+.nav .account {
+    grid-area: account;
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    min-width: 0;
+}
+.nav .who {
+    color: var(--muted);
+    font-size: .88rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 10rem;
+}
+.nav form { margin: 0; }
+
+.nav .links {
+    grid-area: links;
+    display: flex;
+    gap: .25rem;
+    margin: .35rem -1rem 0;
+    padding: 0 1rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+.nav .links::-webkit-scrollbar { display: none; }
+.nav .links a {
+    flex: none;
+    padding: .55rem .7rem .7rem;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: .95rem;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+}
+.nav .links a:hover { color: var(--ink); }
+/* Which page you are on, said by weight and a rule as well as colour. */
+.nav .links a[aria-current="page"] {
+    color: var(--ink);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+}
+
+@media (min-width: 760px) {
+    .nav {
+        grid-template-columns: auto 1fr auto;
+        grid-template-areas: "brand links account";
+        padding: 0 1.5rem;
+        column-gap: 2rem;
+    }
+    .nav .links { margin: 0; padding: 0; }
+    .nav .links a { padding: 1.05rem .6rem .95rem; }
+    .nav .who { max-width: 16rem; }
+}
+
+/* ─── Page ─────────────────────────────────────────────────────────────── */
+main { padding: 1.25rem 1rem 3rem; }
+@media (min-width: 760px) { main { padding: 2rem 1.5rem 4rem; } }
+
+main > h1 {
+    font-size: 1.75rem;
+    letter-spacing: -.02em;
+    line-height: 1.2;
+    margin: 0 0 .4rem;
+}
+main > h2 {
+    margin-top: 2.25rem;
+    font-size: .8rem;
+    letter-spacing: .07em;
+}
+.lead { color: var(--muted); max-width: 42rem; margin: 0 0 1.25rem; }
+
+/* ─── Figures at the top of a page ─────────────────────────────────────────
+   Two across on a phone rather than one: five tiles stacked singly made Operations a
+   screen of boxes before anything to read. */
+.tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+}
+@media (min-width: 760px) {
+    .tiles { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
+}
+.tile { padding: .9rem 1rem; }
+.tile .label { font-size: .8rem; }
+.tile .value { font-size: 1.35rem; letter-spacing: -.01em; }
+@media (min-width: 760px) { .tile .value { font-size: 1.6rem; } }
+
+/* ─── Forms ────────────────────────────────────────────────────────────────
+   Every form in the portal gets the same controls as the account pages. The pages write
+   <p><label/><input/></p>; the label stacks above its field and the field takes the width,
+   so nothing sits crammed beside its label at 200 pixels wide. */
+main form { max-width: 32rem; }
+main form p { margin: 0 0 1rem; }
+
+main form label {
+    display: block;
+    margin-bottom: .35rem;
+    font-size: .9rem;
+    font-weight: 500;
+    color: var(--ink);
+}
+
+main input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+main select,
+main textarea {
+    display: block;
+    width: 100%;
+    min-height: 2.9rem;
+    padding: .6rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: .55rem;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+}
+main select {
+    /* The native arrow is drawn in the system's colour and sits against the edge. */
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 1.15rem) 55%, calc(100% - .8rem) 55%;
+    background-size: .35rem .35rem;
+    background-repeat: no-repeat;
+}
+main input:focus, main select:focus, main textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--line);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+/* Amounts line up and read as numbers. */
+main input[type="number"] { font-variant-numeric: tabular-nums; }
+
+/* Every submit button in a form is the primary action. The grey system button made
+   "Record" and "Add worker" look disabled. */
+main form button[type="submit"]:not(.link),
+.pager button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.9rem;
+    padding: .6rem 1.4rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+main form button[type="submit"]:not(.link):hover { background: var(--accent-hover); }
+main form button[type="submit"]:disabled { opacity: .55; cursor: progress; }
+@media (max-width: 480px) {
+    main form button[type="submit"]:not(.link) { width: 100%; }
+}
+
+.pager button {
+    background: var(--card);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    min-height: 2.5rem;
+    padding: .45rem 1.1rem;
+}
+.pager button:disabled { opacity: .45; cursor: default; }
+
+/* Inline actions in a table row — issue a code, revoke a device. */
+button.link {
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: .2rem;
+    min-height: 2.25rem;
+}
+
+/* A form's result, said where the form is. */
+main p.error:not(.signin *) {
+    padding: .6rem .8rem;
+    background: var(--bad-bg);
+    border-radius: .5rem;
+}
+main p[role="status"] {
+    padding: .6rem .8rem;
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+    border-radius: .5rem;
+}
+
+/* ─── Tables become cards on a phone ───────────────────────────────────────
+   A table a phone has to scroll sideways hides the column that matters — the float column
+   on Cash & float was cut off mid-number — and on Team it made the whole page wider than
+   the screen. Below 640px each row becomes a card and each cell carries its column's name,
+   from the data-label every cell now has. */
+@media (max-width: 640px) {
+    .scroll { overflow: visible; }
+    main table,
+    main thead,
+    main tbody,
+    main tr,
+    main td { display: block; width: 100%; }
+    main table { background: none; border: 0; border-radius: 0; overflow: visible; }
+    main thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    main tbody tr {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: .75rem;
+        padding: .35rem .9rem;
+        margin-bottom: .6rem;
+    }
+    main tbody tr.warn-row { background: var(--row-warn); }
+    main td {
+        display: grid;
+        grid-template-columns: 7.5rem minmax(0, 1fr);
+        gap: .75rem;
+        align-items: baseline;
+        padding: .45rem 0;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        overflow-wrap: anywhere;
+    }
+    main td.n { text-align: left; }
+    main tr td:last-child { border-bottom: 0; }
+    main td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: .78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+    /* An action column has no heading; its button takes the row. */
+    main td[data-label=""] { grid-template-columns: 1fr; }
+    main td[data-label=""]::before { display: none; }
+    main td[data-label=""]:empty { display: none; }
+    /* "Nothing here yet" rows span the table; they read as a sentence, not a field. */
+    main td[colspan] { display: block; border: 0; }
+    main td[colspan]::before { display: none; }
+
+    .timeline .when { display: block; min-width: 0; }
+    .timeline .what { display: block; }
+}
+
+/* ─── Float by network ─────────────────────────────────────────────────────
+   One chip per network, name and amount separated so the amount can be read at a glance.
+   A negative float is not "fine": it gets the warning tint rather than the healthy one. */
+.float-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .45rem;
+    margin: 0 .35rem .35rem 0;
+    padding: .2rem .6rem;
+    border-radius: 999px;
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+    font-size: .85rem;
+    white-space: nowrap;
+}
+.float-chip .net { font-weight: 600; font-size: .78rem; }
+.float-chip .amt { font-variant-numeric: tabular-nums; font-weight: 600; }
+.float-chip.negative { background: var(--warn-bg); color: var(--warn-fg); }
+
+/* ─── Account pages, second pass ───────────────────────────────────────── */
+
+/* The header is gone for signed-out visitors, so the card's own masthead carries the
+   identity and the card sits a little higher. */
+.signin { margin-top: 2rem; }
+
+/* "Forgot password?" sat touching the button. */
+.signin form + p,
+.signin form + form + p { margin-top: 1.25rem; }
+
+/* Failures: the heading line in red, the explanation in ordinary ink. A whole paragraph
+   in red reads as shouting, and the explanation is the part that helps. */
+.signin .error { color: var(--ink); border-left: 3px solid var(--bad); }
+.signin .error strong { color: var(--bad); }
+
+@media (max-width: 480px) {
+    /* On a phone the card's border and margin cost width the fields need. */
+    .signin {
+        margin: 0 auto;
+        border: 0;
+        border-radius: 0;
+        padding: 1.75rem 1.25rem 2rem;
+        background: transparent;
+    }
+    main:has(> .signin) { padding: 0; }
+}
+
+/* The branch list on Team is itself the .estate list rather than sitting inside one, so the
+   card treatment has to match both shapes — it rendered as a bare indented list. */
+ul.estate, ul.attention {
+    list-style: none; margin: 0; padding: 0;
+    background: var(--card); border: 1px solid var(--line); border-radius: .75rem;
+}
+ul.estate li, ul.attention li {
+    display: flex; justify-content: space-between; gap: 1rem;
+    padding: .7rem 1rem; border-bottom: 1px solid var(--line);
+}
+ul.estate li:last-child, ul.attention li:last-child { border-bottom: 0; }
+
+.chips { display: flex; flex-wrap: wrap; }
+
+/* An event log is scanned, not read field by field. As labelled cards it became a screen of
+   boxes per event; on a phone each event is one compact row instead — the time on the left,
+   what happened on the right, severity and trace link beneath it. */
+@media (max-width: 640px) {
+    main table.log tbody tr {
+        display: grid;
+        grid-template-columns: 4.25rem minmax(0, 1fr);
+        column-gap: .75rem;
+        padding: .6rem .8rem;
+        margin-bottom: .4rem;
+    }
+    main table.log td {
+        display: block;
+        padding: 0;
+        border: 0;
+    }
+    main table.log td::before { display: none; }
+    main table.log td[data-label="Time"] { grid-row: 1 / span 4; font-variant-numeric: tabular-nums; }
+    main table.log td[data-label="Event"] { font-weight: 600; }
+    main table.log td[data-label="Event"] .sub { font-weight: 400; }
+    main table.log td[data-label="Severity"] { order: 3; margin-top: .3rem; }
+    main table.log td[data-label="Source"] { color: var(--muted); font-size: .8rem; }
+    main table.log td[data-label="Trace"] { font-size: .85rem; }
+    main table.log td[data-label="Time"] .sub { display: block; }
+}
+
+/* Links in page content were browser-default blue against an olive palette. */
+main a { color: var(--accent); text-underline-offset: .2rem; }
+main a:hover { color: var(--accent-hover); }

@@ -55,20 +55,30 @@ else
             @foreach (var holding in _holdings)
             {
                 <tr>
-                    <td>@holding.AgentName</td>
-                    <td>@holding.BranchName</td>
-                    <td class="n">@Money(holding.Cash)</td>
-                    <td>
+                    <td data-label="Person">@holding.AgentName</td>
+                    <td data-label="Branch">@holding.BranchName</td>
+                    <td class="n" data-label="Cash">@Money(holding.Cash)</td>
+                    <td data-label="Float by network">
                         @if (holding.Floats.Count == 0)
                         {
                             <span class="muted">none</span>
                         }
                         else
                         {
+                            @* One wrapper, so the chips flow as a group. On a phone the cell is a
+                               two-column grid and each loose chip became its own grid item,
+                               spilling into the label column. *@
+                            <div class="chips">
                             @foreach (var f in holding.Floats)
                             {
-                                <span class="pill ok">@f.Network @Money(f.Amount)</span>
+                                @* Toned by sign. A negative float was shown in the same green as a
+                                   healthy one, which is the colour for "nothing to worry about". *@
+                                <span class="float-chip @(f.Amount < 0 ? "negative" : "")">
+                                    <span class="net">@NetworkName(f.Network)</span>
+                                    <span class="amt">@Money(f.Amount)</span>
+                                </span>
                             }
+                            </div>
                         }
                     </td>
                 </tr>
@@ -142,11 +152,11 @@ else
             @foreach (var m in _movements)
             {
                 <tr>
-                    <td>@m.At.ToLocalTime().ToString("dd MMM HH:mm")</td>
-                    <td>@m.Description</td>
-                    <td>@m.Network</td>
-                    <td class="n">@Signed(m.CashDelta)</td>
-                    <td class="n">@Signed(m.FloatDelta)</td>
+                    <td data-label="When">@m.At.ToLocalTime().ToString("dd MMM HH:mm")</td>
+                    <td data-label="What">@m.Description</td>
+                    <td data-label="Network">@m.Network</td>
+                    <td class="n" data-label="Cash">@Signed(m.CashDelta)</td>
+                    <td class="n" data-label="Float">@Signed(m.FloatDelta)</td>
                 </tr>
             }
             </tbody>
@@ -165,6 +175,15 @@ else
     private readonly Entry _entry = new();
 
     private static string Money(decimal value) => value.ToString("N2");
+
+    /// <summary>How the networks spell themselves, rather than the stored upper-case key.</summary>
+    private static string NetworkName(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        _ => network
+    };
 
     // Signed, so money coming in and money going out are distinguishable at a glance rather
     // than by reading the column header and remembering which way round it is.
