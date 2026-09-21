@@ -57,7 +57,10 @@ public class ProductionWorkflowTests
             user.Id,
             null,
             500m,
-            2000m));
+            2000m,
+            // The float this workflow moves is MTN's, and an opening float now has to say so:
+            // there is no safe network to assume for an agent who may work three.
+            "MTN"));
 
         await txService.CreateTransactionAsync(new CreateTransactionRequest(
             org.Id,

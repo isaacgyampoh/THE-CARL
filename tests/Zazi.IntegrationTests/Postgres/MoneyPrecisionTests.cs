@@ -42,7 +42,9 @@ public class MoneyPrecisionTests
 
         var opened = await service.OpenSessionAsync(new CreateSessionRequest(
             tenant.OrganizationId, tenant.BranchId, tenant.UserId, tenant.DeviceId,
-            OpeningCash: overPrecise, OpeningFloat: overPrecise));
+            // A nonzero opening float has to name its network now; the rounding this test is
+            // about is the same whichever it is.
+            OpeningCash: overPrecise, OpeningFloat: overPrecise, Network: "MTN"));
 
         await using var check = _postgres.CreateContext();
         var session = await check.Sessions.AsNoTracking().SingleAsync(x => x.Id == opened.Id);
@@ -63,7 +65,9 @@ public class MoneyPrecisionTests
         await using var db = _postgres.CreateContext();
         var opened = await new SessionService(db).OpenSessionAsync(new CreateSessionRequest(
             tenant.OrganizationId, tenant.BranchId, tenant.UserId, tenant.DeviceId,
-            OpeningCash: overPrecise, OpeningFloat: overPrecise));
+            // A nonzero opening float has to name its network now; the rounding this test is
+            // about is the same whichever it is.
+            OpeningCash: overPrecise, OpeningFloat: overPrecise, Network: "MTN"));
 
         await using var check = _postgres.CreateContext();
         var session = await check.Sessions.AsNoTracking().SingleAsync(x => x.Id == opened.Id);

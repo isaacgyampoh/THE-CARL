@@ -24,7 +24,17 @@ public sealed record OpenSessionApiRequest(
     Guid? BranchId,
     Guid? DeviceId,
     [Range(0, 99_999_999.99)] decimal OpeningCash,
-    [Range(0, 99_999_999.99)] decimal OpeningFloat);
+    [Range(0, 99_999_999.99)] decimal OpeningFloat,
+    /// <summary>
+    /// Which network the opening float is held on — MTN, Telecel or AirtelTigo.
+    /// </summary>
+    /// <remarks>
+    /// Required whenever <see cref="OpeningFloat"/> is not zero. The service used to assume
+    /// MTN when this was unsaid, and this record had no field to say it with, so every session
+    /// opened over HTTP filed its opening float against MTN whatever the agent was actually
+    /// holding. Optional at zero because there is then no balance to misattribute.
+    /// </remarks>
+    [StringLength(32)] string? Network = null);
 
 public sealed record CloseSessionApiRequest(
     [Required] Guid SessionId,

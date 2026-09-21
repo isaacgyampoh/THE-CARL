@@ -281,7 +281,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             // field: a handset that could name its own DeviceType could grant itself
             // capabilities, including SMS capture.
             DeviceType = DeviceTypeMapping.FromPlatformString(request.Platform),
-            Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network,
+            Network = Networks.Normalise(request.Network),
             // Scope comes from the code, never from the enrolling handset.
             Role = code.DeviceRole,
             Status = DeviceStatus.Active,
@@ -480,7 +480,7 @@ public sealed class DeviceEnrollmentService : IDeviceEnrollmentService
             DeviceIdentifier = request.DeviceIdentifier.Trim(),
             Platform = string.IsNullOrWhiteSpace(request.Platform) ? "Android" : request.Platform,
             DeviceType = DeviceTypeMapping.FromPlatformString(request.Platform),
-            Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network,
+            Network = Networks.Normalise(request.Network),
             // Every scoped value comes from the code. The handset describes only itself.
             Role = code.DeviceRole,
             Status = DeviceStatus.Active,

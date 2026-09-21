@@ -21,6 +21,27 @@ public class SessionService : ISessionService
         var openingCash = LedgerPolicy.RoundToCurrency(request.OpeningCash);
         var openingFloat = LedgerPolicy.RoundToCurrency(request.OpeningFloat);
 
+        // Normalised through the one authority on spelling: balances are matched by network
+        // name, so "Telecel" and "TELECEL" must not become two wallets holding half each.
+        var network = string.IsNullOrWhiteSpace(request.Network)
+            ? null
+            : Networks.Normalise(request.Network);
+
+        // An opening float has to belong to a network, because that is the grain balances are
+        // held at: an agent working MTN, Telecel and AirtelTigo has three float balances, and
+        // an unattributed opening figure lands in one of them and is wrong in two.
+        //
+        // This used to default to MTN when unsaid, which put a Telecel agent's opening float on
+        // a row their own transactions never touched — so the figure they were given and the
+        // figure that moved were different rows, and neither was right. Defaulting to UNKNOWN
+        // was tried and was worse: no transaction posts to UNKNOWN, so the opening amount left
+        // the books entirely. There is no safe default, which is the argument for refusing.
+        if (openingFloat > 0m && network is null)
+        {
+            throw new ArgumentException(
+                "An opening float must say which network it is held on.", nameof(request));
+        }
+
         var session = new Session
         {
             OrganizationId = request.OrganizationId,
@@ -42,25 +63,23 @@ public class SessionService : ISessionService
             OpeningCash = openingCash,
             CurrentCash = openingCash
         });
-        _dbContext.FloatBalances.Add(new FloatBalance
+        // No network and no opening float is the ordinary case for an agent who starts the day
+        // with an empty wallet, and it needs no row at all: the ledger creates a float balance
+        // per network on demand, the first time a transaction posts to one. Pre-creating an
+        // MTN row here is what made MTN look like every agent's default network.
+        if (network is not null)
         {
-            OrganizationId = request.OrganizationId,
-            BranchId = request.BranchId,
-            AgentId = request.UserId,
-            // The caller may now say which network the opening float is on, which a Telecel or
-            // AirtelTigo agent needs — previously it was hardcoded to MTN and their opening
-            // balance sat on a row their own transactions never touched.
-            //
-            // It still falls back to MTN rather than to UNKNOWN when unspecified, and that is
-            // deliberate: a float balance on a network no transaction will ever post to is an
-            // orphaned figure, which is worse than a wrong label because the opening amount
-            // simply vanishes from the agent's books. Until every caller supplies the network,
-            // the wrong-label failure is the recoverable one. See docs for the remaining gap.
-            Network = string.IsNullOrWhiteSpace(request.Network) ? "MTN" : request.Network.ToUpperInvariant(),
-            OpeningFloat = openingFloat,
-            CurrentFloat = openingFloat,
-            Threshold = 0m
-        });
+            _dbContext.FloatBalances.Add(new FloatBalance
+            {
+                OrganizationId = request.OrganizationId,
+                BranchId = request.BranchId,
+                AgentId = request.UserId,
+                Network = network,
+                OpeningFloat = openingFloat,
+                CurrentFloat = openingFloat,
+                Threshold = 0m
+            });
+        }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

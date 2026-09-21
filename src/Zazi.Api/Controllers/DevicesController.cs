@@ -155,7 +155,7 @@ public class DevicesController : ControllerBase
                 request.DeviceIdentifier,
                 request.Name,
                 request.Platform ?? "Android",
-                request.Network ?? "MTN",
+                request.Network,
                 request.AppVersion ?? "unknown",
                 request.OsVersion ?? "unknown"),
             _currentUser.OrganizationId,
@@ -235,7 +235,7 @@ public class DevicesController : ControllerBase
                 request.DeviceIdentifier,
                 request.Name,
                 request.Platform ?? "Android",
-                request.Network ?? "MTN",
+                request.Network,
                 request.AppVersion ?? "unknown",
                 request.OsVersion ?? "unknown"),
             cancellationToken);

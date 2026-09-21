@@ -37,23 +37,47 @@ public class LedgerService : ILedgerService
         string network,
         CancellationToken cancellationToken = default)
     {
-        var cashBalance = await _dbContext.CashBalances
-            .AsNoTracking()
-            .SingleOrDefaultAsync(x => x.OrganizationId == organizationId && x.BranchId == branchId, cancellationToken);
+        // A branch total is now a sum, not a row.
+        //
+        // Balances moved to one row per agent — and per network on the float side — so the
+        // Single…Async this used to do would throw "Sequence contains more than one element"
+        // the moment a branch had a second agent. Nothing calls this today, which is the only
+        // reason that has not happened; leaving it in place would make a branch summary a
+        // feature that breaks on the first branch large enough to want one.
+        var requested = Networks.Normalise(network);
 
-        var floatBalance = await _dbContext.FloatBalances
+        // Naming the network is the caller's job. Answering "MTN float: 0" to a question that
+        // never said MTN is the same mistake the opening float used to make, and here it would
+        // read as a branch holding no float at all.
+        if (requested == Networks.Unspecified)
+        {
+            throw new ArgumentException(
+                "A branch ledger snapshot must say which network's float it is asking for.",
+                nameof(network));
+        }
+
+        var cashOnHand = await _dbContext.CashBalances
             .AsNoTracking()
-            .SingleOrDefaultAsync(
-                x => x.OrganizationId == organizationId && x.BranchId == branchId && x.Network == network,
-                cancellationToken);
+            .Where(x => x.OrganizationId == organizationId && x.BranchId == branchId)
+            .SumAsync(x => x.CurrentCash, cancellationToken);
+
+        var floatRows = await _dbContext.FloatBalances
+            .AsNoTracking()
+            .Where(x => x.OrganizationId == organizationId
+                && x.BranchId == branchId
+                && x.Network == requested)
+            .ToListAsync(cancellationToken);
 
         return new BranchLedgerSnapshotDto(
             organizationId,
             branchId,
-            cashBalance?.CurrentCash ?? 0m,
-            floatBalance?.CurrentFloat ?? 0m,
-            string.IsNullOrWhiteSpace(network) ? "MTN" : network,
-            floatBalance?.Threshold ?? 0m,
+            cashOnHand,
+            floatRows.Sum(x => x.CurrentFloat),
+            requested,
+            // Thresholds are set per agent and are alert levels, not money. The branch is short
+            // when the agent with the highest threshold is short, so the branch threshold is
+            // the largest of them rather than their sum, which would describe nobody.
+            floatRows.Count == 0 ? 0m : floatRows.Max(x => x.Threshold),
             DateTimeOffset.UtcNow);
     }
 

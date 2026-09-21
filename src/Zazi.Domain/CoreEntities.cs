@@ -290,7 +290,17 @@ public sealed class Device : AggregateRoot
     /// <summary>Business responsibility. Distinct from <see cref="DeviceType"/>.</summary>
     public DeviceRole Role { get; set; }
     public DeviceStatus Status { get; set; } = DeviceStatus.Active;
-    public string Network { get; set; } = "MTN";
+    /// <summary>
+    /// Which network's SIM this handset carries, as reported at enrolment.
+    /// </summary>
+    /// <remarks>
+    /// Descriptive only — a transaction takes its network from the message that produced it,
+    /// never from the device. It defaulted to MTN, which for the ordinary Ghanaian setup of
+    /// one agent working a handset per network showed the owner three MTN phones. Nothing
+    /// posts against this value, so admitting it is unknown costs nothing and claiming MTN
+    /// misinforms.
+    /// </remarks>
+    public string Network { get; set; } = Networks.Unspecified;
     public string AppVersion { get; set; } = "1.0.0";
     public string OsVersion { get; set; } = "Android 14";
     public bool IsRevoked { get; set; }

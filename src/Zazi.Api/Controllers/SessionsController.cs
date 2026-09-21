@@ -49,6 +49,20 @@ public class SessionsController : ControllerBase
         [FromBody] OpenSessionApiRequest request,
         CancellationToken cancellationToken)
     {
+        // Checked here rather than only in the service so the agent gets a message naming the
+        // field. The middleware deliberately returns titles rather than exception messages, so
+        // a service-level throw would reach the handset as "The request is not valid." and
+        // leave the agent guessing which part.
+        if (request.OpeningFloat > 0m && string.IsNullOrWhiteSpace(request.Network))
+        {
+            ModelState.AddModelError(
+                nameof(request.Network),
+                "Say which network the opening float is on — an agent working more than one "
+                    + "network has a separate float balance per network, and an unattributed "
+                    + "opening figure would be added to the wrong one.");
+            return ValidationProblem(ModelState);
+        }
+
         var branchId = await _tenantGuard.ResolveWritableBranchAsync(request.BranchId, cancellationToken);
 
         if (request.DeviceId is { } deviceId)
@@ -65,7 +79,8 @@ public class SessionsController : ControllerBase
                 _currentUser.UserId,
                 request.DeviceId,
                 request.OpeningCash,
-                request.OpeningFloat),
+                request.OpeningFloat,
+                request.Network),
             cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { sessionId = session.Id }, session);
