@@ -304,10 +304,18 @@ public class SmsProcessingService : ISmsProcessingService
             return providerHint.Trim().ToUpperInvariant();
         }
 
+        // Only wording a single network uses.
+        //
+        // "MOMO" was here and had to go: in Ghana it is generic for mobile money, so matching
+        // it attributed Telecel and AirtelTigo transactions — and bank alerts offering to send
+        // "to your MoMo wallet" — to MTN. An agent seeing another network's takings under MTN
+        // has no reason to trust any figure on the screen.
+        //
+        // "ATL" went for a plainer reason: three letters that occur inside ordinary words.
         var text = rawMessage.ToUpperInvariant();
-        if (text.Contains("MTN") || text.Contains("MOMO")) return "MTN";
-        if (text.Contains("AIRTELTIGO") || text.Contains("ATL")) return "AIRTELTIGO";
-        if (text.Contains("TELECEL")) return "TELECEL";
+        if (text.Contains("MTN MOBILE MONEY") || text.Contains("MTN MOMO") || text.Contains("MTN")) return "MTN";
+        if (text.Contains("AIRTELTIGO")) return "AIRTELTIGO";
+        if (text.Contains("TELECEL") || text.Contains("VODAFONE CASH")) return "TELECEL";
         return "UNKNOWN";
     }
 }

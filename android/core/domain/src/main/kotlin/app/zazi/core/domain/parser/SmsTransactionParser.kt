@@ -69,8 +69,28 @@ interface SmsTransactionParser {
 
     val provider: Provider
 
-    /** Whether this parser recognises the message as belonging to its provider. */
-    fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean
+    /**
+     * Whether the sender identity names this provider.
+     *
+     * The authoritative signal, and the reason the two questions are separate. A shortcode is
+     * assigned by the network and cannot be borrowed by another; message text can say anything.
+     * The registry asks every parser this first, and only falls back to the body when no
+     * sender is recognised.
+     */
+    fun claimsSender(senderIdentity: String?): Boolean
+
+    /**
+     * Whether the message body names this provider, for when the sender does not.
+     *
+     * Must key on wording only this provider uses. "MoMo" is not such a wording: in Ghana it
+     * is used generically for mobile money, and matching it here attributed Telecel and
+     * AirtelTigo transactions — and bank alerts — to MTN.
+     */
+    fun claimsBody(normalizedBody: String): Boolean
+
+    /** Whether this parser recognises the message at all, by either signal. */
+    fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean =
+        claimsSender(senderIdentity) || claimsBody(normalizedBody)
 
     fun parse(normalizedBody: String): ParsedSms
 }

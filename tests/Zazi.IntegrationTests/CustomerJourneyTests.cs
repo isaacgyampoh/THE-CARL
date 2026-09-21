@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Zazi.Application.Email;
+using Zazi.Domain;
 using Zazi.IntegrationTests.Postgres;
 
 namespace Zazi.IntegrationTests;
@@ -423,4 +424,100 @@ public class CustomerJourneyTests
             // therefore different on every single render whatever the page said.
             "(<!--Blazor-Server-Component-State:)[^-]*(-->)",
             "$1MASKED$2");
+
+    [SkippableFact]
+    public async Task AStrangerCanGoFromNothingToIssuingAnActivationCodeUnaided()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+
+        // The whole path a test user takes with nobody helping them: sign up, confirm the
+        // email, sign in, add a branch, add a worker. Every step over real HTTP with a real
+        // cookie, because the two bugs that blocked activation — an unbound form model and a
+        // dead @onclick handler — were both invisible to every other kind of test.
+        var inbox = new Inbox();
+        using var factory = new PortalFactory(_postgres.ConnectionString!, inbox);
+        using var client = Browser(factory);
+        var email = UniqueEmail();
+
+        // 1. Sign up.
+        using (var r = await SubmitAsync(client, "/sign-up",
+            Field("_input.BusinessName", "Stranger Mobile Money"),
+            Field("_input.FullName", "A Stranger"),
+            Field("_input.Email", email),
+            Field("_input.Password", Password)))
+        {
+            Assert.Contains("Check your email", await r.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        // 2. Confirm the address.
+        Assert.Contains("Email confirmed",
+            await client.GetStringAsync($"/verify-email?token={Uri.EscapeDataString(inbox.LatestToken())}"),
+            StringComparison.Ordinal);
+
+        // 3. Sign in and reach the portal.
+        using (var r = await client.PostAsync("/auth/sign-in", await SignInFormAsync(client, email, Password)))
+        {
+            Assert.Equal("/", r.Headers.Location?.ToString());
+        }
+        using (var r = await client.GetAsync("/"))
+        {
+            Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        }
+
+        // 4. The Team page is reachable, with the branch signup created.
+        var team = await client.GetStringAsync("/team");
+        Assert.Contains("Main branch", team, StringComparison.Ordinal);
+        Assert.Contains("Add a worker", team, StringComparison.Ordinal);
+
+        // 5. Add a second branch.
+        var branchForm = HiddenFields(team, "add-branch");
+        branchForm.Add(Field("_newBranch.Name", "Kumasi"));
+        branchForm.Add(Field("_newBranch.Location", "Adum"));
+        using (var r = await client.PostAsync("/team", new FormUrlEncodedContent(branchForm)))
+        {
+            Assert.Contains("Kumasi", await r.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        // 6. Add a worker — the step that was refusing every submission in production.
+        team = await client.GetStringAsync("/team");
+        var branchId = await BranchIdAsync(email, "Main branch");
+        var workerForm = HiddenFields(team, "add-worker");
+        workerForm.Add(Field("_newWorker.FullName", "Yaw Agent"));
+        workerForm.Add(Field("_newWorker.BranchId", branchId));
+
+        using (var r = await client.PostAsync("/team", new FormUrlEncodedContent(workerForm)))
+        {
+            var html = await r.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("Choose a branch for this worker", html, StringComparison.Ordinal);
+            Assert.Contains("Yaw Agent", html, StringComparison.Ordinal);
+        }
+
+        // 7. The worker is a real activation-only identity, ready for a code.
+        await using var db = _postgres.CreateContext();
+        var worker = db.Users.Single(u => u.FullName == "Yaw Agent");
+        Assert.Equal(UserCredentialType.ActivationOnly, worker.CredentialType);
+        Assert.False(string.IsNullOrEmpty(worker.BranchId?.ToString()));
+    }
+
+    /// <summary>The id of a named branch in the organization that owns an address.</summary>
+    private async Task<string> BranchIdAsync(string ownerEmail, string branchName)
+    {
+        await using var db = _postgres.CreateContext();
+        var organizationId = db.Users.Single(u => u.Email == ownerEmail).OrganizationId;
+        return db.Branches.Single(b => b.OrganizationId == organizationId && b.Name == branchName).Id.ToString();
+    }
+
+    private static List<KeyValuePair<string, string>> HiddenFields(string html, string formName)
+    {
+        var scope = html;
+        var marker = html.IndexOf($"value=\"{formName}\"", StringComparison.Ordinal);
+        if (marker >= 0)
+        {
+            var start = html.LastIndexOf("<form", marker, StringComparison.Ordinal);
+            var end = html.IndexOf("</form>", marker, StringComparison.Ordinal);
+            if (start >= 0 && end > start) scope = html[start..end];
+        }
+
+        return HiddenFields(scope);
+    }
 }

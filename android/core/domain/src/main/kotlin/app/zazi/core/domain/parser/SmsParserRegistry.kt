@@ -12,8 +12,19 @@ import app.zazi.core.domain.model.Provider
 class SmsParserRegistry(
     private val parsers: List<SmsTransactionParser> = defaultParsers()
 ) {
+    /**
+     * Picks the parser for a message, sender first.
+     *
+     * Two passes, deliberately. A single pass in list order let whichever parser appeared
+     * earliest claim a message on a weak body match, so MTN — first in the list and matching
+     * any text containing "MoMo" — took Telecel and AirtelTigo transactions. Asking every
+     * parser about the sender before anyone is asked about the body means the network's own
+     * shortcode decides, and body text only matters when there is no recognisable sender.
+     */
     fun select(senderIdentity: String?, normalizedBody: String): SmsTransactionParser =
-        parsers.first { it.canHandle(senderIdentity, normalizedBody) }
+        parsers.firstOrNull { it.claimsSender(senderIdentity) }
+            ?: parsers.firstOrNull { it.claimsBody(normalizedBody) }
+            ?: parsers.first { it.canHandle(senderIdentity, normalizedBody) }
 
     fun parse(senderIdentity: String?, rawBody: String): ParsedSms {
         val normalized = BaseSmsParser.normalize(rawBody)

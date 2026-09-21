@@ -110,7 +110,15 @@ android {
             // resolves by name, and the app aborted on startup.
             initWith(getByName("release"))
             matchingFallbacks += "release"
-            signingConfig = signingConfigs.findByName("release")
+
+            // Debug signing, deliberately — initWith copied release's signing config along
+            // with everything else, which meant the production key signed pilot builds too.
+            // A trial handset on somebody's office wifi has no business carrying the identity
+            // that controls every future update of app.zazi, and the production key should
+            // leave its keystore for exactly one build type.
+            //
+            // Debug rather than unsigned because an unsigned APK will not install at all.
+            signingConfig = signingConfigs.getByName("debug")
 
             isMinifyEnabled = true
             isShrinkResources = true
@@ -266,6 +274,51 @@ val releaseUrlProblem: String? = (project.findProperty("apiBaseUrl") as String?)
     }
 }
 
+// A release must be signed, and must say so when it cannot be.
+//
+// The signing config is created only when all four properties resolve and the keystore file
+// exists. Until now the absence of any of them produced an unsigned APK and a green build —
+// which is how an unsigned release survived a full verification pass: nothing failed, and
+// the artifact looked like every other artifact.
+//
+// Resolved at configuration time and reduced to a message, for the same configuration-cache
+// reason as the URL guard above: reading `project` inside doFirst is unsupported.
+//
+// Only `release` is checked. Debug and pilot must keep building on a machine that has never
+// seen the production keystore, which is most of them.
+val releaseSigningProblem: String? = run {
+    val required = listOf(
+        "zaziKeystore" to "path to the production keystore, outside the repository",
+        "zaziKeystorePassword" to "keystore password",
+        "zaziKeyAlias" to "key alias inside the keystore",
+        "zaziKeyPassword" to "key password"
+    )
+
+    val missing = required
+        .filter { (name, _) -> (project.findProperty(name) as String?).isNullOrBlank() }
+
+    val keystorePath = project.findProperty("zaziKeystore") as String?
+
+    when {
+        missing.isNotEmpty() ->
+            "A release build must be signed, and these signing properties are missing:\n" +
+                missing.joinToString("\n") { (name, purpose) -> "  $name  — $purpose" } +
+                "\n\nPut them in ~/.gradle/gradle.properties, which is outside this " +
+                "repository and never committed. Do not put them in " +
+                "android/gradle.properties: that file is tracked, and a keystore password " +
+                "in git history cannot be retracted, only rotated."
+
+        // A path that resolves to nothing is the same failure wearing a different hat: the
+        // signing config is silently not created and the APK comes out unsigned.
+        !file(keystorePath!!).exists() ->
+            "zaziKeystore points at a file that does not exist:\n  $keystorePath\n\n" +
+                "Without it no signing config is created and the release would be written " +
+                "unsigned."
+
+        else -> null
+    }
+}
+
 // Guarded at the point the URL is baked in, not at the end.
 //
 // Attaching this to assembleRelease was not enough: that task runs after its dependencies,
@@ -286,10 +339,14 @@ tasks.matching {
         "assembleRelease"
     )
 }.configureEach {
-    val problem = releaseUrlProblem
+    val urlProblem = releaseUrlProblem
+    val signingProblem = releaseSigningProblem
     doFirst {
-        if (problem != null) {
-            throw GradleException(problem)
+        if (urlProblem != null) {
+            throw GradleException(urlProblem)
+        }
+        if (signingProblem != null) {
+            throw GradleException(signingProblem)
         }
     }
 }

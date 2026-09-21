@@ -15,11 +15,16 @@ class MtnSmsParser : BaseSmsParser() {
     override val parserVersion = "mtn-v1"
     override val provider = Provider.MTN
 
-    override fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean {
+    override fun claimsSender(senderIdentity: String?): Boolean {
         val sender = senderIdentity?.uppercase().orEmpty()
-        return sender.contains("MTN") || sender.contains("MOMO") ||
-            normalizedBody.contains("MTN MOBILE MONEY") || normalizedBody.contains("MOMO")
+        return sender.contains("MTN") || sender.contains("MOMO")
     }
+
+    // "MTN" qualified, never a bare "MOMO". The word is generic for mobile money in Ghana, so
+    // matching it alone claimed Telecel and AirtelTigo messages — and bank alerts offering to
+    // send "to your MoMo wallet" — for MTN.
+    override fun claimsBody(normalizedBody: String): Boolean =
+        normalizedBody.contains("MTN MOBILE MONEY") || normalizedBody.contains("MTN MOMO")
 
     override fun parse(normalizedBody: String): ParsedSms {
         val type = classify(normalizedBody)
@@ -58,11 +63,14 @@ class TelecelSmsParser : BaseSmsParser() {
     override val parserVersion = "telecel-v1"
     override val provider = Provider.TELECEL
 
-    override fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean {
+    // Vodafone Ghana became Telecel; handsets and shortcodes still carry the old name.
+    override fun claimsSender(senderIdentity: String?): Boolean {
         val sender = senderIdentity?.uppercase().orEmpty()
-        return sender.contains("TELECEL") || sender.contains("VODAFONE") ||
-            normalizedBody.contains("TELECEL CASH")
+        return sender.contains("TELECEL") || sender.contains("VODAFONE")
     }
+
+    override fun claimsBody(normalizedBody: String): Boolean =
+        normalizedBody.contains("TELECEL CASH") || normalizedBody.contains("VODAFONE CASH")
 
     override fun parse(normalizedBody: String): ParsedSms {
         val type = classify(normalizedBody)
@@ -98,11 +106,16 @@ class AirtelTigoSmsParser : BaseSmsParser() {
     override val parserVersion = "airteltigo-v1"
     override val provider = Provider.AIRTELTIGO
 
-    override fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean {
-        val sender = senderIdentity?.uppercase().orEmpty()
-        return sender.contains("AIRTELTIGO") || sender.contains("ATMONEY") || sender.contains("AT ") ||
-            normalizedBody.contains("AIRTELTIGO MONEY")
+    override fun claimsSender(senderIdentity: String?): Boolean {
+        val sender = senderIdentity?.uppercase().orEmpty().trim()
+        // Exact "AT" rather than a contained "AT ", which matched any sender with those two
+        // letters followed by a space.
+        return sender.contains("AIRTELTIGO") || sender.contains("ATMONEY") ||
+            sender == "AT" || sender.startsWith("AT-") || sender.startsWith("AT.")
     }
+
+    override fun claimsBody(normalizedBody: String): Boolean =
+        normalizedBody.contains("AIRTELTIGO MONEY") || normalizedBody.contains("AIRTELTIGO")
 
     override fun parse(normalizedBody: String): ParsedSms {
         val type = classify(normalizedBody)
@@ -143,6 +156,13 @@ class GenericSmsParser : BaseSmsParser() {
     override val parserName = "GenericSmsParser"
     override val parserVersion = "generic-v1"
     override val provider = Provider.UNKNOWN
+
+    // The fallback. Claims nothing on its own; the registry uses it only when no provider
+    // recognised the message, so an unattributable message is reported as UNKNOWN rather than
+    // guessed into somebody's figures.
+    override fun claimsSender(senderIdentity: String?): Boolean = false
+
+    override fun claimsBody(normalizedBody: String): Boolean = false
 
     override fun canHandle(senderIdentity: String?, normalizedBody: String): Boolean = true
 

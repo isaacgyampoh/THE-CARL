@@ -204,7 +204,12 @@ public sealed class MtnSmsParser : BaseSmsTransactionParser
     {
         var upperProvider = (provider ?? string.Empty).ToUpperInvariant();
         var message = (rawMessage ?? string.Empty).ToUpperInvariant();
-        return upperProvider.Contains("MTN") || message.Contains("MTN") || message.Contains("MOMO");
+        // The provider hint comes from the sender identity and is authoritative; the body is
+        // only consulted for wording unique to MTN. A bare "MOMO" is not unique — see
+        // DetectProvider in SmsProcessingService for what matching it cost.
+        return upperProvider.Contains("MTN")
+            || message.Contains("MTN MOBILE MONEY")
+            || message.Contains("MTN MOMO");
     }
 
     protected override string DetermineTransactionType(string normalizedText)
@@ -234,7 +239,11 @@ public sealed class AirtelTigoSmsParser : BaseSmsTransactionParser
     {
         var upperProvider = (provider ?? string.Empty).ToUpperInvariant();
         var message = (rawMessage ?? string.Empty).ToUpperInvariant();
-        return upperProvider.Contains("AIRTEL") || upperProvider.Contains("ATL") || message.Contains("AIRTELTIGO") || message.Contains("ATL");
+        // "ATL" removed from both: three letters that appear inside ordinary words, so it
+        // claimed messages belonging to other networks and to banks.
+        return upperProvider.Contains("AIRTEL")
+            || upperProvider.Contains("ATMONEY")
+            || message.Contains("AIRTELTIGO");
     }
 
     protected override string DetermineTransactionType(string normalizedText)
@@ -257,7 +266,11 @@ public sealed class TelecelSmsParser : BaseSmsTransactionParser
     {
         var upperProvider = (provider ?? string.Empty).ToUpperInvariant();
         var message = (rawMessage ?? string.Empty).ToUpperInvariant();
-        return upperProvider.Contains("TELECEL") || message.Contains("TELECEL");
+        // Vodafone Ghana became Telecel; the former name still appears on shortcodes.
+        return upperProvider.Contains("TELECEL")
+            || upperProvider.Contains("VODAFONE")
+            || message.Contains("TELECEL")
+            || message.Contains("VODAFONE CASH");
     }
 
     protected override string DetermineTransactionType(string normalizedText)
