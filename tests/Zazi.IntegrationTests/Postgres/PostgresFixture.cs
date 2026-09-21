@@ -72,6 +72,27 @@ public sealed class PostgresFixture : IAsyncLifetime
         await InitializeFromContainerAsync();
     }
 
+    /// <summary>
+    /// Caps what one connection string may hold open, so the suite's demand is bounded by the
+    /// suite rather than by whatever <c>max_connections</c> the server happens to allow.
+    /// </summary>
+    /// <remarks>
+    /// Most integration tests stand up a <c>WebApplicationFactory</c>, and each host builds
+    /// its own Npgsql data source with its own pool. Nothing caps those pools by default, so
+    /// a handful of overlapping hosts can reach for several hundred connections. A developer
+    /// machine absorbs that; GitHub's <c>postgres:16</c> service container allows 100 and the
+    /// integration suite failed there all of 21 Sep 2026 with <c>53300: sorry, too many
+    /// clients already</c> — while passing locally, which is the worst way for a gate to fail.
+    /// The short idle lifetime matters as much as the cap: connections left by a disposed host
+    /// stay open against the server for five minutes by default, well past the end of the run.
+    /// </remarks>
+    private static string Bounded(string connectionString) =>
+        new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            MaxPoolSize = 20,
+            ConnectionIdleLifetime = 15
+        }.ConnectionString;
+
     private async Task InitializeFromExternalServerAsync(string adminConnectionString)
     {
         try
@@ -89,10 +110,10 @@ public sealed class PostgresFixture : IAsyncLifetime
                 await create.ExecuteNonQueryAsync();
             }
 
-            ConnectionString = new NpgsqlConnectionStringBuilder(adminConnectionString)
+            ConnectionString = Bounded(new NpgsqlConnectionStringBuilder(adminConnectionString)
             {
                 Database = _createdDatabaseName
-            }.ConnectionString;
+            }.ConnectionString);
 
             Provenance = $"external server ({ExternalServerVariable})";
 
@@ -119,7 +140,7 @@ public sealed class PostgresFixture : IAsyncLifetime
                 .Build();
 
             await _container.StartAsync();
-            ConnectionString = _container.GetConnectionString();
+            ConnectionString = Bounded(_container.GetConnectionString());
             Provenance = "Testcontainers (postgres:16-alpine)";
 
             await using var db = CreateContext();

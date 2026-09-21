@@ -91,6 +91,26 @@ jobs:
     if: success()
 
     steps:
+      - name: Check the deploy hooks are configured
+        # Both hooks were unset for the whole of 21 Sep 2026. The workflow POSTed to an empty
+        # string and curl failed with "URL rejected: Malformed input to a URL function", which
+        # reads like a network fault rather than a missing secret — so the real cause went
+        # unnoticed and every deploy that day was made by hand. Say which secret is missing,
+        # and say it before anything has been deployed rather than between the two services.
+        env:
+          API_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+          WEB_HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK }}
+        run: |
+          missing=
+          [ -n "$API_HOOK" ] || missing="$missing RENDER_API_DEPLOY_HOOK"
+          [ -n "$WEB_HOOK" ] || missing="$missing RENDER_WEB_DEPLOY_HOOK"
+          if [ -n "$missing" ]; then
+            echo "Not deploying: these repository secrets are empty or unset:$missing" >&2
+            echo "Each is a Render deploy hook URL, found under the service's Settings." >&2
+            exit 1
+          fi
+          echo "Both deploy hooks are set."
+
       - name: Deploy API
         # The API first, always. It is the service that applies EF migrations on startup, and
         # the web portal reads the same database — so a portal started against an unmigrated
