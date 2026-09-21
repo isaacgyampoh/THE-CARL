@@ -260,6 +260,7 @@ data class RecentTransactionRow(
     val cashDeltaMinor: Long,
     val transactionAtUtcMillis: Long,
     val sourceType: String,
+    val customerPhoneNumber: String?,
     val outboxState: String?
 )
 

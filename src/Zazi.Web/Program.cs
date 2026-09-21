@@ -1,3 +1,5 @@
+using Zazi.Infrastructure.Statements;
+using Zazi.Application.Statements;
 using System.Globalization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -233,6 +235,8 @@ builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService
 builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
+// Day, week, month, year or any range, as PDF or CSV, for an agent or the whole business.
+builder.Services.AddScoped<IStatementService, StatementService>();
 // Recording what an owner hands an agent, and reading back what they hold.
 builder.Services.AddScoped<IFloatService, FloatService>();
 // Transactional email. Registered in both hosts from one place so the dashboard cannot start
@@ -411,6 +415,7 @@ app.MapGet("/ready", async (ApplicationDbContext db, CancellationToken cancellat
 }).AllowAnonymous();
 
 app.MapAuthEndpoints();
+app.MapStatementEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 // Checked against the endpoints that were actually built, after everything is mapped.

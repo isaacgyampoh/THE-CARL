@@ -1,5 +1,7 @@
 package app.zazi.ui.state
 
+import app.zazi.core.domain.model.GhanaPhoneNumber
+
 import app.zazi.core.data.database.OutboxItemEntity
 import app.zazi.core.data.session.DeviceContext
 import java.math.BigDecimal
@@ -88,6 +90,12 @@ data class DashboardUiState(
     /** What this device has recorded, newest first. Empty until the first capture. */
     val activity: List<ActivityItem> = emptyList(),
     val activityFilter: ActivityFilter = ActivityFilter.TODAY,
+    /**
+     * A customer number being searched for. When set, the list shows that customer's
+     * transactions across every date instead of the chosen day — the question at the counter
+     * is "what did this number do", not "what happened today".
+     */
+    val searchQuery: String = "",
     val isOnline: Boolean = true,
     val isSyncing: Boolean = false
 ) {
@@ -118,7 +126,15 @@ data class CaptureUiState(
     val error: CaptureError? = null,
     val lastResult: CaptureConfirmation? = null
 ) {
-    val canSubmit: Boolean get() = !isSubmitting && amountInput.isNotBlank()
+    /**
+     * A cash-in or cash-out cannot be submitted without the customer's number. It is what an
+     * agent looks up when a customer comes back to complain, and a record without it cannot
+     * answer the complaint — a ₵50 cash-out was recorded in testing with no number at all.
+     */
+    val canSubmit: Boolean
+        get() = !isSubmitting &&
+            amountInput.isNotBlank() &&
+            (!transactionType.requiresCustomer || customerPhone.isNotBlank())
 }
 
 /**
@@ -128,11 +144,13 @@ data class CaptureUiState(
  * and Adjustment needs explicit signed deltas — neither is something a capture form can
  * supply, and Unknown must never be chosen deliberately.</p>
  */
-enum class CaptureTransactionType(val label: String) {
-    CASH_IN("Cash in"),
-    CASH_OUT("Cash out"),
-    TRANSFER("Transfer"),
-    COMMISSION("Commission")
+enum class CaptureTransactionType(val label: String, val requiresCustomer: Boolean) {
+    // Face-to-face with a customer, so the customer is part of the record.
+    CASH_IN("Cash in", requiresCustomer = true),
+    CASH_OUT("Cash out", requiresCustomer = true),
+    TRANSFER("Transfer", requiresCustomer = false),
+    // Paid by the network to the agent; there is no customer.
+    COMMISSION("Commission", requiresCustomer = false)
 }
 
 enum class CaptureProvider(val label: String) {
@@ -148,7 +166,9 @@ enum class CaptureError {
     DUPLICATE_ON_DEVICE,
     HELD_FOR_REVIEW,
     NO_ACTIVE_DEVICE,
-    LOCAL_SAVE_FAILED;
+    LOCAL_SAVE_FAILED,
+    MISSING_CUSTOMER_NUMBER,
+    INVALID_CUSTOMER_NUMBER;
 
     val message: String
         get() = when (this) {
@@ -161,6 +181,8 @@ enum class CaptureError {
             // The one genuinely alarming case: local persistence failed, so nothing was
             // recorded. Distinct from any network problem.
             LOCAL_SAVE_FAILED -> "Could not save on this device. Please try again."
+            MISSING_CUSTOMER_NUMBER -> "Enter the customer's number."
+            INVALID_CUSTOMER_NUMBER -> GhanaPhoneNumber.REQUIREMENT
         }
 }
 
@@ -213,7 +235,9 @@ data class ActivityItem(
     val cashDeltaMinor: Long,
     val atUtcMillis: Long,
     val capturedAutomatically: Boolean,
-    val delivery: ActivityDelivery
+    val delivery: ActivityDelivery,
+    /** Shown on every row: it is what an agent checks when a customer disputes a transaction. */
+    val customerPhone: String? = null
 ) {
     val shortReference: String get() = clientTransactionId.takeLast(8)
 }

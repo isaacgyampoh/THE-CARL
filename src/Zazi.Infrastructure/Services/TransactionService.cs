@@ -69,7 +69,7 @@ public class TransactionService : ITransactionService
             Type = request.Type,
             Amount = request.Amount,
             Currency = string.IsNullOrWhiteSpace(request.Currency) ? Money.DefaultCurrency : request.Currency,
-            CustomerPhoneNumber = request.CustomerPhoneNumber,
+            CustomerPhoneNumber = GhanaPhoneNumber.NormaliseOrKeep(request.CustomerPhoneNumber),
             ProviderReference = request.ProviderReference,
             TransactionAtUtc = DateTimeOffset.UtcNow,
             AcceptedAtUtc = DateTimeOffset.UtcNow,
@@ -158,6 +158,45 @@ public class TransactionService : ITransactionService
         if (query.ToUtc is { } toUtc)
         {
             filtered = filtered.Where(x => x.TransactionAtUtc <= toUtc);
+        }
+
+        // For the customer at the counter: "I came at 11:50 and withdrew fifty cedis". A whole
+        // number matches exactly, and also by its last nine digits so a record stored before
+        // numbers were normalised (233… from an SMS) is still found. Part of a number matches
+        // anywhere in it — "the one ending 3456".
+        if (!string.IsNullOrWhiteSpace(query.CustomerPhone))
+        {
+            var normalised = GhanaPhoneNumber.Normalise(query.CustomerPhone);
+            if (normalised is not null)
+            {
+                var lastNine = normalised[1..];
+                filtered = filtered.Where(x => x.CustomerPhoneNumber != null
+                    && (x.CustomerPhoneNumber == normalised || x.CustomerPhoneNumber.EndsWith(lastNine)));
+            }
+            else
+            {
+                var digits = new string(query.CustomerPhone.Where(char.IsAsciiDigit).ToArray());
+                filtered = digits.Length >= 3
+                    ? filtered.Where(x => x.CustomerPhoneNumber != null && x.CustomerPhoneNumber.Contains(digits))
+                    // Fewer than three digits matches half the book; refuse to guess.
+                    : filtered.Where(_ => false);
+            }
+        }
+
+        if (query.Type is { } type)
+        {
+            filtered = filtered.Where(x => x.Type == type);
+        }
+
+        if (query.AgentId is { } agentId)
+        {
+            filtered = filtered.Where(x => x.AgentId == agentId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Network))
+        {
+            var network = Networks.Normalise(query.Network);
+            filtered = filtered.Where(x => x.Network.ToUpper() == network);
         }
 
         var totalCount = await filtered.LongCountAsync(cancellationToken);

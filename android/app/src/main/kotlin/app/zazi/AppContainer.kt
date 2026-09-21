@@ -16,6 +16,7 @@ import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
 import app.zazi.core.data.repository.ParsingReportRepository
+import app.zazi.core.data.repository.StatementRepository
 import app.zazi.core.data.repository.OutboxRepository
 import app.zazi.core.data.security.AndroidKeystoreCryptoBox
 import app.zazi.core.data.security.KeystoreCredentialStore
@@ -127,6 +128,11 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
      * text. This sends one body, about one transaction, at the moment an agent taps to say it
      * was read wrongly.</p>
      */
+    /** The agent's own statements, downloaded to a folder the share sheet can reach. */
+    val statementRepository: StatementRepository by lazy {
+        StatementRepository(api, context.cacheDir)
+    }
+
     val parsingReportRepository: ParsingReportRepository by lazy {
         ParsingReportRepository(database, api, BuildConfigCompat.versionName)
     }

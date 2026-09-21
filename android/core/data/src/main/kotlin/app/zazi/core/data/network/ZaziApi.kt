@@ -9,6 +9,9 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import okhttp3.ResponseBody
+import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 /**
  * Zazi's HTTP surface, as the backend actually defines it.
@@ -51,6 +54,19 @@ interface ZaziApi {
      * included — sends the parsed result and leaves the text here. This one is sent because
      * an agent tapped a button about a specific transaction, and never in the background.</p>
      */
+    /**
+     * The signed-in agent's statement for a period, as a PDF or a CSV.
+     *
+     * <p>Always the caller's own. The server takes the agent from the token and ignores any
+     * attempt to name someone else.</p>
+     */
+    @Streaming
+    @GET("api/v1/statements")
+    suspend fun statement(
+        @Query("period") period: String,
+        @Query("format") format: String
+    ): Response<ResponseBody>
+
     @POST("api/v1/parsing-reports")
     suspend fun reportParsing(
         @Body request: SubmitParsingReportRequest

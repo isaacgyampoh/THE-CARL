@@ -1,3 +1,5 @@
+using Zazi.Infrastructure.Statements;
+using Zazi.Application.Statements;
 using System.Text;
 using System.Globalization;
 using System.Threading.RateLimiting;
@@ -190,6 +192,8 @@ builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
 builder.Services.AddScoped<IOrganizationService, OrganizationService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
+// Day, week, month, year or any range, as PDF or CSV, for an agent or the whole business.
+builder.Services.AddScoped<IStatementService, StatementService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IReconciliationService, ReconciliationService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();

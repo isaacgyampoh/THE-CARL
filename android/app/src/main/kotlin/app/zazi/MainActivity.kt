@@ -1,5 +1,9 @@
 package app.zazi
 
+import app.zazi.core.data.repository.StatementDownload
+import androidx.core.content.FileProvider
+import android.content.Intent
+import app.zazi.core.data.database.RecentTransactionRow
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -197,25 +201,10 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 container.dashboardRepository
                     .observeBetween(window.first, window.last + 1)
                     .first()
-                    .map { row ->
-                    ActivityItem(
-                        clientTransactionId = row.clientTransactionId,
-                        label = CaptureTransactionType.entries
-                            .firstOrNull { it.name == row.transactionType }
-                            ?.label
-                        // Not every stored type is offerable on the capture form — a reversal
-                        // or an adjustment can arrive from elsewhere — so an unknown type is
-                        // shown readably rather than dropped from the agent's own history.
-                            ?: row.transactionType.lowercase().replace('_', ' ')
-                                .replaceFirstChar { it.uppercase() },
-                        provider = row.provider,
-                        amountMinor = row.amountMinor,
-                        cashDeltaMinor = row.cashDeltaMinor,
-                        atUtcMillis = row.transactionAtUtcMillis,
-                        capturedAutomatically = row.sourceType == "SMS",
-                        delivery = ActivityDelivery.fromOutboxState(row.outboxState)
-                    )
-                }
+                    .map { row -> row.toActivityItem() }
+            },
+            searchActivity = { query ->
+                container.dashboardRepository.searchByCustomer(query).map { row -> row.toActivityItem() }
             },
             transactionDetail = { clientTransactionId ->
                 container.dashboardRepository.findDetail(clientTransactionId)?.toDetail()
@@ -245,6 +234,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     var selectedTransactionId by remember { mutableStateOf<String?>(null) }
     var openedWith by remember { mutableStateOf<TransactionDetail?>(null) }
     var isRetrying by remember { mutableStateOf(false) }
+    var statementBusy by remember { mutableStateOf(false) }
+    var statementError by remember { mutableStateOf<String?>(null) }
 
     val activationState by activationViewModel.state.collectAsState()
     val justActivated = activationState.activated
@@ -397,6 +388,37 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         onCapture = { screen = AuthenticatedScreen.CAPTURE },
                         onFilterChanged = { filter ->
                             scope.launch { dashboardViewModel.onFilterChanged(filter, isOnline) }
+                        },
+                        onSearchChanged = { query ->
+                            scope.launch { dashboardViewModel.onSearchChanged(query, isOnline) }
+                        },
+                        statementBusy = statementBusy,
+                        statementError = statementError,
+                        onDownloadStatement = { range, kind ->
+                            scope.launch {
+                                statementBusy = true
+                                statementError = null
+                                when (val result = container.statementRepository.download(range, kind)) {
+                                    is StatementDownload.Saved -> {
+                                        // Through the share sheet, so the agent sends it where they
+                                        // keep things: WhatsApp, email, Files. The grant covers this
+                                        // one file and nothing else in the app's storage.
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.statements",
+                                            result.file
+                                        )
+                                        val send = Intent(Intent.ACTION_SEND).apply {
+                                            type = result.mimeType
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(send, "Send or save statement"))
+                                    }
+                                    is StatementDownload.Failed -> statementError = result.reason
+                                }
+                                statementBusy = false
+                            }
                         },
                         onActivitySelected = { item ->
                             scope.launch {
@@ -607,3 +629,22 @@ private fun startOfDayUtcMillis(): Long =
 private fun Context.hasSmsPermission(): Boolean =
     ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) ==
         PackageManager.PERMISSION_GRANTED
+
+/** A stored row in the screen's own terms. Shared by the day view and the customer search. */
+private fun RecentTransactionRow.toActivityItem(): ActivityItem = ActivityItem(
+    clientTransactionId = clientTransactionId,
+    label = CaptureTransactionType.entries
+        .firstOrNull { it.name == transactionType }
+        ?.label
+    // Not every stored type is offerable on the capture form — a reversal or an adjustment can
+    // arrive from elsewhere — so an unknown type is shown readably rather than dropped from the
+    // agent's own history.
+        ?: transactionType.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+    provider = provider,
+    amountMinor = amountMinor,
+    cashDeltaMinor = cashDeltaMinor,
+    atUtcMillis = transactionAtUtcMillis,
+    capturedAutomatically = sourceType == "SMS",
+    delivery = ActivityDelivery.fromOutboxState(outboxState),
+    customerPhone = customerPhoneNumber
+)

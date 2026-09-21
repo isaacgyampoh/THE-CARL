@@ -801,3 +801,125 @@ main > h2.first { margin-top: 1.25rem; }
 .feed .amount.in { color: var(--ok-fg); }
 
 .estate-line { margin-top: 2rem; font-size: .85rem; text-align: center; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Transactions
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* The filter form is wider than the ordinary 32rem form: it holds a search row and a grid. */
+main form.filters { max-width: none; margin-bottom: 1.25rem; }
+
+/* The search form is a row: the box takes the width, the button its own. Specific enough to
+   beat the phone rule that makes every form's submit button full width — which squashed the
+   box to a sliver and pushed the page wider than the screen. */
+main form.search-row { display: flex; gap: .5rem; max-width: none; margin-top: .25rem; }
+main form.search-row input { flex: 1 1 auto; width: auto; min-width: 0; font-size: 1.05rem; }
+main form.search-row button[type="submit"]:not(.link) { flex: none; width: auto; }
+
+/* Period choices: one tap each, the current one filled. */
+.periods {
+    display: flex;
+    gap: .4rem;
+    margin: .85rem 0 .5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.periods::-webkit-scrollbar { display: none; }
+.periods a {
+    flex: none;
+    padding: .45rem .9rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 500;
+}
+.periods a[aria-current="true"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+}
+
+.more-filters { margin-top: .4rem; }
+.more-filters summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: .92rem;
+    padding: .35rem 0;
+}
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0 1rem;
+    margin-top: .6rem;
+}
+.more-filters .clear { margin-left: 1rem; font-size: .9rem; }
+
+/* Count, period, and the two download buttons. */
+.result-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: .6rem 1rem;
+    margin: .5rem 0 .75rem;
+}
+.downloads { display: flex; align-items: center; gap: .5rem; font-size: .88rem; }
+main a.download {
+    display: inline-flex;
+    align-items: center;
+    padding: .4rem .9rem;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration: none;
+}
+main a.download:hover { background: var(--accent); color: var(--on-accent); }
+
+/* The list itself: time, what and who, amount — every row carries the customer's number. */
+.ledger {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+}
+.ledger li {
+    display: grid;
+    grid-template-columns: 4.4rem minmax(0, 1fr) auto;
+    gap: .75rem;
+    align-items: baseline;
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--line);
+}
+.ledger li:last-child { border-bottom: 0; }
+.ledger .when { font-variant-numeric: tabular-nums; }
+.ledger .when .date { display: block; font-size: .8rem; color: var(--muted); }
+.ledger .when .time { display: block; font-weight: 600; font-size: .92rem; }
+.ledger .kind { display: block; font-weight: 600; }
+.ledger .meta { display: block; font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+.ledger .customer { font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A cash-in or cash-out with no number is the gap that let a complaint go unanswered. */
+.ledger .no-number { color: var(--warn-fg); font-weight: 600; }
+.ledger .amount { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.ledger .amount.in { color: var(--ok-fg); }
+
+.empty {
+    padding: 1.25rem;
+    background: var(--card);
+    border: 1px dashed var(--line);
+    border-radius: .75rem;
+    color: var(--muted);
+}
+
+main nav.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; }

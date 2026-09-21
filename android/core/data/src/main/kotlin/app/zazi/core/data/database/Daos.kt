@@ -88,6 +88,7 @@ interface LocalTransactionDao {
                t.cashDeltaMinor      AS cashDeltaMinor,
                t.transactionAtUtcMillis AS transactionAtUtcMillis,
                t.sourceType          AS sourceType,
+               t.customerPhoneNumber AS customerPhoneNumber,
                o.state               AS outboxState
         FROM local_transactions t
         LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
@@ -112,6 +113,7 @@ interface LocalTransactionDao {
                t.cashDeltaMinor      AS cashDeltaMinor,
                t.transactionAtUtcMillis AS transactionAtUtcMillis,
                t.sourceType          AS sourceType,
+               t.customerPhoneNumber AS customerPhoneNumber,
                o.state               AS outboxState
         FROM local_transactions t
         LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
@@ -126,6 +128,34 @@ interface LocalTransactionDao {
         toUtcMillis: Long,
         limit: Int
     ): Flow<List<RecentTransactionRow>>
+
+    /**
+     * Every transaction with a customer number containing [digits], newest first.
+     *
+     * <p>For the customer at the counter who says "I came at 11:50 and withdrew fifty cedis".
+     * Across all dates, not the dashboard's window: a complaint can be about last week. The
+     * caller passes the last nine digits of a full number, which match it whether it was
+     * stored as 0244… or, from an older SMS capture, as 233244….</p>
+     */
+    @Query(
+        """
+        SELECT t.clientTransactionId AS clientTransactionId,
+               t.transactionType     AS transactionType,
+               t.provider            AS provider,
+               t.amountMinor         AS amountMinor,
+               t.cashDeltaMinor      AS cashDeltaMinor,
+               t.transactionAtUtcMillis AS transactionAtUtcMillis,
+               t.sourceType          AS sourceType,
+               t.customerPhoneNumber AS customerPhoneNumber,
+               o.state               AS outboxState
+        FROM local_transactions t
+        LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        WHERE t.customerPhoneNumber LIKE '%' || :digits || '%'
+        ORDER BY t.transactionAtUtcMillis DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun searchByCustomer(digits: String, limit: Int): List<RecentTransactionRow>
 
     /**
      * Everything known about one transaction, including why it is stuck.

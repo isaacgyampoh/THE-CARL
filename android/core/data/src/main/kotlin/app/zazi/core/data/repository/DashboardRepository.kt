@@ -46,6 +46,20 @@ class DashboardRepository(private val database: ZaziDatabase) {
         database.localTransactionDao().observeRecentWithDelivery(limit)
 
     /** The same, confined to a window — a day, or the last several. */
+    /**
+     * Transactions for one customer, across every date on this device.
+     *
+     * <p>Searches by the last nine digits once nine or more are typed, so 0244123456,
+     * 244123456 and 233244123456 all find the same customer; fewer digits match anywhere in
+     * the number, for "the one ending 3456".</p>
+     */
+    suspend fun searchByCustomer(query: String, limit: Int = 200): List<RecentTransactionRow> {
+        val digits = query.filter { it.isDigit() }
+        if (digits.length < 3) return emptyList()
+        val key = if (digits.length >= 9) digits.takeLast(9) else digits
+        return database.localTransactionDao().searchByCustomer(key, limit)
+    }
+
     fun observeBetween(
         fromUtcMillis: Long,
         toUtcMillis: Long,

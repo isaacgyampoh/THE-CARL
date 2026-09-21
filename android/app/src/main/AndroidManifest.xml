@@ -73,6 +73,21 @@
                 tools:node="remove" />
         </provider>
 
+        <!--
+          Hands a downloaded statement to whatever the agent chooses — WhatsApp, email, Files —
+          without making the app's storage readable to anything else. Only the statements folder
+          in the cache is exposed, and only through a grant on each shared file.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.statements"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/statement_paths" />
+        </provider>
+
     </application>
 
 </manifest>

@@ -1,5 +1,6 @@
 package app.zazi.ui.viewmodel
 
+import app.zazi.core.domain.model.GhanaPhoneNumber
 import app.zazi.core.data.capture.CaptureOutcome
 import app.zazi.core.data.capture.ManualCaptureRequest
 import app.zazi.core.data.capture.MinorUnits
@@ -191,6 +192,8 @@ class DashboardViewModel(
      * Room, and defaulted to empty so existing callers and tests are unaffected.
      */
     private val recentActivity: suspend (ActivityFilter) -> List<ActivityItem> = { emptyList() },
+    /** One customer's transactions, across every date. Defaulted so existing tests are unaffected. */
+    private val searchActivity: suspend (String) -> List<ActivityItem> = { emptyList() },
     /** Detail for one transaction, or null if it has gone. */
     private val transactionDetail: suspend (String) -> TransactionDetail? = { null },
     /**
@@ -207,8 +210,16 @@ class DashboardViewModel(
     /** The slice of history on screen. Held here so a refresh does not reset the agent's choice. */
     private var filter: ActivityFilter = ActivityFilter.TODAY
 
+    /** A customer number being looked up; blank means "show the chosen day". */
+    private var query: String = ""
+
     suspend fun onFilterChanged(value: ActivityFilter, isOnline: Boolean) {
         filter = value
+        refresh(isOnline)
+    }
+
+    suspend fun onSearchChanged(value: String, isOnline: Boolean) {
+        query = value
         refresh(isOnline)
     }
 
@@ -262,8 +273,11 @@ class DashboardViewModel(
             todayFloatMinor = totals?.second,
             // Failing to read the history must not blank the figures above it; an empty list
             // is the honest fallback, and the screen says when there is nothing to show.
-            activity = runCatching { recentActivity(filter) }.getOrDefault(emptyList()),
+            activity = runCatching {
+                if (query.isNotBlank()) searchActivity(query) else recentActivity(filter)
+            }.getOrDefault(emptyList()),
             activityFilter = filter,
+            searchQuery = query,
             isOnline = isOnline,
             isSyncing = outboxRepository.countByState(OutboxState.SYNCING) > 0
         )
@@ -336,6 +350,19 @@ class CaptureViewModel(
         val amountMinor = runCatching { MinorUnits.fromDecimal(amount) }.getOrNull()
             ?: return fail(current, CaptureError.SUB_PESEWA_PRECISION)
 
+        // Normalised before it is stored, so "0244 123 456", "233244123456" and
+        // "+233 24 412 3456" are one customer and a search for any of them finds the others.
+        val customer: String? = when {
+            current.customerPhone.isBlank() ->
+                if (current.transactionType.requiresCustomer) {
+                    return fail(current, CaptureError.MISSING_CUSTOMER_NUMBER)
+                } else {
+                    null
+                }
+            else -> GhanaPhoneNumber.normalise(current.customerPhone)
+                ?: return fail(current, CaptureError.INVALID_CUSTOMER_NUMBER)
+        }
+
         val repository = captureRepositoryProvider()
             ?: return fail(current, CaptureError.NO_ACTIVE_DEVICE)
 
@@ -349,7 +376,7 @@ class CaptureViewModel(
                     provider = current.provider.toDomain(),
                     occurredAtUtcMillis = now(),
                     reference = current.reference.ifBlank { null },
-                    customerPhoneNumber = current.customerPhone.ifBlank { null },
+                    customerPhoneNumber = customer,
                     notes = current.notes.ifBlank { null }
                 )
             )

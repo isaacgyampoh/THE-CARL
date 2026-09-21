@@ -1,0 +1,334 @@
+@page "/transactions"
+@using Zazi.Application
+@using Zazi.Application.Float
+@using Zazi.Application.Security
+@using Zazi.Application.Statements
+@using Zazi.Domain
+@attribute [Authorize(Policy = ZaziPolicies.TransactionRead)]
+@inject ITransactionService Ledger
+@inject IFloatService Float
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>Transactions · Zazi</PageTitle>
+
+<h1>Transactions</h1>
+<p class="lead">
+    Every transaction with the customer's number and the exact time. When a customer comes back
+    to say "I came at 11:50 and withdrew fifty cedis", search their number here.
+</p>
+
+@* A GET form, deliberately: every search is a link. It survives a refresh, the back button
+   and being sent to someone else, and it needs no interactive circuit on a slow phone. *@
+@* The search is its own form, carrying nothing but the number. A new lookup then covers the
+   whole year rather than inheriting "Today" from whatever was on screen — the complaint may
+   be about last week, and "no results today" is the wrong answer to "did this number come
+   here". *@
+<form method="get" action="/transactions" class="search-row">
+    <label for="customer" class="visually-hidden">Customer number</label>
+    <input id="customer" name="customer" type="search" inputmode="tel"
+           placeholder="Search by customer number" value="@Customer" autocomplete="off" />
+    <button type="submit">Search</button>
+</form>
+
+<form method="get" action="/transactions" class="filters">
+    @if (!string.IsNullOrWhiteSpace(Customer))
+    {
+        <input type="hidden" name="customer" value="@Customer" />
+    }
+
+    @* The periods as links rather than a dropdown: one tap each, and the chosen one is plainly
+       marked. They keep the rest of the filters. *@
+    <nav class="periods" aria-label="Period">
+        @foreach (var option in PeriodOptions)
+        {
+            <a href="@Link(period: option.Period)" aria-current="@(option.Period == Period ? "true" : null)">@option.Label</a>
+        }
+    </nav>
+
+    <input type="hidden" name="period" value="@Period" />
+
+    <details class="more-filters" open="@(HasNarrowingFilters || Period == StatementPeriod.Custom)">
+        <summary>More filters</summary>
+        <div class="filter-grid">
+            @if (Period == StatementPeriod.Custom)
+            {
+                <p>
+                    <label for="from">From</label>
+                    <input id="from" name="from" type="date" value="@From?.ToString("yyyy-MM-dd")" />
+                </p>
+                <p>
+                    <label for="to">To</label>
+                    <input id="to" name="to" type="date" value="@To?.ToString("yyyy-MM-dd")" />
+                </p>
+            }
+            <p>
+                <label for="type">Type</label>
+                <select id="type" name="type">
+                    <option value="">All types</option>
+                    <option value="CashIn" selected="@(Type == TransactionType.CashIn)">Deposits (cash in)</option>
+                    <option value="CashOut" selected="@(Type == TransactionType.CashOut)">Withdrawals (cash out)</option>
+                    <option value="Commission" selected="@(Type == TransactionType.Commission)">Commission</option>
+                    <option value="Adjustment" selected="@(Type == TransactionType.Adjustment)">Cash or float given</option>
+                    <option value="Reversal" selected="@(Type == TransactionType.Reversal)">Reversals</option>
+                </select>
+            </p>
+            <p>
+                <label for="agent">Agent</label>
+                <select id="agent" name="agent">
+                    <option value="">Everyone</option>
+                    @foreach (var person in _people)
+                    {
+                        <option value="@person.AgentId" selected="@(Agent == person.AgentId)">@person.AgentName</option>
+                    }
+                </select>
+            </p>
+            <p>
+                <label for="network">Network</label>
+                <select id="network" name="network">
+                    <option value="">All networks</option>
+                    @foreach (var network in Networks.All)
+                    {
+                        <option value="@network" selected="@(string.Equals(Network, network, StringComparison.OrdinalIgnoreCase))">@NetworkName(network)</option>
+                    }
+                </select>
+            </p>
+        </div>
+        <button type="submit">Apply</button>
+        @if (HasNarrowingFilters)
+        {
+            <a class="clear" href="@($"/transactions?period={Period}")">Clear filters</a>
+        }
+    </details>
+</form>
+
+@if (_error is not null)
+{
+    <p class="error" role="alert">@_error</p>
+}
+else if (_page is not null)
+{
+    <section class="result-head">
+        <div>
+            <strong>@_page.TotalCount.ToString("N0") @(_page.TotalCount == 1 ? "transaction" : "transactions")</strong>
+            <span class="muted">· @_periodLabel@(ScopeNote())</span>
+        </div>
+
+        @* The statement is exactly what is on screen — same period, agent and customer — so
+           what the owner hands over matches what they just looked at. *@
+        <div class="downloads">
+            <span class="muted">Download statement</span>
+            <a class="download" href="@StatementLink(StatementFormat.Pdf)">PDF</a>
+            <a class="download" href="@StatementLink(StatementFormat.Csv)">Excel</a>
+        </div>
+    </section>
+
+    @if (_page.Items.Count == 0)
+    {
+        <p class="empty">
+            @if (!string.IsNullOrWhiteSpace(Customer))
+            {
+                <text>No transactions for this number in @_periodLabel.ToLowerInvariant(). Try <a href="@Link(period: StatementPeriod.ThisYear)">this year</a>.</text>
+            }
+            else
+            {
+                <text>No transactions in this period.</text>
+            }
+        </p>
+    }
+    else
+    {
+        <ul class="ledger">
+            @foreach (var t in _page.Items)
+            {
+                var incoming = t.CashDelta >= 0;
+                <li>
+                    <span class="when">
+                        <span class="date">@t.TransactionAt.UtcDateTime.ToString("d MMM")</span>
+                        <span class="time">@t.TransactionAt.UtcDateTime.ToString("HH:mm:ss")</span>
+                    </span>
+                    <span class="what">
+                        <span class="kind">@StatementText(t.Type)</span>
+                        <span class="meta">
+                            @if (!string.IsNullOrWhiteSpace(t.CustomerPhoneNumber))
+                            {
+                                @* A link, so tapping a number shows everything that customer did. *@
+                                <a class="customer" href="@Link(customer: t.CustomerPhoneNumber)">@GhanaPhoneNumber.Display(t.CustomerPhoneNumber)</a>
+                                <text> · </text>
+                            }
+                            else if (t.Type is TransactionType.CashIn or TransactionType.CashOut)
+                            {
+                                <span class="no-number">No number</span><text> · </text>
+                            }
+                            @NetworkName(t.Network) · @AgentName(t.AgentId)
+                            @if (!string.IsNullOrWhiteSpace(t.ProviderReference))
+                            {
+                                <text> · Ref @t.ProviderReference</text>
+                            }
+                        </span>
+                    </span>
+                    <span class="amount @(incoming ? "in" : "out")">@(incoming ? "+" : "−")₵@t.Amount.ToString("N2")</span>
+                </li>
+            }
+        </ul>
+
+        @if (_page.HasMore || PageNumber > 1)
+        {
+            <nav class="pager" aria-label="Pages">
+                @if (PageNumber > 1)
+                {
+                    <a href="@Link(page: PageNumber - 1)">← Newer</a>
+                }
+                <span class="muted">Page @PageNumber</span>
+                @if (_page.HasMore)
+                {
+                    <a href="@Link(page: PageNumber + 1)">Older →</a>
+                }
+            </nav>
+        }
+    }
+}
+
+@code {
+    private const int PageSize = 50;
+
+    [SupplyParameterFromQuery(Name = "customer")] private string? Customer { get; set; }
+    [SupplyParameterFromQuery(Name = "period")] private string? PeriodText { get; set; }
+    [SupplyParameterFromQuery(Name = "from")] private string? FromText { get; set; }
+    [SupplyParameterFromQuery(Name = "to")] private string? ToText { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] private string? TypeText { get; set; }
+    [SupplyParameterFromQuery(Name = "agent")] private Guid? Agent { get; set; }
+    [SupplyParameterFromQuery(Name = "network")] private string? Network { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] private int? PageText { get; set; }
+
+    private StatementPeriod Period =>
+        Enum.TryParse<StatementPeriod>(PeriodText, ignoreCase: true, out var p) ? p
+        // A customer lookup defaults to the whole year: the complaint may be about last week,
+        // and "no results today" would be the wrong answer to "did this number come here".
+        : !string.IsNullOrWhiteSpace(Customer) ? StatementPeriod.ThisYear
+        : StatementPeriod.Today;
+
+    private DateOnly? From => DateOnly.TryParse(FromText, out var d) ? d : null;
+    private DateOnly? To => DateOnly.TryParse(ToText, out var d) ? d : null;
+    private TransactionType? Type => Enum.TryParse<TransactionType>(TypeText, ignoreCase: true, out var t) ? t : null;
+    private int PageNumber => Math.Max(1, PageText ?? 1);
+
+    private bool HasNarrowingFilters => Type is not null || Agent is not null || !string.IsNullOrWhiteSpace(Network);
+
+    private static readonly (StatementPeriod Period, string Label)[] PeriodOptions =
+    [
+        (StatementPeriod.Today, "Today"),
+        (StatementPeriod.ThisWeek, "This week"),
+        (StatementPeriod.ThisMonth, "This month"),
+        (StatementPeriod.ThisYear, "This year"),
+        (StatementPeriod.Custom, "Custom")
+    ];
+
+    private PagedResult<TransactionDto>? _page;
+    private IReadOnlyList<AgentHoldingsDto> _people = Array.Empty<AgentHoldingsDto>();
+    private string _periodLabel = string.Empty;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var branchId = CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId;
+        _people = await Float.GetHoldingsAsync(CurrentUser.OrganizationId, branchId);
+
+        DateTimeOffset from, to;
+        try
+        {
+            // A custom period with no dates yet shows today, rather than an error before the
+            // owner has had a chance to pick any.
+            var period = Period == StatementPeriod.Custom && (From is null || To is null)
+                ? StatementPeriod.Today
+                : Period;
+            (from, to, _periodLabel) = StatementPeriods.Resolve(period, From, To, DateTimeOffset.UtcNow);
+        }
+        catch (ArgumentException problem)
+        {
+            _error = problem.Message;
+            return;
+        }
+
+        _page = await Ledger.GetTransactionsAsync(new TransactionQuery(
+            CurrentUser.OrganizationId,
+            branchId,
+            PageNumber,
+            PageSize,
+            FromUtc: from,
+            // The query's upper bound is inclusive; the period's is exclusive.
+            ToUtc: to.AddTicks(-1),
+            CustomerPhone: Customer,
+            Type: Type,
+            AgentId: Agent,
+            Network: Network));
+    }
+
+    private string ScopeNote()
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Customer))
+        {
+            parts.Add("customer " + GhanaPhoneNumber.Display(Customer));
+        }
+        if (Agent is { } agent)
+        {
+            parts.Add(AgentName(agent));
+        }
+        return parts.Count == 0 ? string.Empty : " · " + string.Join(" · ", parts);
+    }
+
+    /// <summary>The current filters with one changed. Every link on the page is built here.</summary>
+    private string Link(StatementPeriod? period = null, string? customer = null, int? page = null)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["customer"] = customer ?? Customer,
+            ["period"] = (period ?? Period).ToString(),
+            ["from"] = FromText,
+            ["to"] = ToText,
+            ["type"] = TypeText,
+            ["agent"] = Agent?.ToString(),
+            ["network"] = Network,
+            // Changing anything but the page starts again at the first page.
+            ["page"] = page?.ToString()
+        };
+
+        // Following a customer's number looks across the year, as a fresh search does.
+        if (customer is not null && period is null)
+        {
+            query["period"] = StatementPeriod.ThisYear.ToString();
+            query["from"] = null;
+            query["to"] = null;
+        }
+
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
+            "/transactions",
+            query.Where(kv => !string.IsNullOrWhiteSpace(kv.Value))!);
+    }
+
+    private string StatementLink(StatementFormat format)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            ["period"] = Period.ToString(),
+            ["from"] = FromText,
+            ["to"] = ToText,
+            ["agent"] = Agent?.ToString(),
+            ["customer"] = Customer,
+            ["format"] = format.ToString()
+        };
+
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(
+            "/statements/download",
+            query.Where(kv => !string.IsNullOrWhiteSpace(kv.Value))!);
+    }
+
+    private string AgentName(Guid agentId) =>
+        _people.FirstOrDefault(p => p.AgentId == agentId)?.AgentName ?? "Unknown";
+
+    private static string StatementText(TransactionType type) =>
+        Zazi.Infrastructure.Statements.StatementText.Describe(type);
+
+    private static string NetworkName(string network) =>
+        Zazi.Infrastructure.Statements.StatementText.Network(network);
+}

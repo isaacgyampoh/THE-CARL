@@ -1,5 +1,11 @@
 package app.zazi.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import app.zazi.core.domain.model.GhanaPhoneNumber
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +32,8 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -44,6 +52,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import app.zazi.core.data.repository.ParsingVerdict
+import app.zazi.core.data.repository.StatementKind
+import app.zazi.core.data.repository.StatementRange
 import app.zazi.ui.state.ParsingReportUiState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -198,6 +208,11 @@ fun DashboardScreen(
     onLogout: () -> Unit,
     onFilterChanged: (ActivityFilter) -> Unit = {},
     onActivitySelected: (ActivityItem) -> Unit = {},
+    onSearchChanged: (String) -> Unit = {},
+    /** Fetches the agent's own statement and opens the share sheet. */
+    onDownloadStatement: (StatementRange, StatementKind) -> Unit = { _, _ -> },
+    statementBusy: Boolean = false,
+    statementError: String? = null,
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
     onRequestSmsPermission: () -> Unit = {},
@@ -280,8 +295,17 @@ fun DashboardScreen(
             ActivitySection(
                 items = state.activity,
                 filter = state.activityFilter,
+                query = state.searchQuery,
                 onFilterChanged = onFilterChanged,
+                onSearchChanged = onSearchChanged,
                 onSelect = onActivitySelected
+            )
+
+            Spacer(Modifier.height(Spacing.medium))
+            StatementButton(
+                busy = statementBusy,
+                error = statementError,
+                onDownload = onDownloadStatement
             )
 
             state.device?.let { device ->
@@ -460,30 +484,77 @@ private fun DeliverySummary(state: DashboardUiState, onSyncNow: () -> Unit) {
 private fun ActivitySection(
     items: List<ActivityItem>,
     filter: ActivityFilter,
+    query: String,
     onFilterChanged: (ActivityFilter) -> Unit,
+    onSearchChanged: (String) -> Unit,
     onSelect: (ActivityItem) -> Unit
 ) {
     SectionHeader("Activity")
 
     Spacer(Modifier.height(Spacing.small))
 
-    SegmentedFilter(
-        options = ActivityFilter.entries.map { it.label },
-        selectedIndex = ActivityFilter.entries.indexOf(filter),
-        onSelect = { index -> onFilterChanged(ActivityFilter.entries[index]) }
+    // For the customer who comes back: "I came at 11:50 and withdrew fifty cedis." Type or
+    // paste their number and every transaction for it appears, across all dates, with the
+    // exact time. Part of a number works too — "the one ending 3456".
+    OutlinedTextField(
+        value = query,
+        onValueChange = onSearchChanged,
+        placeholder = { Text("Search by customer number") },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        trailingIcon = if (query.isNotEmpty()) {
+            {
+                IconButton(onClick = { onSearchChanged("") }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                }
+            }
+        } else {
+            null
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        modifier = Modifier.fillMaxWidth()
     )
+
+    Spacer(Modifier.height(Spacing.small))
+
+    val searching = query.isNotBlank()
+
+    if (!searching) {
+        SegmentedFilter(
+            options = ActivityFilter.entries.map { it.label },
+            selectedIndex = ActivityFilter.entries.indexOf(filter),
+            onSelect = { index -> onFilterChanged(ActivityFilter.entries[index]) }
+        )
+    } else if (items.isNotEmpty()) {
+        Text(
+            "${items.size} ${if (items.size == 1) "transaction" else "transactions"} for this number",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 
     Spacer(Modifier.height(Spacing.medium))
 
     if (items.isEmpty()) {
-        EmptyState(
-            title = when (filter) {
-                ActivityFilter.TODAY -> "No transactions today"
-                ActivityFilter.YESTERDAY -> "No transactions yesterday"
-                ActivityFilter.LAST_SEVEN_DAYS -> "No transactions this week"
-            },
-            detail = "Everything you record on this device appears here, newest first."
-        )
+        if (searching) {
+            EmptyState(
+                title = if (query.count { it.isDigit() } < 3) "Keep typing" else "No transactions for this number",
+                detail = if (query.count { it.isDigit() } < 3) {
+                    "Enter at least three digits of the customer's number."
+                } else {
+                    "Nothing on this phone matches. It may have been recorded on another device — the owner can search every device from the web dashboard."
+                }
+            )
+        } else {
+            EmptyState(
+                title = when (filter) {
+                    ActivityFilter.TODAY -> "No transactions today"
+                    ActivityFilter.YESTERDAY -> "No transactions yesterday"
+                    ActivityFilter.LAST_SEVEN_DAYS -> "No transactions this week"
+                },
+                detail = "Everything you record on this device appears here, newest first."
+            )
+        }
         return
     }
 
@@ -538,11 +609,17 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
             Text(
                 buildString {
                     append(item.provider)
+                    // The number and the exact time are what settle a complaint, so every row
+                    // carries both rather than hiding the number behind a tap.
+                    item.customerPhone?.let {
+                        append(" · ")
+                        append(GhanaPhoneNumber.display(it))
+                    }
                     append(" · ")
                     append(formatClock(item.atUtcMillis))
                     // Worth saying: an agent who did not type this needs to know where it
                     // came from before they trust it.
-                    if (item.capturedAutomatically) append(" · from SMS")
+                    if (item.capturedAutomatically) append(" · SMS")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -587,9 +664,14 @@ private fun DeliveryLabel(delivery: ActivityDelivery) {
 }
 
 /** Local wall-clock time. Ghana observes UTC+0 year-round, so this is also the business day. */
-private fun formatClock(utcMillis: Long): String =
-    DateTimeFormatter.ofPattern("HH:mm")
-        .format(Instant.ofEpochMilli(utcMillis).atZone(ZoneId.systemDefault()))
+private fun formatClock(utcMillis: Long): String {
+    val at = Instant.ofEpochMilli(utcMillis).atZone(ZoneId.systemDefault())
+    // The time alone for today; the date as well for anything older. A customer search spans
+    // every date, and "11:50" on its own does not say which day the customer came.
+    val today = java.time.LocalDate.now(ZoneId.systemDefault())
+    val pattern = if (at.toLocalDate() == today) "HH:mm" else "d MMM, HH:mm"
+    return DateTimeFormatter.ofPattern(pattern).format(at)
+}
 
 @Composable
 private fun CaptureModeRow(title: String, detail: String) {
@@ -657,6 +739,13 @@ fun CaptureScreen(
     onSubmit: () -> Unit,
     onDone: () -> Unit
 ) {
+    // The amount has the cursor when the screen opens and the keyboard's Next goes to the
+    // customer's number: the two fields every cash-in and cash-out needs, with no tapping
+    // between them. Recording at a busy counter is measured in seconds.
+    val amountFocus = remember { FocusRequester() }
+    val customerFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { amountFocus.requestFocus() } }
+
     // While a confirmation is showing, the form is done with. Keeping the Save button live
     // underneath it invited a second identical capture.
     val confirmation = state.lastResult
@@ -748,8 +837,42 @@ fun CaptureScreen(
                     state.error == CaptureError.SUB_PESEWA_PRECISION,
                 enabled = !state.isSubmitting,
                 // Decimal, not number: pesewas matter and the domain rejects rounding.
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth()
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { customerFocus.requestFocus() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(amountFocus)
+            )
+
+            // Directly under the amount, and required for cash in and cash out. It sat under
+            // "Optional" below the network choice, and a ₵50 cash-out was recorded in testing
+            // with no number — which is the one field that answers a customer who comes back
+            // to complain.
+            Spacer(Modifier.height(20.dp))
+            FieldLabel(
+                if (state.transactionType.requiresCustomer) "Customer number" else "Customer number (optional)"
+            )
+
+            OutlinedTextField(
+                value = state.customerPhone,
+                onValueChange = onCustomerPhoneChanged,
+                placeholder = { Text("024 412 3456") },
+                textStyle = MaterialTheme.typography.titleLarge,
+                singleLine = true,
+                isError = state.error == CaptureError.MISSING_CUSTOMER_NUMBER ||
+                    state.error == CaptureError.INVALID_CUSTOMER_NUMBER,
+                supportingText = {
+                    // Echoed back grouped, so a digit typed twice is visible before saving.
+                    val shown = GhanaPhoneNumber.normalise(state.customerPhone)
+                    Text(
+                        when {
+                            shown != null -> "✓ " + GhanaPhoneNumber.display(shown)
+                            state.customerPhone.isBlank() -> "The number that sent or received the money."
+                            else -> "10 digits, starting 02 or 05."
+                        }
+                    )
+                },
+                enabled = !state.isSubmitting,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth().focusRequester(customerFocus)
             )
 
             Spacer(Modifier.height(20.dp))
@@ -774,17 +897,6 @@ fun CaptureScreen(
             Spacer(Modifier.height(20.dp))
             FieldLabel("Optional")
 
-            OutlinedTextField(
-                value = state.customerPhone,
-                onValueChange = onCustomerPhoneChanged,
-                label = { Text("Customer number") },
-                singleLine = true,
-                enabled = !state.isSubmitting,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = state.reference,
@@ -1264,5 +1376,85 @@ fun DataLostNotice(onDismiss: () -> Unit) {
         Spacer(Modifier.height(Spacing.large))
 
         ZaziPrimaryButton(text = "Continue", onClick = onDismiss)
+    }
+}
+
+/**
+ * "Download statement" — for the day, the week, the month or the year, as a PDF or for Excel.
+ *
+ * <p>The tester who asked for this uses a rival app mainly for it: a statement to hand a
+ * customer, or to check the day against. It opens the share sheet when ready, so the file goes
+ * straight to WhatsApp, email or Files — wherever the agent keeps things.</p>
+ */
+@Composable
+private fun StatementButton(
+    busy: Boolean,
+    error: String?,
+    onDownload: (StatementRange, StatementKind) -> Unit
+) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    var range by rememberSaveable { mutableStateOf(StatementRange.TODAY) }
+
+    OutlinedButton(
+        onClick = { open = true },
+        enabled = !busy,
+        modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
+    ) {
+        if (busy) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(Spacing.snug))
+            Text("Preparing statement…")
+        } else {
+            Text("Download statement")
+        }
+    }
+
+    error?.let {
+        Spacer(Modifier.height(Spacing.tight))
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+
+    if (open) {
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("Download statement") },
+            text = {
+                Column {
+                    StatementRange.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { range = option }
+                                .heightIn(min = Sizing.minimumTouchTarget),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = range == option, onClick = { range = option })
+                            Spacer(Modifier.width(Spacing.snug))
+                            Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                    Spacer(Modifier.height(Spacing.small))
+                    Text(
+                        "Every transaction with the customer's number and the time, and the " +
+                            "totals at the top. Needs data or Wi-Fi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { open = false; onDownload(range, StatementKind.EXCEL) }) {
+                        Text("Excel")
+                    }
+                    TextButton(onClick = { open = false; onDownload(range, StatementKind.PDF) }) {
+                        Text("PDF")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { open = false }) { Text("Cancel") }
+            }
+        )
     }
 }

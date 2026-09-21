@@ -183,7 +183,13 @@ else
                     <span class="time">@t.TransactionAt.ToLocalTime().ToString("HH:mm")</span>
                     <span class="what">
                         <span class="kind">@Describe(t.Type)</span>
-                        <span class="meta">@NetworkName(t.Network) · @AgentName(t.AgentId)</span>
+                        <span class="meta">
+                            @if (!string.IsNullOrWhiteSpace(t.CustomerPhoneNumber))
+                            {
+                                @GhanaPhoneNumber.Display(t.CustomerPhoneNumber)<text> · </text>
+                            }
+                            @NetworkName(t.Network) · @AgentName(t.AgentId)
+                        </span>
                     </span>
                     @* Signed by the cash it moved, which is what the agent's till felt. *@
                     <span class="amount @(incoming ? "in" : "out")">
@@ -192,6 +198,11 @@ else
                 </li>
             }
         </ul>
+    }
+
+    @if (_latest.Count > 0)
+    {
+        <p class="more"><a href="/transactions">All transactions, search and statements →</a></p>
     }
 
     @* Housekeeping, not news. It was two cards of its own; it is one line at the foot. *@

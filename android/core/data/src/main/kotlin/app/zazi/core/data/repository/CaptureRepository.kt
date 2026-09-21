@@ -1,5 +1,6 @@
 package app.zazi.core.data.repository
 
+import app.zazi.core.domain.model.GhanaPhoneNumber
 import app.zazi.core.data.capture.CaptureOutcome
 import app.zazi.core.data.capture.ManualCaptureRequest
 import app.zazi.core.data.capture.MinorUnits
@@ -69,7 +70,9 @@ class CaptureRepository(
         amount = request.amount,
         currency = request.currency,
         reference = request.reference,
-        customerPhoneNumber = request.customerPhoneNumber,
+        // One spelling for every number, however it arrived, so a search finds them all.
+        customerPhoneNumber = GhanaPhoneNumber.normalise(request.customerPhoneNumber)
+            ?: request.customerPhoneNumber,
         occurredAtUtcMillis = request.occurredAtUtcMillis,
         parserName = "ManualEntry",
         parserVersion = MANUAL_PARSER_VERSION,
@@ -118,7 +121,10 @@ class CaptureRepository(
             amount = parsed.amount,
             currency = DEFAULT_CURRENCY,
             reference = parsed.reference,
-            customerPhoneNumber = parsed.customerPhoneNumber,
+            // Provider SMS write numbers as 233…; stored as 0… like everything else. Kept as
+            // read if it will not normalise, rather than dropped — a number is evidence.
+            customerPhoneNumber = GhanaPhoneNumber.normalise(parsed.customerPhoneNumber)
+                ?: parsed.customerPhoneNumber,
             // An SMS carries no trustworthy send time, so the moment the handset saw it is
             // the honest answer. It is also what the fingerprint uses, so a redelivery of
             // the same message must reuse it — see the duplicate check below.

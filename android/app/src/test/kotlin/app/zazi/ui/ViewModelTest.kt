@@ -40,6 +40,7 @@ class CaptureViewModelTest {
     fun `a valid cash-in is captured and confirmed as saved locally`() = runTest {
         val viewModel = newViewModel()
         viewModel.onAmountChanged("500.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit(isOnline = true)).isTrue()
 
@@ -56,6 +57,7 @@ class CaptureViewModelTest {
     fun `an offline capture says it was saved offline rather than failed`() = runTest {
         val viewModel = newViewModel()
         viewModel.onAmountChanged("120.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit(isOnline = false)).isTrue()
 
@@ -86,6 +88,7 @@ class CaptureViewModelTest {
     fun `sub-pesewa precision is rejected rather than rounded`() = runTest {
         val viewModel = newViewModel()
         viewModel.onAmountChanged("1.005")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit()).isFalse()
 
@@ -99,14 +102,17 @@ class CaptureViewModelTest {
         val viewModel = newViewModel()
 
         viewModel.onAmountChanged("abc")
+        viewModel.onCustomerPhoneChanged("0244123456")
         assertThat(viewModel.submit()).isFalse()
         assertThat(viewModel.state.value.error).isEqualTo(CaptureError.INVALID_AMOUNT)
 
         viewModel.onAmountChanged("0")
+        viewModel.onCustomerPhoneChanged("0244123456")
         assertThat(viewModel.submit()).isFalse()
         assertThat(viewModel.state.value.error).isEqualTo(CaptureError.AMOUNT_TOO_SMALL)
 
         viewModel.onAmountChanged("-10")
+        viewModel.onCustomerPhoneChanged("0244123456")
         assertThat(viewModel.submit()).isFalse()
 
         assertThat(requests).isEmpty()
@@ -117,6 +123,7 @@ class CaptureViewModelTest {
         throwOnCapture = true
         val viewModel = newViewModel()
         viewModel.onAmountChanged("300.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit()).isFalse()
 
@@ -131,6 +138,7 @@ class CaptureViewModelTest {
         nextOutcome = CaptureOutcome.HeldForReview("evidence-2", "b".repeat(64), "needs review")
         val viewModel = newViewModel()
         viewModel.onAmountChanged("400.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit()).isFalse()
 
@@ -143,6 +151,7 @@ class CaptureViewModelTest {
         nextOutcome = CaptureOutcome.DuplicateOnThisDevice("CTX-existing", "c".repeat(64))
         val viewModel = newViewModel()
         viewModel.onAmountChanged("250.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit()).isFalse()
         assertThat(viewModel.state.value.error).isEqualTo(CaptureError.DUPLICATE_ON_DEVICE)
@@ -153,6 +162,7 @@ class CaptureViewModelTest {
         repositoryAvailable = false
         val viewModel = newViewModel()
         viewModel.onAmountChanged("100.00")
+        viewModel.onCustomerPhoneChanged("0244123456")
 
         assertThat(viewModel.submit()).isFalse()
         assertThat(viewModel.state.value.error).isEqualTo(CaptureError.NO_ACTIVE_DEVICE)
@@ -195,6 +205,69 @@ class CaptureViewModelTest {
         assertThat(offered).doesNotContain("REVERSAL")
         assertThat(offered).doesNotContain("ADJUSTMENT")
         assertThat(offered).doesNotContain("UNKNOWN")
+    }
+
+    // ─── The customer number ─────────────────────────────────────────────────
+    // A ₵50 cash-out was recorded in testing with no number. The number is what answers a
+    // customer who comes back to complain, so for cash in and cash out it is required.
+
+    @Test
+    fun `a cash-out cannot be submitted without the customer's number`() = runTest {
+        val viewModel = newViewModel()
+        viewModel.onTypeChanged(CaptureTransactionType.CASH_OUT)
+        viewModel.onAmountChanged("50.00")
+
+        assertThat(viewModel.state.value.canSubmit).isFalse()
+        assertThat(viewModel.submit()).isFalse()
+        assertThat(requests).isEmpty()
+    }
+
+    @Test
+    fun `a cash-in cannot be submitted without the customer's number either`() = runTest {
+        val viewModel = newViewModel()
+        viewModel.onTypeChanged(CaptureTransactionType.CASH_IN)
+        viewModel.onAmountChanged("50.00")
+
+        assertThat(viewModel.state.value.canSubmit).isFalse()
+    }
+
+    @Test
+    fun `a number that is not a Ghanaian mobile number is refused and nothing is saved`() = runTest {
+        val viewModel = newViewModel()
+        viewModel.onTypeChanged(CaptureTransactionType.CASH_OUT)
+        viewModel.onAmountChanged("50.00")
+        viewModel.onCustomerPhoneChanged("12345")
+
+        assertThat(viewModel.submit()).isFalse()
+        assertThat(viewModel.state.value.error).isEqualTo(CaptureError.INVALID_CUSTOMER_NUMBER)
+        assertThat(requests).isEmpty()
+    }
+
+    @Test
+    fun `the number is stored in one spelling however it was typed`() = runTest {
+        for (typed in listOf("0244 123 456", "+233 24 412 3456", "233244123456", "244123456")) {
+            requests.clear()
+            val viewModel = newViewModel()
+            viewModel.onTypeChanged(CaptureTransactionType.CASH_OUT)
+            viewModel.onAmountChanged("50.00")
+            viewModel.onCustomerPhoneChanged(typed)
+
+            viewModel.submit()
+
+            // One spelling, so a search for any of these finds all of them.
+            assertThat(requests.single().customerPhoneNumber).isEqualTo("0244123456")
+        }
+    }
+
+    @Test
+    fun `commission needs no customer number`() = runTest {
+        val viewModel = newViewModel()
+        viewModel.onTypeChanged(CaptureTransactionType.COMMISSION)
+        viewModel.onAmountChanged("12.50")
+
+        assertThat(viewModel.state.value.canSubmit).isTrue()
+        assertThat(viewModel.submit()).isTrue()
+        assertThat(requests.single().customerPhoneNumber).isNull()
     }
 
     private fun newViewModel() = CaptureViewModel(

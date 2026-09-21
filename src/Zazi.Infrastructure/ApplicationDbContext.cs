@@ -298,6 +298,10 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.ProviderReference).HasMaxLength(200);
             builder.Property(x => x.CustomerPhoneNumber).HasMaxLength(30);
             builder.Property(x => x.Notes).HasMaxLength(1000);
+
+            // "What did this number do?" — asked at the counter when a customer disputes a
+            // transaction, and answered by an exact match on the normalised number.
+            builder.HasIndex(x => new { x.OrganizationId, x.CustomerPhoneNumber });
             builder.Property(x => x.CorrectionReason).HasMaxLength(1000);
             builder.Property(x => x.ClientTransactionId).HasMaxLength(64);
             builder.Property(x => x.EvidenceFingerprint).HasMaxLength(64);

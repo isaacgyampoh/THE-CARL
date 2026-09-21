@@ -288,7 +288,15 @@ public record TransactionQuery(
     int Page,
     int PageSize,
     DateTimeOffset? FromUtc = null,
-    DateTimeOffset? ToUtc = null);
+    DateTimeOffset? ToUtc = null,
+    /// <summary>
+    /// A customer number, whole or in part. A whole number finds that customer however it was
+    /// stored; three or more digits find every number containing them.
+    /// </summary>
+    string? CustomerPhone = null,
+    TransactionType? Type = null,
+    Guid? AgentId = null,
+    string? Network = null);
 
 public interface ITransactionService
 {
