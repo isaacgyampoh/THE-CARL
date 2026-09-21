@@ -256,9 +256,20 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Invalid credentials.");
         }
 
+        // From here on the password is known to be right, so saying *why* sign-in is refused
+        // tells nobody anything they did not already have. These used to read "Invalid
+        // credentials" like a wrong password, and people who had just signed up were told
+        // their correct password was wrong — which sent them to try it again, and each retry
+        // counted towards the lockout.
         if (!user.IsActive)
         {
-            throw new UnauthorizedAccessException("Invalid credentials.");
+            throw AccountState.IsAwaitingEmailVerification(user)
+                ? new SignInRefusedException(
+                    SignInRefusal.EmailNotVerified,
+                    "The email address has not been confirmed yet.")
+                : new SignInRefusedException(
+                    SignInRefusal.Disabled,
+                    "The account is disabled.");
         }
 
         if (user.LockoutUntilUtc.HasValue && user.LockoutUntilUtc.Value > DateTimeOffset.UtcNow)
@@ -272,7 +283,9 @@ public class AuthService : IAuthService
                 ActorType = "User"
             });
             await _dbContext.SaveChangesAsync(cancellationToken);
-            throw new UnauthorizedAccessException("Account is temporarily locked.");
+            throw new SignInRefusedException(
+                SignInRefusal.TemporarilyLocked,
+                "Account is temporarily locked.");
         }
 
         user.FailedLoginAttempts = 0;

@@ -108,14 +108,22 @@ public sealed class PasswordResetService : IPasswordResetService
         // enumerates the same way — and resetting only one of them would silently leave the
         // person locked out of the other with no indication why.
         //
-        // Inactive accounts are excluded: an owner who has not verified their address yet needs
-        // the verification link, not a password reset, and issuing one would activate an
-        // account by the back door. Activation-only workers are excluded because they have no
-        // password to reset.
+        // Active accounts, and owners still waiting on their confirmation link.
+        //
+        // The second group used to be excluded, on the reasoning that a reset would activate an
+        // account "by the back door". It is not a back door: the reset link goes to the same
+        // mailbox the confirmation link does, and opening it proves the same thing. Excluding
+        // them made a dead end — an owner who mistyped their password at signup, or whose
+        // confirmation link expired, could not sign in, could not reset, and could not sign up
+        // again because the address was taken. Three real owners hit exactly that.
+        //
+        // Deliberately disabled accounts stay excluded; AccountState tells the two apart.
+        // Activation-only workers are excluded because they have no password to reset.
         var candidates = await _dbContext.Users
             .Where(u => u.Email == normalized
-                && u.IsActive
                 && u.CredentialType == UserCredentialType.Password)
+            .Where(u => u.IsActive
+                || (!u.IsActive && !u.EmailVerified && u.EmailVerificationSentAtUtc != null))
             .ToListAsync(cancellationToken);
 
         if (candidates.Count == 0)
@@ -206,10 +214,15 @@ public sealed class PasswordResetService : IPasswordResetService
         var match = await _dbContext.Users
             .AsNoTracking()
             .Where(u => u.PasswordResetTokenHash == hash)
-            .Select(u => new { u.PasswordResetExpiresAtUtc, u.IsActive })
+            .Select(u => new
+            {
+                u.PasswordResetExpiresAtUtc,
+                Eligible = u.IsActive
+                    || (!u.IsActive && !u.EmailVerified && u.EmailVerificationSentAtUtc != null)
+            })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (match is null || !match.IsActive)
+        if (match is null || !match.Eligible)
         {
             return PasswordResetTokenState.InvalidOrAlreadyUsed;
         }
@@ -244,10 +257,16 @@ public sealed class PasswordResetService : IPasswordResetService
         var pending = await _dbContext.Users
             .AsNoTracking()
             .Where(u => u.PasswordResetTokenHash == hash)
-            .Select(u => new { u.Id, u.PasswordResetExpiresAtUtc, u.IsActive })
+            .Select(u => new
+            {
+                u.Id,
+                u.PasswordResetExpiresAtUtc,
+                Eligible = u.IsActive
+                    || (!u.IsActive && !u.EmailVerified && u.EmailVerificationSentAtUtc != null)
+            })
             .SingleOrDefaultAsync(cancellationToken);
 
-        if (pending is null || !pending.IsActive)
+        if (pending is null || !pending.Eligible)
         {
             return new PasswordResetResult(PasswordResetOutcome.InvalidOrAlreadyUsed);
         }
@@ -306,6 +325,23 @@ public sealed class PasswordResetService : IPasswordResetService
         user.FailedLoginAttempts = 0;
         user.LockoutUntilUtc = null;
         user.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // An owner who never opened their confirmation link has now opened a link sent to the
+        // same address, which proves what the confirmation link would have. Leaving them
+        // unverified would hand them a new password they still could not sign in with.
+        var wasAwaitingVerification = AccountState.IsAwaitingEmailVerification(user);
+        if (wasAwaitingVerification)
+        {
+            AccountState.MarkEmailVerified(user, DateTimeOffset.UtcNow);
+            _dbContext.AuditLogs.Add(new AuditLogEntry
+            {
+                OrganizationId = user.OrganizationId,
+                UserId = user.Id,
+                Action = "EMAIL_VERIFIED",
+                Details = "Email confirmed by completing a password reset sent to the address.",
+                ActorType = "Self"
+            });
+        }
 
         _dbContext.AuditLogs.Add(new AuditLogEntry
         {

@@ -48,28 +48,57 @@ public static class OnboardingEmails
     /// browser is identical either way, so nobody can enumerate customers through the form; the
     /// real account holder learns what happened here, where only they can read it.
     /// </remarks>
-    public static EmailMessage AlreadyRegistered(string toAddress, string signInUrl)
+    /// <summary>
+    /// Sent when someone signs up with an address that already has an account.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The likeliest reader is not an attacker but the owner of the address, signing up again
+    /// because the first attempt did not work — usually a mistyped password. Their new password
+    /// was not saved: a second signup keeps the first account exactly as it was. The previous
+    /// version of this email said only "sign in instead", which sent them to the sign-in page
+    /// with the password that had just been discarded, to be told it was incorrect.
+    /// </para>
+    /// <para>
+    /// So the primary action is setting a new password, which works whether or not they ever
+    /// confirmed the address, and the email says plainly which password is in force.
+    /// </para>
+    /// </remarks>
+    public static EmailMessage AlreadyRegistered(string toAddress, string signInUrl, string forgotPasswordUrl)
     {
         var html = EmailLayout.Page_(string.Join("\n", new[]
         {
             EmailLayout.Paragraph(
-                "Someone tried to create a Zazi account with this email address, but one already exists."),
-            EmailLayout.Action("Sign in instead", signInUrl),
+                "You tried to create a Zazi account with this email address, but one already exists."),
+            EmailLayout.Paragraph(
+                "No new account was created, and the password you just typed was not saved — "
+                + "your account still has the password from when you first signed up."),
+            EmailLayout.Paragraph(
+                "Not sure what that password was? Set a new one. It works even if you never "
+                + "confirmed your email, and it confirms it for you."),
+            EmailLayout.Action("Set a new password", forgotPasswordUrl),
             EmailLayout.Footnote(
-                "If that was you, sign in above. If it was not, nothing has changed and no new "
-                + "account was created — but it is worth knowing that someone has your address.")
+                $"Remember it after all? Sign in at {signInUrl}. If you did not try to sign up, "
+                + "nothing has changed — but it is worth knowing that someone has your address.")
         }));
 
         var text = $"""
             Zazi
 
-            Someone tried to create a Zazi account with this email address, but one
+            You tried to create a Zazi account with this email address, but one
             already exists.
 
-            Sign in instead: {signInUrl}
+            No new account was created, and the password you just typed was not
+            saved — your account still has the password from when you first signed up.
 
-            If that was you, sign in above. If it was not, nothing has changed and no new
-            account was created — but it is worth knowing that someone has your address.
+            Not sure what that password was? Set a new one. It works even if you never
+            confirmed your email, and it confirms it for you:
+            {forgotPasswordUrl}
+
+            Remember it after all? Sign in: {signInUrl}
+
+            If you did not try to sign up, nothing has changed — but it is worth
+            knowing that someone has your address.
             """;
 
         return new EmailMessage(toAddress, "You already have a Zazi account", html, text);

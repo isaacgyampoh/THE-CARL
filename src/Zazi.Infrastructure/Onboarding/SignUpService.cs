@@ -161,7 +161,7 @@ public sealed class SignUpService : ISignUpService
             // No account is created and the caller is not told. The person who owns the address
             // is told, by email, because they are the only one who should learn this.
             await SendAsync(
-                OnboardingEmails.AlreadyRegistered(email, _portal.SignInUrl()),
+                OnboardingEmails.AlreadyRegistered(email, _portal.SignInUrl(), _portal.ForgotPasswordUrl()),
                 cancellationToken);
 
             _logger.LogInformation(
@@ -230,14 +230,10 @@ public sealed class SignUpService : ISignUpService
             return new EmailVerificationResult(EmailVerificationOutcome.Expired);
         }
 
-        user.EmailVerified = true;
-        user.IsActive = true;
-
-        // Cleared, which is what makes the token single-use. A verification link forwarded in a
-        // mailbox someone else later reads must not still work.
-        user.EmailVerificationTokenHash = null;
-        user.EmailVerificationExpiresAtUtc = null;
-        user.UpdatedAt = DateTimeOffset.UtcNow;
+        // Also clears the token, which is what makes it single-use: a verification link
+        // forwarded in a mailbox someone else later reads must not still work. Shared with the
+        // password reset path, which verifies an owner who never opened this link.
+        AccountState.MarkEmailVerified(user, DateTimeOffset.UtcNow);
 
         _dbContext.AuditLogs.Add(new AuditLogEntry
         {

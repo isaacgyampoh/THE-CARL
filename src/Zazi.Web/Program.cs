@@ -102,30 +102,72 @@ builder.Services.AddRateLimiter(options =>
     // has to guess. The Android sync engine already reads Retry-After and prefers it to its
     // own backoff curve — the header was simply never sent, which left that path dead and
     // the handsets guessing. The limiter knows exactly when the window reopens, so it says so.
-    options.OnRejected = (context, _) =>
+    options.OnRejected = async (context, cancellationToken) =>
     {
+        var seconds = 60;
         if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
         {
             // Seconds, not an HTTP date: both are legal, and the client honours the seconds
             // form only. Rounded up, because rounding down invites a retry that is refused
             // again a fraction of a second early.
-            var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+            seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
             context.HttpContext.Response.Headers.RetryAfter =
                 seconds.ToString(CultureInfo.InvariantCulture);
         }
 
-        return ValueTask.CompletedTask;
+        // Everything on this host is read by a person in a browser. A bare 429 renders as a
+        // blank error page with no way forward, which is what an owner saw on the sign-in they
+        // had just earned by resetting their password. Sign-in goes back to its own page with a
+        // message; the recovery forms get a short page that says when to try again.
+        var request = context.HttpContext.Request;
+        if (request.Path.Equals("/auth/sign-in", StringComparison.OrdinalIgnoreCase))
+        {
+            context.HttpContext.Response.StatusCode = StatusCodes.Status303SeeOther;
+            context.HttpContext.Response.Headers.Location = "/sign-in?error=busy";
+            return;
+        }
+
+        context.HttpContext.Response.ContentType = "text/html; charset=utf-8";
+        await context.HttpContext.Response.WriteAsync(
+            "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width\">"
+            + "<title>Please wait · Zazi</title>"
+            + "<body style=\"font:16px/1.5 system-ui,sans-serif;max-width:28rem;margin:3rem auto;padding:0 1rem\">"
+            + "<h1 style=\"font-size:1.3rem\">Too many attempts from this connection</h1>"
+            + $"<p>Please wait about {seconds} seconds, then go back and try again.</p>"
+            + "<p><a href=\"/sign-in\">Back to sign in</a></p></body>",
+            cancellationToken);
     };
 
-    options.AddPolicy(WebRateLimitPolicies.Authentication, context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 10,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0
-            }));
+    // Two buckets, each counting submissions only. See WebRateLimitPolicies.Recovery for why
+    // they were split: the recovery path was being charged against the sign-in it leads to.
+    static RateLimitPartition<string> SubmissionsOnly(HttpContext context, string bucket)
+    {
+        var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        // Loading a page is not an attempt at anything. Counting it meant that reading the
+        // forgot-password form used up an allowance meant for guessing passwords.
+        //
+        // Its own key, and that is load-bearing. The limiter caches a partition by key and
+        // builds it once, from whichever request arrives first. Sharing one key between these
+        // two branches meant a page load created an unlimited partition that every later
+        // submission then reused — silently switching off the limit this exists to enforce.
+        if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+        {
+            return RateLimitPartition.GetNoLimiter($"{bucket}:read:{client}");
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter($"{bucket}:submit:{client}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    }
+
+    options.AddPolicy(WebRateLimitPolicies.Authentication,
+        context => SubmissionsOnly(context, WebRateLimitPolicies.Authentication));
+    options.AddPolicy(WebRateLimitPolicies.Recovery,
+        context => SubmissionsOnly(context, WebRateLimitPolicies.Recovery));
 });
 
 builder.Services.AddAuthorization(options =>

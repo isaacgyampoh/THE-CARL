@@ -41,6 +41,16 @@
         </p>
         <p class="muted">The link works once and expires in 24 hours.</p>
 
+        @* Shown to everyone, so it reveals nothing about whether this particular address was
+           new. It names the trap directly: a second signup for an existing address keeps the
+           first password, and people who signed up again were then told their new password
+           was wrong. *@
+        <p class="muted">
+            <strong>Signed up with this address before?</strong> Then no new account was created
+            and your original password still applies. If you don't remember it,
+            <a href="@ForgotPasswordHref">set a new password</a>.
+        </p>
+
         @if (_emailFailed)
         {
             @* Said plainly rather than hidden. The account exists; what failed was the sending,
@@ -89,6 +99,14 @@
                        autocomplete="new-password" />
             <p class="muted">@PasswordPolicy.Requirement</p>
 
+            @* The password is typed into a field that hides it, usually on a phone, exactly
+               once. One slip and the account holds a password its owner has never seen — and
+               until now nothing caught it, so the first they knew was "incorrect password" at
+               sign-in. Asking twice is the standard fix and the cheapest one. *@
+            <label for="password-confirm">Type the password again</label>
+            <InputText id="password-confirm" @bind-Value="_input.ConfirmPassword" type="password"
+                       autocomplete="new-password" />
+
             @if (_error is not null)
             {
                 <p class="error" role="alert">@_error</p>
@@ -111,6 +129,10 @@
     [SupplyParameterFromForm(FormName = "resend-verification")]
     private ResendInput _resend { get; set; } = new();
 
+    private string ForgotPasswordHref => string.IsNullOrWhiteSpace(_sentTo)
+        ? "/forgot-password"
+        : $"/forgot-password?email={Uri.EscapeDataString(_sentTo)}";
+
     private bool _submitted;
     private bool _emailFailed;
     private bool _resent;
@@ -122,6 +144,19 @@
     {
         _busy = true;
         _error = null;
+
+        // Checked here, before the account exists. After creation a mismatch cannot be fixed
+        // by signing up again — a second signup for the same address keeps the first password.
+        if (!string.Equals(_input.Password, _input.ConfirmPassword, StringComparison.Ordinal))
+        {
+            _error = "The two passwords don't match. Type them again.";
+            // Neither field is sent back: re-displaying a password in the page is exactly what
+            // a password field exists to avoid.
+            _input.Password = null;
+            _input.ConfirmPassword = null;
+            _busy = false;
+            return;
+        }
 
         try
         {
@@ -184,6 +219,7 @@
         public string? Email { get; set; }
         public string? PhoneNumber { get; set; }
         public string? Password { get; set; }
+        public string? ConfirmPassword { get; set; }
     }
 
     private sealed class ResendInput

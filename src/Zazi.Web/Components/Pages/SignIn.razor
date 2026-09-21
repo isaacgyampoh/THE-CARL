@@ -1,6 +1,8 @@
 @page "/sign-in"
 @using Microsoft.AspNetCore.Authorization
+@using Zazi.Application.Onboarding
 @attribute [AllowAnonymous]
+@inject ISignUpService Onboarding
 
 <PageTitle>Sign in · Zazi</PageTitle>
 
@@ -15,28 +17,106 @@
     </div>
     <h1 class="purpose">Sign in to your account</h1>
 
+    @if (_resent)
+    {
+        <div class="notice" role="status">
+            <p><strong>Confirmation link sent.</strong></p>
+            <p>
+                If <strong>@_resentTo</strong> has an account waiting to be confirmed, a new link
+                is on its way. Open it, then come back and sign in. It can take a minute to arrive —
+                check spam if it does not.
+            </p>
+        </div>
+    }
+
     @* A plain form post, not an interactive submit: the sign-in response is what writes the
        authentication cookie, and a Blazor circuit has already sent its headers. *@
     <form method="post" action="/auth/sign-in">
         <AntiforgeryToken />
         <label for="email">Email</label>
         @* Focus starts here: this page exists to be typed into, and an agent signing in
-           on a phone should not have to tap the field first. *@
+           on a phone should not have to tap the field first. Prefilled after a failed attempt,
+           so the person fixes the password rather than retyping an address that was fine. *@
         <input id="email" name="email" type="email" autocomplete="username"
-               inputmode="email" autofocus required />
+               inputmode="email" autofocus required value="@Email" />
 
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
 
-        @if (Error is not null)
+        @switch (ErrorCode)
         {
-            <p class="error" role="alert">@Error</p>
+            case "invalid":
+                @* Unknown address and wrong password must read identically, so this cannot say
+                   which it was. What it can do is name the two traps that produced every real
+                   report of this: signing up twice, and a typo at signup. *@
+                <div class="error" role="alert">
+                    <p><strong>That email and password don't match.</strong></p>
+                    <p>
+                        If you signed up more than once, only your <em>first</em> password was
+                        kept. If you are not sure what it is,
+                        <a href="@ForgotPasswordHref">set a new password</a> — it takes a minute
+                        and works even if you never confirmed your email.
+                    </p>
+                </div>
+                break;
+
+            case "unverified":
+                @* Only shown when the password was right, so it gives nothing away. *@
+                <div class="error" role="alert">
+                    <p><strong>Your password is right — confirm your email first.</strong></p>
+                    <p>
+                        When you signed up we emailed a confirmation link to
+                        <strong>@Email</strong>. Open it, then sign in. Lost it, or it expired?
+                    </p>
+                </div>
+                break;
+
+            case "locked":
+                <div class="error" role="alert">
+                    <p><strong>Too many attempts — sign-in is paused for 15 minutes.</strong></p>
+                    <p>
+                        Wait and try again, or <a href="@ForgotPasswordHref">set a new password</a>
+                        now, which unlocks it straight away.
+                    </p>
+                </div>
+                break;
+
+            case "disabled":
+                <div class="error" role="alert">
+                    <p><strong>This account has been switched off.</strong></p>
+                    <p>Ask the owner of the business to turn it back on.</p>
+                </div>
+                break;
+
+            case "busy":
+                <p class="error" role="alert">
+                    Too many sign-in attempts from this connection. Wait a minute, then try again.
+                </p>
+                break;
+
+            case "missing":
+                <p class="error" role="alert">Enter your email and password.</p>
+                break;
+
+            case "expired":
+                <p class="error" role="alert">That form expired. Please try again.</p>
+                break;
         }
 
         <button type="submit">Sign in</button>
     </form>
 
-    <p><a href="/forgot-password">Forgot password?</a></p>
+    @* Outside the sign-in form, deliberately. A form nested inside another is invalid HTML:
+       browsers discard the inner <form> tag, and this button would submit a sign-in instead. *@
+    @if (ErrorCode == "unverified")
+    {
+        <EditForm Model="_resend" OnValidSubmit="ResendAsync" FormName="resend-from-sign-in">
+            <InputText id="resend-email" @bind-Value="_resend.Email" type="hidden" />
+            <button type="submit" class="secondary">Send a new confirmation link</button>
+        </EditForm>
+    }
+
+    <p><a href="@ForgotPasswordHref">Forgot password?</a></p>
 
     <p>New to Zazi? <a href="/sign-up">Create an account</a></p>
 </div>
@@ -45,13 +125,45 @@
     [SupplyParameterFromQuery(Name = "error")]
     private string? ErrorCode { get; set; }
 
-    // Both failures read the same, deliberately. Distinguishing "no such account" from
-    // "wrong password" would let anyone test which addresses are registered.
-    private string? Error => ErrorCode switch
+    [SupplyParameterFromQuery(Name = "email")]
+    private string? Email { get; set; }
+
+    // Its own FormName, distinct from the one on the signup page, because a static-rendered
+    // page dispatches a POST to whichever form carries the matching name.
+    [SupplyParameterFromForm(FormName = "resend-from-sign-in")]
+    private ResendInput _resend { get; set; } = new();
+
+    private bool _resent;
+    private string? _resentTo;
+
+    /// <summary>Carries the address across, so the reset form is not typed twice.</summary>
+    private string ForgotPasswordHref => string.IsNullOrWhiteSpace(Email)
+        ? "/forgot-password"
+        : $"/forgot-password?email={Uri.EscapeDataString(Email)}";
+
+    protected override void OnInitialized()
     {
-        "invalid" => "Email or password is incorrect.",
-        "missing" => "Enter your email and password.",
-        "expired" => "That form expired. Please try again.",
-        _ => null
-    };
+        // The hidden field is filled from the address that was just refused, so the button is
+        // one tap. Only when the form has not already been posted — a POST brings its own.
+        if (string.IsNullOrWhiteSpace(_resend.Email))
+        {
+            _resend.Email = Email;
+        }
+    }
+
+    private async Task ResendAsync()
+    {
+        // Reported the same way whether or not anything was sent. The service will not say
+        // either: this must not become a way to test which addresses have accounts.
+        await Onboarding.ResendVerificationAsync(_resend.Email ?? string.Empty);
+        _resent = true;
+        _resentTo = _resend.Email;
+        ErrorCode = null;
+        Email = _resend.Email;
+    }
+
+    private sealed class ResendInput
+    {
+        public string? Email { get; set; }
+    }
 }

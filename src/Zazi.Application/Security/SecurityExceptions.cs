@@ -40,3 +40,48 @@ public sealed class ConflictException : Exception
     {
     }
 }
+
+/// <summary>
+/// Why a sign-in with the <b>correct</b> password was still refused.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Every login failure used to read "Email or password is incorrect", including the ones where
+/// the password was right. Three owners who had just signed up were told their password was
+/// wrong when the real answer was "confirm your email first" or "wait fifteen minutes", and the
+/// only thing the message invited them to do — try the password again — made it worse, because
+/// each retry counted towards the lockout.
+/// </para>
+/// <para>
+/// Telling these apart leaks nothing. Each is raised only <i>after</i> the password has been
+/// verified, so the only person who can ever see one already holds the credential. "No such
+/// account" and "wrong password" still produce one identical message, which is the distinction
+/// that matters for enumeration.
+/// </para>
+/// <para>
+/// A subclass of <see cref="UnauthorizedAccessException"/> so every existing caller — the API's
+/// exception middleware, which answers 401, among them — behaves exactly as before. Only a
+/// caller that chooses to look can tell the reasons apart.
+/// </para>
+/// </remarks>
+public sealed class SignInRefusedException : UnauthorizedAccessException
+{
+    public SignInRefusedException(SignInRefusal reason, string message) : base(message)
+    {
+        Reason = reason;
+    }
+
+    public SignInRefusal Reason { get; }
+}
+
+public enum SignInRefusal
+{
+    /// <summary>Signed up, but the confirmation link in the email has not been opened.</summary>
+    EmailNotVerified,
+
+    /// <summary>Too many failed attempts; it clears on its own.</summary>
+    TemporarilyLocked,
+
+    /// <summary>Deliberately switched off by someone with the authority to.</summary>
+    Disabled
+}

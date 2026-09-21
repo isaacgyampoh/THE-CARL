@@ -223,6 +223,36 @@ button.link { background: none; border: 0; color: var(--accent); cursor: pointer
     font-size: .9rem;
 }
 
+/* Sign-in failures now carry a heading line and a sentence of what to do, rather than one
+   line of red. The paragraphs inside sit tight to each other so the block reads as one
+   message, and links in it keep the accent so the way out is visibly a way out. */
+.signin .error p { margin: 0 0 .4rem; }
+.signin .error p:last-child { margin-bottom: 0; }
+.signin .error a { font-weight: 600; }
+
+/* Good news on the same pages — a link resent — in the accent's own tint rather than red,
+   which would read as another failure. */
+.signin .notice {
+    margin: 0 0 1rem;
+    padding: .6rem .75rem;
+    background: var(--ok-bg);
+    color: var(--ok-fg);
+    border-radius: .5rem;
+    font-size: .9rem;
+}
+.signin .notice p { margin: 0 0 .4rem; }
+.signin .notice p:last-child { margin-bottom: 0; }
+
+/* A second action beside the main one — "send a new confirmation link" under a failed
+   sign-in. Outlined so the primary button stays the obvious thing to press. */
+.signin button.secondary {
+    margin-top: .75rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+.signin button.secondary:hover { background: var(--code-bg); }
+
 /* Phones. 4rem of empty space above the card cost a quarter of a small screen, and the
    card's own margin plus its padding left the fields squeezed into the middle. */
 @media (max-width: 480px) {

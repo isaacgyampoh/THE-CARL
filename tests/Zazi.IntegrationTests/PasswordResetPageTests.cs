@@ -168,27 +168,57 @@ public class PasswordResetPageTests
         using var factory = new PortalFactory(_postgres.ConnectionString!);
         using var client = NonRedirectingClient(factory);
 
-        // The existing per-IP authentication policy permits 10 a minute. This asserts the
-        // attribute on the component actually reaches the endpoint as metadata — rate limiting
-        // a Razor page is not the same mechanism as rate limiting a mapped endpoint, and
-        // assuming it works would leave the one form anybody can reach unthrottled.
+        // The recovery policy permits 10 submissions a minute. This asserts the attribute on
+        // the component actually reaches the endpoint as metadata — rate limiting a Razor page
+        // is not the same mechanism as rate limiting a mapped endpoint, and assuming it works
+        // would leave the one form anybody can reach unthrottled.
+        //
+        // Submissions, not page loads. Loads used to count, which meant reading the form spent
+        // an allowance meant for requests — and, when it shared a bucket with sign-in, spent
+        // the sign-in an owner had just earned by resetting.
         var statuses = new List<HttpStatusCode>();
         for (var attempt = 0; attempt < 14; attempt++)
         {
-            using var response = await client.GetAsync("/forgot-password");
+            var page = await client.GetAsync("/forgot-password");
+            Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+
+            var fields = HiddenFields(await page.Content.ReadAsStringAsync());
+            fields.Add(new KeyValuePair<string, string>("_input.Email", $"limit-{attempt}@example.com"));
+
+            using var response = await client.PostAsync("/forgot-password", new FormUrlEncodedContent(fields));
             statuses.Add(response.StatusCode);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                // The limiter says when to come back, and says it to a person as well.
+                Assert.True(
+                    response.Headers.Contains("Retry-After"),
+                    "A throttled response carried no Retry-After header.");
+                Assert.Contains("Too many attempts", await response.Content.ReadAsStringAsync(),
+                    StringComparison.Ordinal);
+            }
         }
 
         Assert.Contains(HttpStatusCode.TooManyRequests, statuses);
 
-        // And the limiter tells the caller when to come back, as the shared OnRejected handler
-        // does for every other policy.
-        using var rejected = await client.GetAsync("/forgot-password");
-        if (rejected.StatusCode == HttpStatusCode.TooManyRequests)
+        // And loading the page is never what trips it.
+        using var reload = await client.GetAsync("/forgot-password");
+        Assert.Equal(HttpStatusCode.OK, reload.StatusCode);
+    }
+
+    private static List<KeyValuePair<string, string>> HiddenFields(string html)
+    {
+        var fields = new List<KeyValuePair<string, string>>();
+        foreach (System.Text.RegularExpressions.Match match in
+                 System.Text.RegularExpressions.Regex.Matches(html, "<input[^>]*type=\"hidden\"[^>]*>"))
         {
-            Assert.True(
-                rejected.Headers.Contains("Retry-After"),
-                "A throttled response carried no Retry-After header.");
+            var name = System.Text.RegularExpressions.Regex.Match(match.Value, "name=\"([^\"]+)\"").Groups[1].Value;
+            var value = System.Text.RegularExpressions.Regex.Match(match.Value, "value=\"([^\"]*)\"").Groups[1].Value;
+            if (name.Length > 0)
+            {
+                fields.Add(new KeyValuePair<string, string>(name, value));
+            }
         }
+
+        return fields;
     }
 }

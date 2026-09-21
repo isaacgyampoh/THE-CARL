@@ -63,11 +63,29 @@ public static class AuthEndpoints
                 // The password never reaches this application's own storage, logs or cookie.
                 result = await auth.LoginAsync(new LoginRequest(email, password), cancellationToken);
             }
+            catch (SignInRefusedException refused)
+            {
+                // Only reachable with the correct password, so naming the reason discloses
+                // nothing — and not naming it is what had people who had just signed up
+                // retyping a right password until the lockout caught them. The address goes
+                // back with it so the page can offer to resend the confirmation link.
+                var code = refused.Reason switch
+                {
+                    SignInRefusal.EmailNotVerified => "unverified",
+                    SignInRefusal.TemporarilyLocked => "locked",
+                    _ => "disabled"
+                };
+
+                return Results.Redirect(
+                    $"/sign-in?error={code}&email={Uri.EscapeDataString(email.Trim())}");
+            }
             catch (Exception)
             {
-                // Deliberately undifferentiated: telling a caller whether the address exists
-                // turns the sign-in form into an account enumeration oracle.
-                return Results.Redirect("/sign-in?error=invalid");
+                // Unknown address and wrong password stay indistinguishable: telling a caller
+                // whether the address exists turns the sign-in form into an account
+                // enumeration oracle.
+                return Results.Redirect(
+                    $"/sign-in?error=invalid&email={Uri.EscapeDataString(email.Trim())}");
             }
 
             // Captured so every later request can check it is still current. Without it a

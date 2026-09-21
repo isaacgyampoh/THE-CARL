@@ -144,6 +144,7 @@ public class FormSubmissionTests
         fields.Add(new KeyValuePair<string, string>("_input.FullName", "Form Tester"));
         fields.Add(new KeyValuePair<string, string>("_input.Email", email));
         fields.Add(new KeyValuePair<string, string>("_input.Password", "Correct-Horse-9-Battery"));
+        fields.Add(new KeyValuePair<string, string>("_input.ConfirmPassword", "Correct-Horse-9-Battery"));
 
         using var response = await client.PostAsync("/sign-up", new FormUrlEncodedContent(fields));
         var body = await response.Content.ReadAsStringAsync();

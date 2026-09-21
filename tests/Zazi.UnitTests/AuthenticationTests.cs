@@ -125,9 +125,12 @@ public class AuthenticationTests
                 () => auth.LoginAsync(new LoginRequest("abena@carl.test", "wrong-password-value")));
         }
 
-        // Correct credentials are now refused because the account is locked.
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+        // Correct credentials are now refused because the account is locked — and, with the
+        // password right, the refusal says so rather than calling it a wrong password, which
+        // sent people to retry and extend the lockout.
+        var locked = await Assert.ThrowsAsync<SignInRefusedException>(
             () => auth.LoginAsync(new LoginRequest("abena@carl.test", "Str0ng-Passphrase!")));
+        Assert.Equal(SignInRefusal.TemporarilyLocked, locked.Reason);
 
         Assert.True(await db.Alerts.AnyAsync(a => a.Type == "MULTIPLE_FAILED_LOGINS"));
     }

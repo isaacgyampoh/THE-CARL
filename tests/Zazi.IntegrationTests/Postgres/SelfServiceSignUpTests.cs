@@ -179,8 +179,13 @@ public class SelfServiceSignUpTests
         // would actually call.
         var auth = BuildAuthService(harness.Context);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+        // Still refused, and still an UnauthorizedAccessException to every caller that does not
+        // look closer — the API answers 401 exactly as before. The portal does look, and tells
+        // the owner to confirm their email rather than that their correct password is wrong.
+        var refused = await Assert.ThrowsAsync<SignInRefusedException>(
             () => auth.LoginAsync(new LoginRequest(email, GoodPassword)));
+        Assert.IsAssignableFrom<UnauthorizedAccessException>(refused);
+        Assert.Equal(SignInRefusal.EmailNotVerified, refused.Reason);
     }
 
     [SkippableFact]
