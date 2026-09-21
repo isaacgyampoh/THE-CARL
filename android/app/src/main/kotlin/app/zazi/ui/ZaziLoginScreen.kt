@@ -1,5 +1,8 @@
 package app.zazi.ui
 
+import app.zazi.ui.brand.KenteOn
+import app.zazi.ui.brand.KenteStrip
+import app.zazi.ui.brand.KenteBackground
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -83,37 +86,36 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-        // Centred when the content fits, scrolled from the top when it does not — which is
-        // what happens in landscape, on a small screen and at a large font scale.
-        verticalArrangement = Arrangement.Center
     ) {
-        // Fixed leading space rather than a weight. A weighted spacer inside a scrolling
-        // column needs a height to divide, and the 640dp floor that gave it was a number
-        // invented for one phone: in landscape, on a small screen, or at a large font scale
-        // it forced a scroll through empty space before the form appeared.
-        Spacer(Modifier.height(Spacing.section))
+        // The woven band: the product's identity, on the same kente-inspired pattern as the
+        // owner's portal, before anything is asked of the agent. Words sit on a deep-green
+        // wash so they stay readable; the full-colour strip marks where the form begins.
+        KenteBackground(Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 56.dp, bottom = 32.dp)
+                    .alpha(progress)
+                    // Small enough to feel like settling rather than zooming.
+                    .scale(0.96f + 0.04f * progress)
+            ) {
+                ZaziWordmark(markColor = KenteOn.Accent, textColor = KenteOn.Text)
 
-        Column(
-            modifier = Modifier
-                .alpha(progress)
-                // Small enough to feel like settling rather than zooming.
-                .scale(0.96f + 0.04f * progress)
-        ) {
-            ZaziWordmark()
+                Spacer(Modifier.height(Spacing.small))
 
-            Spacer(Modifier.height(Spacing.small))
-
-            Text(
-                // What the product does, in the words an agent would use. No superlatives:
-                // a claim this screen cannot stand behind would be the wrong first thing to
-                // say to someone trusting it with their day's takings.
-                "Your simple way to keep track of every transaction.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                Text(
+                    // What the product does, in the words an agent would use. No superlatives:
+                    // a claim this screen cannot stand behind would be the wrong first thing to
+                    // say to someone trusting it with their day's takings.
+                    "Your simple way to keep track of every transaction.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = KenteOn.Muted
+                )
+            }
         }
+        KenteStrip()
 
+    Column(modifier = Modifier.padding(horizontal = 24.dp)) {
         Spacer(Modifier.height(Spacing.section))
 
         OutlinedTextField(
@@ -168,6 +170,7 @@ fun LoginScreen(
         )
 
         Spacer(Modifier.height(Spacing.section))
+    }
     }
 }
 

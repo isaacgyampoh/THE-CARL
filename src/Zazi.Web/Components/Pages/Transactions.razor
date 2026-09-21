@@ -149,7 +149,7 @@ else if (_page is not null)
                     <span class="what">
                         <span class="kind">@StatementText(t.Type)</span>
                         <span class="meta">
-                            @if (!string.IsNullOrWhiteSpace(t.CustomerPhoneNumber))
+                            @if (t.CustomerPhoneNumber?.Any(char.IsDigit) == true)
                             {
                                 @* A link, so tapping a number shows everything that customer did. *@
                                 <a class="customer" href="@Link(customer: t.CustomerPhoneNumber)">@GhanaPhoneNumber.Display(t.CustomerPhoneNumber)</a>

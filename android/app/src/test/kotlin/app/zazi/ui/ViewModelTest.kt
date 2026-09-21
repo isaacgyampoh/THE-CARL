@@ -310,7 +310,13 @@ class MoneyFormatTest {
 
     @Test
     fun `large amounts are not truncated`() {
-        assertThat(MoneyFormat.format(125_000_075L)).isEqualTo("₵1250000.75")
+        assertThat(MoneyFormat.format(125_000_075L)).isEqualTo("₵1,250,000.75")
+        // Grouped by thousands, as the portal writes them: ₵4950.00 read at a glance is too
+        // close to ₵49500.00.
+        assertThat(MoneyFormat.format(495_000L)).isEqualTo("₵4,950.00")
+        assertThat(MoneyFormat.format(-495_000L)).isEqualTo("-₵4,950.00")
+        assertThat(MoneyFormat.format(99_999L)).isEqualTo("₵999.99")
+        assertThat(MoneyFormat.format(java.math.BigDecimal("5000"))).isEqualTo("₵5,000.00")
     }
 }
 

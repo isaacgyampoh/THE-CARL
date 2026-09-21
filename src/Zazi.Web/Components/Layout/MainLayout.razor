@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
 
 @* First thing focus reaches, so a keyboard user can jump past the navigation instead of
    tabbing through it on every page. Hidden until focused — see .skip in app.css. *@
@@ -6,6 +7,56 @@
 
 <NavMenu />
 
-<main id="content" tabindex="-1">
-    @Body
-</main>
+<AuthorizeView>
+    <Authorized>
+        <main id="content" tabindex="-1">
+            @Body
+        </main>
+    </Authorized>
+    <NotAuthorized>
+        @* Signed out: sign in, sign up, reset. The first thing a new owner sees, so it says
+           what Zazi is before asking for anything, against a woven kente-inspired panel in
+           the product's colours. On a phone the panel is a band above the form; on a wider
+           screen it sits beside it. *@
+        <div class="auth-shell">
+            <aside class="auth-art">
+                <div class="auth-art-inner">
+                    <a class="auth-brand" href="/sign-in">
+                        <ZaziMark Size="26" />
+                        <span>Zazi</span>
+                    </a>
+
+                    <p class="auth-headline">Every cedi, accounted for.</p>
+                    <p class="auth-sub">
+                        Zazi records every mobile money transaction and keeps your cash and float
+                        in balance across MTN, Telecel and AirtelTigo.
+                    </p>
+
+                    @* What the product records, shown rather than described: one transaction,
+                       with the customer's number and the exact time. *@
+                    <div class="auth-receipt" aria-hidden="true">
+                        <div class="row top">
+                            <span class="kind">Cash out</span>
+                            <span class="amount">−₵50.00</span>
+                        </div>
+                        <div class="row meta">
+                            <span>MTN · 024 412 3456</span>
+                            <span>11:50</span>
+                        </div>
+                        <div class="row status"><span class="dot"></span> Recorded and synced</div>
+                    </div>
+
+                    <ul class="auth-points">
+                        <li>Every transaction with the customer's number and time</li>
+                        <li>Statements for any day, week, month or year</li>
+                        <li>Works without internet — syncs when you have data</li>
+                    </ul>
+                </div>
+            </aside>
+
+            <main id="content" tabindex="-1">
+                @Body
+            </main>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>

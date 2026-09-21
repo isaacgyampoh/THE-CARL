@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <!--
+    A kente-inspired tile in Zazi's colours: woven strips of interlocking blocks, the second
+    row offset from the first the way kente strips are sewn side by side. Tiles seamlessly.
+    Drawn rather than photographed, so it is a few kilobytes on a slow connection and carries
+    no licence.
+  -->
+  <defs>
+    <g id="gold">
+      <rect width="40" height="80" fill="#e3b23c"/>
+      <rect y="10" width="40" height="5" fill="#16200f"/>
+      <rect y="20" width="40" height="5" fill="#16200f"/>
+      <rect y="42" width="40" height="16" fill="#b8321f"/>
+      <rect x="15" y="45" width="10" height="10" fill="#e3b23c"/>
+      <rect y="68" width="40" height="3" fill="#16200f"/>
+    </g>
+    <g id="green">
+      <rect width="40" height="80" fill="#2f5d12"/>
+      <path d="M20 8 L30 20 L20 32 L10 20 Z" fill="#c6f432"/>
+      <path d="M20 14 L25 20 L20 26 L15 20 Z" fill="#2f5d12"/>
+      <path d="M20 48 L30 60 L20 72 L10 60 Z" fill="#e3b23c"/>
+      <rect x="2" y="38" width="36" height="3" fill="#c6f432"/>
+    </g>
+    <g id="black">
+      <rect width="40" height="80" fill="#16200f"/>
+      <rect x="6" width="4" height="80" fill="#e3b23c"/>
+      <rect x="30" width="4" height="80" fill="#e3b23c"/>
+      <rect x="10" y="28" width="20" height="24" fill="#b8321f"/>
+      <rect x="15" y="33" width="10" height="14" fill="#16200f"/>
+    </g>
+    <g id="check">
+      <rect width="40" height="80" fill="#3e7a1a"/>
+      <rect y="30" width="10" height="10" fill="#e3b23c"/>
+      <rect x="10" y="30" width="10" height="10" fill="#16200f"/>
+      <rect x="20" y="30" width="10" height="10" fill="#e3b23c"/>
+      <rect x="30" y="30" width="10" height="10" fill="#16200f"/>
+      <rect y="40" width="10" height="10" fill="#16200f"/>
+      <rect x="10" y="40" width="10" height="10" fill="#e3b23c"/>
+      <rect x="20" y="40" width="10" height="10" fill="#16200f"/>
+      <rect x="30" y="40" width="10" height="10" fill="#e3b23c"/>
+      <rect y="8" width="40" height="4" fill="#c6f432"/>
+      <rect y="68" width="40" height="4" fill="#c6f432"/>
+    </g>
+  </defs>
+  <use href="#gold" x="0" y="0"/>
+  <use href="#green" x="40" y="0"/>
+  <use href="#black" x="80" y="0"/>
+  <use href="#check" x="120" y="0"/>
+  <use href="#black" x="0" y="80"/>
+  <use href="#check" x="40" y="80"/>
+  <use href="#gold" x="80" y="80"/>
+  <use href="#green" x="120" y="80"/>
+</svg>

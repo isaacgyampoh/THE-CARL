@@ -3,10 +3,12 @@
 @using Zazi.Application.Float
 @using Zazi.Application.Security
 @using Zazi.Domain
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IDashboardService Dashboard
 @inject IFloatService Float
 @inject ITransactionService Transactions
 @inject ICurrentUserContext CurrentUser
+@inject AuthenticationStateProvider AuthState
 
 <PageTitle>Today · Zazi</PageTitle>
 
@@ -23,7 +25,19 @@
     <meta http-equiv="refresh" content="@RefreshSeconds" />
 </HeadContent>
 
-<h1>Today</h1>
+@* A welcome on the woven pattern: the owner's name, the day, and how fresh the figures are.
+   The page an owner opens most, so it is the one that should feel like theirs. *@
+<section class="hero">
+    <p class="hero-date">@DateTimeOffset.UtcNow.ToString("dddd, d MMMM")</p>
+    <h1>@Greeting()@FirstName()</h1>
+    @if (_summary is not null && !_failed)
+    {
+        <p class="hero-asof">
+            Figures as of @_readAt.ToString("HH:mm") · refreshed every minute ·
+            <a href="/">refresh now</a>
+        </p>
+    }
+</section>
 
 @if (_failed)
 {
@@ -39,11 +53,6 @@ else
 {
     @* A dashboard that cannot say when it was read invites being trusted as live. These
        are figures someone may act on, so the page says how old they are. *@
-    <p class="muted asof">
-        Updated @_readAt.ToString("HH:mm") · refreshes every minute ·
-        <a href="/">refresh now</a>
-    </p>
-
     @* The question an owner opens this page to answer: is there enough money in the right
        places? Float is held per network and an agent cannot pay out MTN money from a Telecel
        wallet, so a single "network float" total — the old headline — could look healthy
@@ -53,14 +62,14 @@ else
     <section class="tiles money">
         <div class="tile cash">
             <span class="label">Cash in hand</span>
-            <span class="value">@Money(CashInHand)</span>
+            <span class="value">@Cedis(CashInHand)</span>
         </div>
         @foreach (var network in Networks.All)
         {
             var amount = FloatOn(network);
             <div class="tile network @Tone(amount)">
                 <span class="label">@NetworkName(network) float</span>
-                <span class="value">@Money(amount)</span>
+                <span class="value">@Cedis(amount)</span>
                 @if (amount < 0)
                 {
                     @* Below zero is not a figure to admire, it is a question: usually a
@@ -93,7 +102,7 @@ else
                 }
                 @if (_summary.BalanceVariance != 0)
                 {
-                    <li>Balances differ from the count by <strong>@Money(_summary.BalanceVariance)</strong></li>
+                    <li>Balances differ from the count by <strong>@Cedis(_summary.BalanceVariance)</strong></li>
                 }
             </ul>
         </section>
@@ -114,19 +123,19 @@ else
         </div>
         <div class="tile">
             <span class="label">Volume</span>
-            <span class="value">@Money(TodayVolume)</span>
+            <span class="value">@Cedis(TodayVolume)</span>
         </div>
         @* Split by direction because the two move money oppositely: a busy cash-out day drains
            cash and fills float, and the owner planning tomorrow's float needs to know which
            kind of day it was. *@
         <div class="tile">
             <span class="label">Cash in <small>(deposits)</small></span>
-            <span class="value">@Money(_cashInTotal)</span>
+            <span class="value">@Cedis(_cashInTotal)</span>
             <span class="note">@_cashInCount @Plural(_cashInCount, "transaction", "transactions")</span>
         </div>
         <div class="tile">
             <span class="label">Cash out <small>(withdrawals)</small></span>
-            <span class="value">@Money(_cashOutTotal)</span>
+            <span class="value">@Cedis(_cashOutTotal)</span>
             <span class="note">@_cashOutCount @Plural(_cashOutCount, "transaction", "transactions")</span>
         </div>
     </section>
@@ -151,7 +160,7 @@ else
                         <span class="branch muted">@person.BranchName</span>
                     </div>
                     <div class="held">
-                        <span class="cash-figure"><span class="muted">Cash</span> @Money(person.Cash)</span>
+                        <span class="cash-figure"><span class="muted">Cash</span> @Cedis(person.Cash)</span>
                         <span class="chips">
                             @foreach (var f in person.Floats.OrderBy(f => f.Network))
                             {
@@ -184,7 +193,7 @@ else
                     <span class="what">
                         <span class="kind">@Describe(t.Type)</span>
                         <span class="meta">
-                            @if (!string.IsNullOrWhiteSpace(t.CustomerPhoneNumber))
+                            @if (t.CustomerPhoneNumber?.Any(char.IsDigit) == true)
                             {
                                 @GhanaPhoneNumber.Display(t.CustomerPhoneNumber)<text> · </text>
                             }
@@ -193,7 +202,7 @@ else
                     </span>
                     @* Signed by the cash it moved, which is what the agent's till felt. *@
                     <span class="amount @(incoming ? "in" : "out")">
-                        @(incoming ? "+" : "−")@Money(t.Amount)
+                        @(incoming ? "+" : "−")@Cedis(t.Amount)
                     </span>
                 </li>
             }
@@ -333,6 +342,27 @@ else
 
     private static string Plural(long count, string one, string many) => count == 1 ? one : many;
 
-    private static string Money(decimal value) =>
+    private string? _firstName;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var name = state.User.Identity?.Name?.Trim();
+        _firstName = string.IsNullOrWhiteSpace(name) ? null : name.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+    }
+
+    // Ghana keeps GMT all year, so the UTC hour is the local hour. Written without a relational
+    // pattern: Razor reads "< 12" inside a code block as the start of an HTML tag.
+    private static string Greeting()
+    {
+        var hour = DateTimeOffset.UtcNow.Hour;
+        if (hour >= 17) return "Good evening";
+        if (hour >= 12) return "Good afternoon";
+        return "Good morning";
+    }
+
+    private string FirstName() => _firstName is null ? string.Empty : ", " + _firstName;
+
+    private static string Cedis(decimal value) =>
         value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
 }

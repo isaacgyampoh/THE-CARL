@@ -1,5 +1,6 @@
 package app.zazi.ui
 
+import app.zazi.ui.brand.KenteStrip
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
@@ -259,14 +260,19 @@ fun DashboardScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Today", style = MaterialTheme.typography.titleLarge) },
-                actions = {
-                    ConnectionChip(isOnline = state.isOnline)
-                    Spacer(Modifier.width(Spacing.tight))
-                    TextButton(onClick = { confirmingSignOut = true }) { Text("Sign out") }
-                }
-            )
+            // The woven strip under the bar ties the working screen to the sign-in band and
+            // the owner's portal, without putting pattern behind anything an agent reads.
+            Column {
+                TopAppBar(
+                    title = { Text("Today", style = MaterialTheme.typography.titleLarge) },
+                    actions = {
+                        ConnectionChip(isOnline = state.isOnline)
+                        Spacer(Modifier.width(Spacing.tight))
+                        TextButton(onClick = { confirmingSignOut = true }) { Text("Sign out") }
+                    }
+                )
+                KenteStrip(height = 4.dp)
+            }
         },
         bottomBar = {
             AnchoredActionBar {

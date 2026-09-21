@@ -1,5 +1,8 @@
 package app.zazi.ui
 
+import app.zazi.ui.brand.KenteOn
+import app.zazi.ui.brand.KenteStrip
+import app.zazi.ui.brand.KenteBackground
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -53,30 +56,38 @@ fun ActivationScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = Spacing.medium),
-        verticalArrangement = Arrangement.Center
     ) {
-        Spacer(Modifier.height(Spacing.section))
+        // The same woven band as the sign-in screen: a worker activating their phone for the
+        // first time should meet the same product their owner sees in the portal.
+        KenteBackground(Modifier.fillMaxWidth()) {
+            Column(
+                Modifier
+                    .padding(horizontal = Spacing.medium)
+                    .padding(top = 56.dp, bottom = 32.dp)
+            ) {
+                ZaziWordmark(markColor = KenteOn.Accent, textColor = KenteOn.Text)
 
-        ZaziWordmark()
+                Spacer(Modifier.height(Spacing.small))
 
-        Spacer(Modifier.height(Spacing.small))
+                Text(
+                    "Activate your Zazi access",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = KenteOn.Text
+                )
 
-        Text(
-            "Activate your Zazi access",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+                Spacer(Modifier.height(Spacing.tight))
 
-        Spacer(Modifier.height(Spacing.tight))
+                Text(
+                    "Enter the activation code provided by your business owner.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = KenteOn.Muted
+                )
+            }
+        }
+        KenteStrip()
 
-        Text(
-            "Enter the activation code provided by your business owner.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
+    Column(modifier = Modifier.padding(horizontal = Spacing.medium)) {
         Spacer(Modifier.height(Spacing.large))
 
         OutlinedTextField(
@@ -139,6 +150,7 @@ fun ActivationScreen(
 
         Spacer(Modifier.height(Spacing.section))
     }
+}
 }
 
 /**

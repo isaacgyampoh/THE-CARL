@@ -368,13 +368,32 @@ data class SyncItemPresentation(
 
 /** Formats minor units for display. Never used for arithmetic. */
 object MoneyFormat {
+    /**
+     * Cedis with pesewas, grouped by thousands: ₵4,950.00, not ₵4950.00.
+     *
+     * <p>Grouped because an agent reads these at a glance at a counter, and ₵49500.00 and
+     * ₵4950.00 differ by one digit that is easy to miss. The portal already grouped, so the
+     * same figure also looked different on the phone and in the owner's view. Integer
+     * arithmetic throughout — no locale, no floating point — so a figure is never rounded or
+     * written with a decimal comma on a phone set to French.</p>
+     */
     fun format(minor: Long): String {
         val sign = if (minor < 0) "-" else ""
         val absolute = kotlin.math.abs(minor)
-        return "$sign₵${absolute / 100}.${(absolute % 100).toString().padStart(2, '0')}"
+        return "$sign₵${grouped(absolute / 100)}.${(absolute % 100).toString().padStart(2, '0')}"
     }
 
-    fun format(amount: BigDecimal): String = "₵${amount.setScale(2)}"
+    fun format(amount: BigDecimal): String {
+        val scaled = amount.setScale(2)
+        val sign = if (scaled.signum() < 0) "-" else ""
+        val absolute = scaled.abs()
+        val whole = absolute.toBigInteger().toLong()
+        val pesewas = absolute.remainder(BigDecimal.ONE).movePointRight(2).toInt()
+        return "$sign₵${grouped(whole)}.${pesewas.toString().padStart(2, '0')}"
+    }
+
+    private fun grouped(value: Long): String =
+        value.toString().reversed().chunked(3).joinToString(",").reversed()
 }
 
 /**

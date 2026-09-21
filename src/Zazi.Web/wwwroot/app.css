@@ -923,3 +923,220 @@ main a.download:hover { background: var(--accent); color: var(--on-accent); }
 }
 
 main nav.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Signed-out pages: the woven panel
+   The first screen a new owner sees. It says what Zazi is before asking for anything, on a
+   kente-inspired pattern in the product's own colours — drawn, not photographed, so it is a
+   few kilobytes on a slow connection. The pattern sits under a deep-green wash so the words
+   on it stay readable; at full strength it appears only as a woven strip along the edge.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --kente: url("/img/kente.svg");
+    --art-wash: linear-gradient(160deg, rgba(14, 30, 6, .80) 0%, rgba(14, 30, 6, .92) 55%, rgba(10, 22, 4, .97) 100%);
+}
+
+.auth-shell { min-height: 100vh; min-height: 100dvh; }
+
+.auth-art {
+    position: relative;
+    color: #f4f8ec;
+    background: var(--art-wash), var(--kente);
+    background-size: auto, 120px 120px;
+    overflow: hidden;
+}
+/* The woven strip, at full colour, along the edge that meets the form. */
+.auth-art::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 10px;
+    background: var(--kente);
+    background-size: 40px 40px;
+}
+
+.auth-art-inner { position: relative; padding: 1.4rem 1.25rem 2.1rem; }
+
+.auth-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -.01em;
+}
+.auth-brand .mark { color: #c6f432; }
+
+.auth-headline {
+    margin: 1.1rem 0 .4rem;
+    font-size: 1.7rem;
+    line-height: 1.15;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    color: #fff;
+    text-wrap: balance;
+}
+.auth-sub { margin: 0; max-width: 30rem; color: #d5e2c4; font-size: .98rem; }
+
+/* A transaction as Zazi records it — the product shown rather than described. */
+.auth-receipt {
+    display: none;
+    margin: 1.75rem 0 1.5rem;
+    max-width: 21rem;
+    padding: 1rem 1.1rem;
+    border-radius: .9rem;
+    background: #fbfdf7;
+    color: #16200f;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, .35);
+    transform: rotate(-2deg);
+}
+.auth-receipt .row { display: flex; justify-content: space-between; gap: 1rem; }
+.auth-receipt .top { font-weight: 700; font-size: 1.05rem; }
+.auth-receipt .amount { font-variant-numeric: tabular-nums; }
+.auth-receipt .meta { margin-top: .25rem; color: #5f6b52; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.auth-receipt .status {
+    justify-content: flex-start;
+    align-items: center;
+    gap: .45rem;
+    margin-top: .75rem;
+    padding-top: .6rem;
+    border-top: 1px dashed #d9e2c9;
+    color: #2f5d12;
+    font-size: .82rem;
+    font-weight: 600;
+}
+.auth-receipt .dot { width: .55rem; height: .55rem; border-radius: 50%; background: #2f5d12; }
+
+.auth-points { display: none; list-style: none; margin: 0; padding: 0; }
+.auth-points li {
+    position: relative;
+    padding: .45rem 0 .45rem 1.6rem;
+    color: #e3ecd6;
+    font-size: .95rem;
+}
+.auth-points li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: .78rem;
+    width: .8rem; height: .8rem;
+    border-radius: 3px;
+    background: #e3b23c;
+    box-shadow: inset 0 0 0 3px #b8321f;
+}
+
+/* The form sits in a card that rises over the bottom of the band on a phone. */
+.auth-shell > main { padding: 0 1rem 3rem; }
+.auth-shell .signin {
+    position: relative;
+    margin: -1.25rem auto 0;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--card);
+    padding: 1.6rem 1.25rem 1.75rem;
+    box-shadow: 0 8px 28px rgba(22, 32, 15, .08);
+}
+/* The logo is on the panel now; repeating it inside the card said "Zazi" twice. */
+.auth-shell .signin .masthead { display: none; }
+
+@media (min-width: 900px) {
+    .auth-shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .auth-art {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        height: 100dvh;
+    }
+    .auth-art::after {
+        left: auto; top: 0; bottom: 0; right: 0;
+        width: 12px; height: auto;
+    }
+    .auth-art-inner {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-width: 34rem;
+        margin: 0 auto;
+        padding: 3rem 3.5rem;
+    }
+    .auth-headline { font-size: 2.6rem; margin-top: 2rem; }
+    .auth-sub { font-size: 1.05rem; }
+    .auth-receipt, .auth-points { display: block; }
+    .auth-receipt .row { display: flex; }
+
+    .auth-shell > main {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+    }
+    .auth-shell .signin {
+        margin: 0;
+        width: 100%;
+        max-width: 26rem;
+        box-shadow: none;
+    }
+}
+
+/* The phone rule that flattened the card for a bare page does not apply inside the shell. */
+@media (max-width: 480px) {
+    .auth-shell .signin {
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        background: var(--card);
+        padding: 1.5rem 1.15rem 1.6rem;
+    }
+}
+
+/* ─── Woven accents on signed-in pages ─────────────────────────────────────
+   A thin strip of the pattern under the header on every page, and a welcome banner on
+   Today. Restrained on purpose: these are pages people work in, and the pattern is identity,
+   not decoration to read around. */
+.nav::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -4px;
+    height: 4px;
+    background: var(--kente);
+    background-size: 16px 16px;
+}
+.nav { border-bottom: 0; }
+
+.hero {
+    margin: -1.25rem -1rem 1.25rem;
+    padding: 1.5rem 1.25rem 1.4rem;
+    color: #f4f8ec;
+    background: var(--art-wash), var(--kente);
+    background-size: auto, 120px 120px;
+}
+.hero h1 {
+    margin: .15rem 0 .35rem;
+    color: #fff;
+    font-size: 1.65rem;
+    letter-spacing: -.02em;
+}
+.hero-date {
+    margin: 0;
+    color: #c6f432;
+    font-size: .8rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.hero-asof { margin: 0; color: #d5e2c4; font-size: .85rem; }
+.hero-asof a { color: #fff; }
+
+@media (min-width: 760px) {
+    .hero {
+        margin: 0 0 1.5rem;
+        padding: 1.9rem 2rem;
+        border-radius: 1rem;
+    }
+    .hero h1 { font-size: 2rem; }
+}
