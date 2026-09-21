@@ -1,0 +1,254 @@
+@page "/float"
+@using Zazi.Application.Float
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.BranchManage)]
+@rendermode InteractiveServer
+@inject IFloatService Floats
+@inject ICurrentUserContext CurrentUser
+@inject ILogger<Float> Log
+
+@* What each agent is carrying, and where it came from. Gated on BranchManage rather than the
+   page's own reachability: handing out money is an owner's decision, not a branch manager's. *@
+
+<PageTitle>Cash and float · Zazi</PageTitle>
+
+<h1>Cash and float</h1>
+
+<p class="lead">
+    What each person is holding right now. Cash is notes in their hand; float is e-money on
+    their phone, counted separately for each network.
+</p>
+
+@if (_error is not null)
+{
+    <p class="error" role="alert">@_error</p>
+}
+
+@if (_recorded is not null)
+{
+    <p class="muted" role="status">@_recorded</p>
+}
+
+<h2>Holdings</h2>
+
+@if (_holdings is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_holdings.Count == 0)
+{
+    <p class="muted">Nobody has been added yet. Add workers on the <a href="/team">Team</a> page.</p>
+}
+else
+{
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Person</th>
+                    <th scope="col">Branch</th>
+                    <th scope="col" class="n">Cash</th>
+                    <th scope="col">Float by network</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var holding in _holdings)
+            {
+                <tr>
+                    <td>@holding.AgentName</td>
+                    <td>@holding.BranchName</td>
+                    <td class="n">@Money(holding.Cash)</td>
+                    <td>
+                        @if (holding.Floats.Count == 0)
+                        {
+                            <span class="muted">none</span>
+                        }
+                        else
+                        {
+                            @foreach (var f in holding.Floats)
+                            {
+                                <span class="pill ok">@f.Network @Money(f.Amount)</span>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Record cash or float given</h2>
+
+<p class="muted">
+    Enter what you handed over. Use a negative amount to record money taken back at the end of
+    a shift.
+</p>
+
+<EditForm Model="_entry" OnValidSubmit="RecordAsync" FormName="record-float">
+    <p>
+        <label for="agent">Person</label>
+        <InputSelect id="agent" @bind-Value="_entry.AgentId">
+            <option value="">Choose someone…</option>
+            @foreach (var holding in _holdings ?? Array.Empty<AgentHoldingsDto>())
+            {
+                <option value="@holding.AgentId">@holding.AgentName</option>
+            }
+        </InputSelect>
+    </p>
+
+    <p>
+        <label for="network">Network</label>
+        <InputSelect id="network" @bind-Value="_entry.Network">
+            <option value="MTN">MTN</option>
+            <option value="TELECEL">Telecel</option>
+            <option value="AIRTELTIGO">AirtelTigo</option>
+        </InputSelect>
+    </p>
+
+    <p>
+        <label for="cash">Cash given (GHS)</label>
+        <InputNumber id="cash" @bind-Value="_entry.Cash" step="0.01" />
+    </p>
+
+    <p>
+        <label for="efloat">Float given (GHS)</label>
+        <InputNumber id="efloat" @bind-Value="_entry.EFloat" step="0.01" />
+    </p>
+
+    <p>
+        <label for="note">Note <span class="muted">(optional)</span></label>
+        <InputText id="note" @bind-Value="_entry.Note" />
+    </p>
+
+    <button type="submit" disabled="@_busy">Record</button>
+</EditForm>
+
+@if (_movements is not null && _movements.Count > 0)
+{
+    <h2>Recent movements for @_movementsFor</h2>
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">When</th>
+                    <th scope="col">What</th>
+                    <th scope="col">Network</th>
+                    <th scope="col" class="n">Cash</th>
+                    <th scope="col" class="n">Float</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var m in _movements)
+            {
+                <tr>
+                    <td>@m.At.ToLocalTime().ToString("dd MMM HH:mm")</td>
+                    <td>@m.Description</td>
+                    <td>@m.Network</td>
+                    <td class="n">@Signed(m.CashDelta)</td>
+                    <td class="n">@Signed(m.FloatDelta)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<AgentHoldingsDto>? _holdings;
+    private IReadOnlyList<HoldingMovementDto>? _movements;
+    private string? _movementsFor;
+    private string? _error;
+    private string? _recorded;
+    private bool _busy;
+
+    private readonly Entry _entry = new();
+
+    private static string Money(decimal value) => value.ToString("N2");
+
+    // Signed, so money coming in and money going out are distinguishable at a glance rather
+    // than by reading the column header and remembering which way round it is.
+    private static string Signed(decimal value) =>
+        value == 0m ? "—" : value.ToString("+#,##0.00;-#,##0.00");
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _holdings = await Floats.GetHoldingsAsync(
+                CurrentUser.OrganizationId,
+                CurrentUser.VisibleBranchId());
+        }
+        catch (Exception exception)
+        {
+            _error = Fail(exception, "loading holdings", "Holdings could not be loaded. Please try again.");
+        }
+    }
+
+    private async Task RecordAsync()
+    {
+        _busy = true;
+        _error = null;
+        _recorded = null;
+
+        try
+        {
+            if (!Guid.TryParse(_entry.AgentId, out var agentId))
+            {
+                _error = "Choose who the money was given to.";
+                return;
+            }
+
+            await Floats.RecordFloatAsync(
+                new RecordFloatRequest(agentId, _entry.Network, _entry.Cash, _entry.EFloat, _entry.Note),
+                CurrentUser.OrganizationId,
+                CurrentUser.UserId);
+
+            _recorded = "Recorded.";
+            _movementsFor = _holdings?.FirstOrDefault(h => h.AgentId == agentId)?.AgentName;
+            _movements = await Floats.GetMovementsAsync(CurrentUser.OrganizationId, agentId);
+
+            _entry.Cash = 0m;
+            _entry.EFloat = 0m;
+            _entry.Note = null;
+
+            await LoadAsync();
+        }
+        catch (ArgumentException exception)
+        {
+            // Validation messages are written to be read by the person who typed the values.
+            _error = exception.Message.Split(" (Parameter")[0];
+        }
+        catch (KeyNotFoundException exception)
+        {
+            _error = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            _error = Fail(exception, "recording float", "That could not be recorded. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Logs the detail and returns what the owner should see. See Team.razor.</summary>
+    private string Fail(Exception exception, string operation, string message)
+    {
+        var reference = Guid.NewGuid().ToString("N")[..8];
+        Log.LogError(exception, "Float page: {Operation} failed. Reference {Reference}.", operation, reference);
+        return $"{message} (reference {reference})";
+    }
+
+    private sealed class Entry
+    {
+        public string? AgentId { get; set; }
+        public string Network { get; set; } = "MTN";
+        public decimal Cash { get; set; }
+        public decimal EFloat { get; set; }
+        public string? Note { get; set; }
+    }
+}

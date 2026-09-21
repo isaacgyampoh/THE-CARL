@@ -11,6 +11,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Zazi.Application;
 using Zazi.Application.Security;
+using Zazi.Infrastructure.Float;
+using Zazi.Application.Float;
 using Zazi.Infrastructure.Onboarding;
 using Zazi.Application.Onboarding;
 using Zazi.Infrastructure;
@@ -183,6 +185,9 @@ builder.Services.AddScoped<IIdentityRevocationService, IdentityRevocationService
 // The Team page issues and revokes activation codes.
 builder.Services.AddScoped<IDeviceEnrollmentService, DeviceEnrollmentService>();
 builder.Services.AddScoped<ILedgerService, LedgerService>();
+builder.Services.AddScoped<ITransactionService, TransactionService>();
+// Recording what an owner hands an agent, and reading back what they hold.
+builder.Services.AddScoped<IFloatService, FloatService>();
 // Transactional email. Registered in both hosts from one place so the dashboard cannot start
 // without something the API has — the mistake already made once with IIdentityRevocationService.
 // The Resend credential is read from the RESEND_API_KEY environment variable inside this call

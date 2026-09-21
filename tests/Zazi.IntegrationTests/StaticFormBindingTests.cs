@@ -42,7 +42,13 @@ public class StaticFormBindingTests
         var data = new TheoryData<string>();
         foreach (var file in Directory.GetFiles(PagesDirectory(), "*.razor"))
         {
-            if (File.ReadAllText(file).Contains("<EditForm", StringComparison.Ordinal))
+            var source = File.ReadAllText(file);
+
+            // Interactive pages are exempt, and genuinely so: they keep component state
+            // across a submit over the circuit, which is precisely what an unbound model
+            // cannot do when the page is rebuilt from scratch on a POST.
+            if (source.Contains("<EditForm", StringComparison.Ordinal)
+                && !source.Contains("@rendermode InteractiveServer", StringComparison.Ordinal))
             {
                 data.Add(Path.GetFileName(file));
             }

@@ -218,7 +218,14 @@ public class TransactionService : ITransactionService
     {
         if (request.Type != TransactionType.Reversal)
         {
-            return LedgerPolicy.MovementFor(request.Type, request.Amount);
+            // The deltas are passed through rather than ignored: an adjustment is the one type
+            // whose direction the caller supplies, and dropping them here made LedgerPolicy
+            // throw for want of the values it was already being given.
+            return LedgerPolicy.MovementFor(
+                request.Type,
+                request.Amount,
+                explicitCashDelta: request.AdjustmentCashDelta,
+                explicitFloatDelta: request.AdjustmentFloatDelta);
         }
 
         if (request.ReversesTransactionId is null)

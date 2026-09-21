@@ -80,7 +80,18 @@ public record CreateTransactionRequest(
     // Required when Type is Reversal.
     Guid? ReversesTransactionId = null,
     // Required for corrections; recorded on the audit trail.
-    string? CorrectionReason = null);
+    string? CorrectionReason = null,
+    /// <summary>
+    /// Signed cash movement, required when <c>Type</c> is <c>Adjustment</c>.
+    /// </summary>
+    /// <remarks>
+    /// An owner handing an agent cash or float is an adjustment: it moves a balance without a
+    /// customer on the other side, and only the owner knows the direction and size. Every other
+    /// type derives its movement from the type itself, which is why these are the one case
+    /// LedgerPolicy asks the caller for.
+    /// </remarks>
+    decimal? AdjustmentCashDelta = null,
+    decimal? AdjustmentFloatDelta = null);
 
 public record TransactionDto(
     Guid Id,
