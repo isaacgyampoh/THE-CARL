@@ -58,10 +58,20 @@ public class CrossRouteAndDayCloseTests : IDisposable
         _factory?.Dispose();
     }
 
+    private static readonly List<(string To, string Message)> Sent = new();
+
     private sealed class SilentSms : ISmsSender
     {
-        public Task<bool> SendAsync(string toPhoneNumber, string message, CancellationToken cancellationToken = default) =>
-            Task.FromResult(true);
+        public Task<bool> SendAsync(string toPhoneNumber, string message, CancellationToken cancellationToken = default)
+        {
+            lock (Sent) Sent.Add((toPhoneNumber, message));
+            return Task.FromResult(true);
+        }
+    }
+
+    private static List<(string To, string Message)> SentTo(string number)
+    {
+        lock (Sent) return Sent.Where(s => s.To == number).ToList();
     }
 
     private async Task<KeypadReply> TextAsync(string from, string text)
@@ -242,5 +252,74 @@ public class CrossRouteAndDayCloseTests : IDisposable
 
         var latest = await app.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/v1/day-close/latest");
         Assert.Equal(800m, latest.GetProperty("countedCash").GetDecimal());
+    }
+
+    // ─── Growth features for keypad agents and owners ────────────────────────
+
+    [SkippableFact]
+    public async Task AKeypadReplyWarnsWhenFloatFallsBelowTheOwnersLevel()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await LinkedAgentAsync("0244000521");
+
+        // No level set: no warning, whatever the float — a business that does not track float
+        // must not be told it is always low.
+        var quiet = await TextAsync("0244000521", "CI 20 0244123456");
+        Assert.DoesNotContain("float", quiet.Message, StringComparison.OrdinalIgnoreCase);
+
+        using (var scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IAlertService>().SetThresholdAsync(
+                new AlertThresholdRequest(tenant.OrganizationId, null, "MTN", 500m, 250m));
+        }
+
+        var warned = await TextAsync("0244000521", "CI 30 0244123456");
+        Assert.Equal(KeypadOutcome.Recorded, warned.Outcome);
+        Assert.Contains("Very low MTN float", warned.Message, StringComparison.Ordinal);
+        Assert.All(warned.Message, c => Assert.True(c < 128, $"Non-GSM character '{c}' in a reply."));
+    }
+
+    [SkippableFact]
+    public async Task AShortCloseIsTextedToTheOwner()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await LinkedAgentAsync("0244000531");
+        await using (var db = _postgres.CreateContext())
+        {
+            var org = await db.Organizations.SingleAsync(o => o.Id == tenant.OrganizationId);
+            org.PhoneNumber = "+233 20 000 0531";
+            await db.SaveChangesAsync();
+        }
+
+        await TextAsync("0244000531", "CLOSE 1000 5000");
+        Assert.Empty(SentTo("0200000531"));
+
+        await TextAsync("0244000531", "CLOSE 1000 5000");
+        Assert.Empty(SentTo("0200000531"));
+
+        await TextAsync("0244000531", "CLOSE 900 5000");
+        var alert = Assert.Single(SentTo("0200000531"));
+        Assert.Contains("closed short", alert.Message, StringComparison.Ordinal);
+        Assert.Contains("Cash SHORT 100.00", alert.Message, StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task TheEveningSummaryRemindsAnAgentWhoHasNotClosed()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        await LinkedAgentAsync("0244000541");
+        await LinkedAgentAsync("0244000542");
+        await TextAsync("0244000541", "CO 50 0244123456");
+        await TextAsync("0244000542", "CO 50 0244123456");
+        await TextAsync("0244000542", "CLOSE 100 100");
+
+        using (var scope = _app!.Services.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IKeypadSmsService>().SendDailySummariesAsync();
+        }
+
+        Assert.Contains(SentTo("0244000541"), m => m.Message.Contains("CLOSE cash float", StringComparison.Ordinal));
+        var closedAgent = SentTo("0244000542").Last();
+        Assert.DoesNotContain("CLOSE cash float", closedAgent.Message, StringComparison.Ordinal);
     }
 }

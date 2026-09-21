@@ -1,6 +1,15 @@
 package app.zazi.ui
 
-import app.zazi.ui.brand.KenteStrip
+import app.zazi.ui.brand.ZaziMark
+import app.zazi.ui.theme.Brand
+import app.zazi.ui.theme.StatusBarGround
+import app.zazi.ui.design.NetworkBadge
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.input.ImeAction
@@ -67,6 +76,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import app.zazi.ui.state.EnrolmentError
@@ -216,6 +226,8 @@ fun DashboardScreen(
     statementError: String? = null,
     /** Opens the end-of-day count. */
     onCloseDay: () -> Unit = {},
+    /** Opens the capture form with a direction already chosen, from the quick actions. */
+    onQuickCapture: (CaptureTransactionType) -> Unit = {},
     /** Android runtime state, deliberately separate from the server's device capability. */
     smsPermissionGranted: Boolean = false,
     onRequestSmsPermission: () -> Unit = {},
@@ -230,6 +242,10 @@ fun DashboardScreen(
     // takes their owner revoking the device and issuing a fresh code. One stray tap in the
     // top bar should not cost somebody the rest of their shift.
     var confirmingSignOut by rememberSaveable { mutableStateOf(false) }
+    var statementOpen by rememberSaveable { mutableStateOf(false) }
+
+    // The header is navy and runs up behind the clock, like a banking app's.
+    StatusBarGround(MaterialTheme.colorScheme.primaryContainer)
 
     if (confirmingSignOut) {
         AlertDialog(
@@ -262,19 +278,10 @@ fun DashboardScreen(
 
     Scaffold(
         topBar = {
-            // The woven strip under the bar ties the working screen to the sign-in band and
-            // the owner's portal, without putting pattern behind anything an agent reads.
-            Column {
-                TopAppBar(
-                    title = { Text("Today", style = MaterialTheme.typography.titleLarge) },
-                    actions = {
-                        ConnectionChip(isOnline = state.isOnline)
-                        Spacer(Modifier.width(Spacing.tight))
-                        TextButton(onClick = { confirmingSignOut = true }) { Text("Sign out") }
-                    }
-                )
-                KenteStrip(height = 4.dp)
-            }
+            BalanceHeader(
+                state = state,
+                onSignOut = { confirmingSignOut = true }
+            )
         },
         bottomBar = {
             AnchoredActionBar {
@@ -289,12 +296,26 @@ fun DashboardScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.large)
         ) {
-            PositionPanel(
-                cashMinor = state.todayCashMinor,
-                floatMinor = state.todayFloatMinor
+            Spacer(Modifier.height(Spacing.medium))
+
+            QuickActions(
+                onCashIn = { onQuickCapture(CaptureTransactionType.CASH_IN) },
+                onCashOut = { onQuickCapture(CaptureTransactionType.CASH_OUT) },
+                onCloseDay = onCloseDay,
+                onStatement = { statementOpen = true }
             )
 
-            Spacer(Modifier.height(Spacing.small))
+            if (statementBusy || statementError != null) {
+                Spacer(Modifier.height(Spacing.snug))
+                Text(
+                    statementError ?: "Preparing statement…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (statementError != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(Modifier.height(Spacing.medium))
 
             DeliverySummary(state = state, onSyncNow = onSyncNow)
 
@@ -309,21 +330,14 @@ fun DashboardScreen(
                 onSelect = onActivitySelected
             )
 
-            Spacer(Modifier.height(Spacing.medium))
-            StatementButton(
-                busy = statementBusy,
-                error = statementError,
-                onDownload = onDownloadStatement
+            StatementDialog(
+                open = statementOpen,
+                onDismiss = { statementOpen = false },
+                onDownload = { range, kind ->
+                    statementOpen = false
+                    onDownloadStatement(range, kind)
+                }
             )
-
-            Spacer(Modifier.height(Spacing.small))
-            // Beside the statement, because both are end-of-day jobs.
-            OutlinedButton(
-                onClick = onCloseDay,
-                modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.minimumTouchTarget)
-            ) {
-                Text("Close the day — count cash and float")
-            }
 
             state.device?.let { device ->
                 Spacer(Modifier.height(Spacing.section))
@@ -365,81 +379,136 @@ fun DashboardScreen(
 /** Online state as something glanceable, rather than a word among other words. */
 @Composable
 private fun ConnectionChip(isOnline: Boolean) {
-    val colours = MaterialTheme.colorScheme
-    val tint = if (isOnline) colours.primary else colours.onSurfaceVariant
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).background(tint, CircleShape))
+    // Drawn on the navy header, so its colours are the brand's rather than the scheme's.
+    Row(
+        Modifier
+            .background(Brand.NavyRaised, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(8.dp).background(if (isOnline) Color(0xFF35C28A) else Brand.Gold, CircleShape))
         Spacer(Modifier.width(6.dp))
         Text(
             if (isOnline) "Online" else "Offline",
-            style = MaterialTheme.typography.labelLarge,
-            color = tint
+            style = MaterialTheme.typography.labelMedium,
+            color = Brand.OnNavy
         )
     }
 }
 
 /**
- * Where the agent stands today.
+ * Where the agent stands today, on the brand's navy — the first thing seen and the largest
+ * type on the screen, the way a banking app opens on the balance.
  *
- * <p>The one figure looked for first, so it gets the strongest surface in the palette and the
- * largest type on the screen. Absent rather than zero when a total cannot be calculated: a
- * fabricated figure on a financial dashboard is worse than an empty one.</p>
+ * <p>These are today's net movements, not balances: the sums of the day's stored deltas. So
+ * the label says "net … today" and a rise carries its "+" as a fall carries its "−". Absent
+ * rather than zero when a total cannot be calculated: a fabricated figure on a financial
+ * screen is worse than an empty one.</p>
  */
 @Composable
-private fun PositionPanel(cashMinor: Long?, floatMinor: Long?) {
-    // Two columns share the width comfortably at ordinary text sizes. Past roughly 130% they
-    // do not: each figure gets half a screen and a full amount wraps mid-number. Stacking
-    // gives each the whole width, which is the difference between a readable figure and one
-    // an agent has to reassemble.
-    val stacked = LocalDensity.current.fontScale > 1.3f
+private fun BalanceHeader(state: DashboardUiState, onSignOut: () -> Unit) {
+    val ground = MaterialTheme.colorScheme.primaryContainer
+    val onGround = MaterialTheme.colorScheme.onPrimaryContainer
+    val muted = Brand.OnNavyMuted
 
-    ZaziPanel(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(ground)
+            .padding(horizontal = Spacing.large)
+            .padding(top = Spacing.small, bottom = Spacing.large)
     ) {
-        if (stacked) {
-            Column(Modifier.fillMaxWidth().padding(Spacing.large)) {
-                PositionFigure("Net cash today", cashMinor)
-                Spacer(Modifier.height(Spacing.medium))
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
-                )
-                Spacer(Modifier.height(Spacing.medium))
-                PositionFigure("Net float today", floatMinor)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .background(Brand.Gold, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                ZaziMark(Modifier.size(18.dp), color = Brand.Navy)
             }
-        } else {
-            Row(Modifier.fillMaxWidth().padding(Spacing.large)) {
-                PositionFigure("Net cash today", cashMinor, Modifier.weight(1f))
-                // A hairline rather than a gap: the two are read together and move in
-                // opposite directions, so they should look like one statement, not two panels.
-                VerticalDivider(
-                    modifier = Modifier.heightIn(min = Sizing.secondaryAction),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.22f)
-                )
-                PositionFigure("Net float today", floatMinor, Modifier.weight(1f).padding(start = Spacing.medium))
+            Spacer(Modifier.width(Spacing.small))
+            Column(Modifier.weight(1f)) {
+                Text("Today", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = onGround)
+                state.device?.branchName?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = muted, maxLines = 1)
+                }
             }
+            ConnectionChip(isOnline = state.isOnline)
+            Spacer(Modifier.width(Spacing.tight))
+            TextButton(onClick = onSignOut) {
+                Text("Sign out", color = onGround)
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.large))
+
+        Text("Net cash today", style = MaterialTheme.typography.labelLarge, color = muted)
+        Spacer(Modifier.height(Spacing.tight))
+        Text(
+            signed(state.todayCashMinor),
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = onGround
+            // Not capped to one line: a truncated balance is a different number.
+        )
+
+        Spacer(Modifier.height(Spacing.medium))
+        HorizontalDivider(color = Brand.NavyLine)
+        Spacer(Modifier.height(Spacing.small))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Net float today", style = MaterialTheme.typography.bodyMedium, color = muted, modifier = Modifier.weight(1f))
+            Text(
+                signed(state.todayFloatMinor),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = onGround
+            )
         }
     }
 }
 
+private fun signed(minor: Long?): String =
+    minor?.let { (if (it > 0) "+" else "") + MoneyFormat.format(it) } ?: "—"
+
+/** The four things done most, one tap each — as on every mobile-money app an agent knows. */
 @Composable
-private fun PositionFigure(label: String, minor: Long?, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text(label, style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(Spacing.tight))
-        Text(
-            // These are today's net movement, not balances — the panel sums the day's stored
-            // deltas. Labelled "Cash" with a bare "−₵50.00", an agent read it as holding
-            // negative cash. So the label says "net … today", and a rise carries its "+" as a
-            // fall carries its "−", which is how a change reads rather than an amount held.
-            minor?.let { (if (it > 0) "+" else "") + MoneyFormat.format(it) } ?: "—",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold
-            // Deliberately not capped to one line. At a large font scale on a narrow screen
-            // a capped figure ellipsises, and a truncated balance is not untidy — it is a
-            // different number. Wrapping is the honest failure.
-        )
+private fun QuickActions(
+    onCashIn: () -> Unit,
+    onCashOut: () -> Unit,
+    onCloseDay: () -> Unit,
+    onStatement: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth()) {
+        QuickAction(Icons.Filled.KeyboardArrowDown, "Cash in", onCashIn, Modifier.weight(1f))
+        QuickAction(Icons.Filled.KeyboardArrowUp, "Cash out", onCashOut, Modifier.weight(1f))
+        QuickAction(Icons.Filled.CheckCircle, "Close day", onCloseDay, Modifier.weight(1f))
+        QuickAction(Icons.Filled.DateRange, "Statement", onStatement, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colours = MaterialTheme.colorScheme
+    Column(
+        modifier = modifier
+            .clip(Radius.control)
+            .clickable(onClick = onClick)
+            .padding(vertical = Spacing.snug),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier
+                .size(56.dp)
+                .background(colours.surface, RoundedCornerShape(18.dp))
+                .border(1.dp, colours.outlineVariant, RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = colours.primary, modifier = Modifier.size(26.dp))
+        }
+        Spacer(Modifier.height(Spacing.snug))
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -613,7 +682,9 @@ private fun ActivityRow(item: ActivityItem, onClick: () -> Unit) {
             .padding(horizontal = Spacing.medium, vertical = Spacing.small),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        DirectionBadge(incoming)
+        // The operator's colour first: an agent scanning for "that Telecel one" finds it
+        // before reading. Direction is carried by the amount's sign and tint.
+        NetworkBadge(item.provider)
         Spacer(Modifier.width(Spacing.small))
 
         Column(Modifier.weight(1f)) {
@@ -1406,36 +1477,16 @@ fun DataLostNotice(onDismiss: () -> Unit) {
  * straight to WhatsApp, email or Files — wherever the agent keeps things.</p>
  */
 @Composable
-private fun StatementButton(
-    busy: Boolean,
-    error: String?,
+private fun StatementDialog(
+    open: Boolean,
+    onDismiss: () -> Unit,
     onDownload: (StatementRange, StatementKind) -> Unit
 ) {
-    var open by rememberSaveable { mutableStateOf(false) }
     var range by rememberSaveable { mutableStateOf(StatementRange.TODAY) }
-
-    OutlinedButton(
-        onClick = { open = true },
-        enabled = !busy,
-        modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
-    ) {
-        if (busy) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(Spacing.snug))
-            Text("Preparing statement…")
-        } else {
-            Text("Download statement")
-        }
-    }
-
-    error?.let {
-        Spacer(Modifier.height(Spacing.tight))
-        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
 
     if (open) {
         AlertDialog(
-            onDismissRequest = { open = false },
+            onDismissRequest = onDismiss,
             title = { Text("Download statement") },
             text = {
                 Column {
@@ -1463,16 +1514,16 @@ private fun StatementButton(
             },
             confirmButton = {
                 Row {
-                    TextButton(onClick = { open = false; onDownload(range, StatementKind.EXCEL) }) {
+                    TextButton(onClick = { onDownload(range, StatementKind.EXCEL) }) {
                         Text("Excel")
                     }
-                    TextButton(onClick = { open = false; onDownload(range, StatementKind.PDF) }) {
+                    TextButton(onClick = { onDownload(range, StatementKind.PDF) }) {
                         Text("PDF")
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { open = false }) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         )
     }

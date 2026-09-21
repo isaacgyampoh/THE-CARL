@@ -866,9 +866,9 @@ public class CustomerJourneyTests
         // One figure per network. The old single "network float" total could look healthy
         // while one network had run dry.
         Assert.Contains("Money on hand", html, StringComparison.Ordinal);
-        foreach (var network in new[] { "MTN float", "Telecel float", "AirtelTigo float" })
+        foreach (var network in new[] { "mtn", "telecel", "airteltigo" })
         {
-            Assert.Contains(network, html, StringComparison.Ordinal);
+            Assert.Contains($"<i class=\"dot {network}\"", html, StringComparison.Ordinal);
         }
 
         // A brand-new business says so in words rather than showing empty boxes.

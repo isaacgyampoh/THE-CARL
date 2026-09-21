@@ -89,9 +89,9 @@ fun ZaziBrandIntro(
     onFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val background = BrandColours.deepGreen
-    val mark = BrandColours.lime
-    val ink = BrandColours.onDeepGreen
+    val background = BrandColours.navy
+    val mark = BrandColours.gold
+    val ink = BrandColours.onNavy
 
     // One driver for the whole sequence, advanced once. Each element reads the slice of it
     // that belongs to it, so the parts cannot drift out of step with one another.
@@ -197,7 +197,7 @@ fun ZaziBrandIntro(
                 // Left in sp, unlike the lockup above: this is prose, so it follows the
                 // user's font-size setting. The wordmark is a mark and does not.
                 style = TextStyle(fontSize = 15.sp),
-                color = BrandColours.onDeepGreenMuted,
+                color = BrandColours.onNavyMuted,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.alpha(taglinePhase)
             )
@@ -208,13 +208,13 @@ fun ZaziBrandIntro(
 /**
  * The brand's fixed colours.
  *
- * <p>The introduction runs before the app's theme is meaningful — it is the same deep green in
+ * <p>The introduction runs before the app's theme is meaningful — it is the same deep navy in
  * light and dark, because a brand does not change colour depending on a system setting — so
  * these are stated here rather than read from the colour scheme.</p>
  */
 object BrandColours {
-    val deepGreen = Color(0xFF16250A)
-    val lime = Color(0xFFC6F432)
-    val onDeepGreen = Color(0xFFF2F8E4)
-    val onDeepGreenMuted = Color(0xFFA8B79A)
+    val navy = Color(0xFF0B1F33)
+    val gold = Color(0xFFF2A900)
+    val onNavy = Color(0xFFF4F7FB)
+    val onNavyMuted = Color(0xFFA9B8C9)
 }

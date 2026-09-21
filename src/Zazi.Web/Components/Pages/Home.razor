@@ -7,6 +7,7 @@
 @inject IDashboardService Dashboard
 @inject IFloatService Float
 @inject ITransactionService Transactions
+@inject Zazi.Application.Closing.IDayCloseService Closes
 @inject ICurrentUserContext CurrentUser
 @inject AuthenticationStateProvider AuthState
 
@@ -25,19 +26,20 @@
     <meta http-equiv="refresh" content="@RefreshSeconds" />
 </HeadContent>
 
-@* A welcome on the woven pattern: the owner's name, the day, and how fresh the figures are.
-   The page an owner opens most, so it is the one that should feel like theirs. *@
-<section class="hero">
-    <p class="hero-date">@DateTimeOffset.UtcNow.ToString("dddd, d MMMM")</p>
-    <h1>@Greeting()@FirstName()</h1>
+<header class="page-head">
+    <div>
+        <p class="eyebrow">@DateTimeOffset.UtcNow.ToString("dddd, d MMMM")</p>
+        <h1>@Greeting()@FirstName()</h1>
+    </div>
     @if (_summary is not null && !_failed)
     {
-        <p class="hero-asof">
-            Figures as of @_readAt.ToString("HH:mm") · refreshed every minute ·
-            <a href="/">refresh now</a>
+        @* Figures someone may act on say how old they are. *@
+        <p class="asof-chip">
+            <span class="live-dot" aria-hidden="true"></span>
+            Updated @_readAt.ToString("HH:mm") · <a href="/">Refresh</a>
         </p>
     }
-</section>
+</header>
 
 @if (_failed)
 {
@@ -58,32 +60,53 @@ else
        wallet, so a single "network float" total — the old headline — could look healthy
        while one network had run dry. Each network gets its own figure, and cash sits beside
        them because it is the other half of every transaction. *@
-    <h2 class="first">Money on hand</h2>
-    <section class="tiles money">
-        <div class="tile cash">
-            <span class="label">Cash in hand</span>
-            <span class="value">@Cedis(CashInHand)</span>
-        </div>
-        @foreach (var network in Networks.All)
-        {
-            var amount = FloatOn(network);
-            <div class="tile network @Tone(amount)">
-                <span class="label">@NetworkName(network) float</span>
-                <span class="value">@Cedis(amount)</span>
-                @if (amount < 0)
-                {
-                    @* Below zero is not a figure to admire, it is a question: usually a
-                       transaction recorded against the wrong network, or float given out and
-                       never logged. Said on the tile, where the number is. *@
-                    <span class="note">Below zero — check recent entries</span>
-                }
-                else if (amount == 0)
-                {
-                    <span class="note">None held</span>
-                }
-            </div>
-        }
+    @* The question an owner opens this page to answer: is there enough money, in the right
+       places? One total up top, then its parts. Float is held per network and an agent cannot
+       pay out MTN money from a Telecel wallet, so each network keeps its own figure — and a
+       network below zero is flagged where the number is. *@
+    <section class="balance-card" aria-labelledby="on-hand">
+        <p class="bc-label" id="on-hand">Money on hand</p>
+        <p class="bc-amount">@Cedis(TotalOnHand)</p>
+        <p class="bc-sub">Cash plus float on every network@(BranchScoped ? " in your branch" : "")</p>
+
+        <ul class="bc-split">
+            <li>
+                <span class="bc-net"><i class="dot cash" aria-hidden="true"></i>Cash</span>
+                <span class="bc-val">@Cedis(CashInHand)</span>
+            </li>
+            @foreach (var network in Networks.All)
+            {
+                var amount = FloatOn(network);
+                <li class="@(amount < 0 ? "negative" : "")">
+                    <span class="bc-net"><i class="dot @NetworkKey(network)" aria-hidden="true"></i>@NetworkName(network)</span>
+                    <span class="bc-val">@Cedis(amount)</span>
+                    @if (amount < 0)
+                    {
+                        <span class="bc-note">Below zero — check entries</span>
+                    }
+                </li>
+            }
+        </ul>
     </section>
+
+    <nav class="quick-actions" aria-label="Quick actions">
+        <a href="/float">
+            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+            Give float or cash
+        </a>
+        <a href="/transactions">
+            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></span>
+            Find a customer
+        </a>
+        <a href="/closing">
+            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            Day closing
+        </a>
+        <a href="/transactions?period=ThisMonth">
+            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg></span>
+            Statements
+        </a>
+    </nav>
 
     @* Only when there is something. Three rows reading "0" every day teach an owner that this
        section is furniture, and then it is ignored on the day it matters. *@
@@ -115,8 +138,35 @@ else
         </p>
     }
 
+    @if (_closes.Count > 0 || _notClosed.Count > 0)
+    {
+        @* End of day at a glance: who has counted up, and whether it agreed. *@
+        <a class="closing-strip" href="/closing">
+            <span class="cs-title">Closing today</span>
+            <span class="cs-facts">
+                @if (_closes.Any(c => c.Status is "Balanced" or "Baseline"))
+                {
+                    <span>@_closes.Count(c => c.Status is "Balanced" or "Baseline") balanced</span>
+                }
+                @if (_closes.Any(c => c.Status == "Short"))
+                {
+                    <span class="bad">@_closes.Count(c => c.Status == "Short") short</span>
+                }
+                @if (_closes.Any(c => c.Status == "Over"))
+                {
+                    <span class="warn">@_closes.Count(c => c.Status == "Over") over</span>
+                }
+                @if (_notClosed.Count > 0)
+                {
+                    <span class="muted">@_notClosed.Count not closed</span>
+                }
+            </span>
+            <span class="cs-go" aria-hidden="true">→</span>
+        </a>
+    }
+
     <h2>Today's trading</h2>
-    <section class="tiles trading">
+    <section class="stat-strip">
         <div class="tile">
             <span class="label">Transactions</span>
             <span class="value">@TodayCount</span>
@@ -156,6 +206,7 @@ else
             {
                 <li>
                     <div class="who-line">
+                        <span class="avatar" aria-hidden="true">@Initials(person.AgentName)</span>
                         <span class="name">@person.AgentName</span>
                         <span class="branch muted">@person.BranchName</span>
                     </div>
@@ -189,7 +240,7 @@ else
             {
                 var incoming = t.CashDelta >= 0;
                 <li>
-                    <span class="time">@t.TransactionAt.ToLocalTime().ToString("HH:mm")</span>
+                    <span class="net-badge @NetworkKey(t.Network)" aria-hidden="true">@NetworkShort(t.Network)</span>
                     <span class="what">
                         <span class="kind">@Describe(t.Type)</span>
                         <span class="meta">
@@ -197,7 +248,7 @@ else
                             {
                                 @GhanaPhoneNumber.Display(t.CustomerPhoneNumber)<text> · </text>
                             }
-                            @NetworkName(t.Network) · @AgentName(t.AgentId)
+                            @NetworkName(t.Network) · @AgentName(t.AgentId) · @t.TransactionAt.ToLocalTime().ToString("HH:mm")
                         </span>
                     </span>
                     @* Signed by the cash it moved, which is what the agent's till felt. *@
@@ -236,6 +287,8 @@ else
     private const int MaxPagesForSplit = 10;
 
     private DashboardSummaryDto? _summary;
+    private IReadOnlyList<Zazi.Application.Closing.DayCloseResult> _closes = [];
+    private IReadOnlyList<string> _notClosed = [];
     private IReadOnlyList<AgentHoldingsDto> _holdings = Array.Empty<AgentHoldingsDto>();
     private List<TransactionDto> _latest = new();
     private decimal _cashInTotal, _cashOutTotal;
@@ -257,6 +310,10 @@ else
 
             _summary = await Dashboard.GetOrganizationDashboardAsync(organizationId);
             _holdings = await Float.GetHoldingsAsync(organizationId, branchId);
+
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            _closes = await Closes.ForDayAsync(organizationId, branchId, today);
+            _notClosed = await Closes.NotClosedAsync(organizationId, branchId, today);
 
             // Ghana keeps UTC all year, so the UTC day is the business day.
             var dayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
@@ -318,6 +375,35 @@ else
     private long TodayCount => BranchScoped ? _todayTotal : _summary!.TodayTransactions;
 
     private decimal TodayVolume => BranchScoped ? _cashInTotal + _cashOutTotal : _summary!.TodayVolume;
+
+    private decimal TotalOnHand => CashInHand + Networks.All.Sum(FloatOn);
+
+    private static string NetworkKey(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "mtn",
+        "TELECEL" => "telecel",
+        "AIRTELTIGO" => "airteltigo",
+        _ => "other"
+    };
+
+    private static string NetworkShort(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "T",
+        "AIRTELTIGO" => "AT",
+        _ => "·"
+    };
+
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
+        };
+    }
 
     private static string Tone(decimal amount) => amount < 0 ? "negative" : amount == 0 ? "empty" : "";
 

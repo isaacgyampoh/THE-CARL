@@ -227,7 +227,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
                       $", {NetworkName(result.Network)}, {occurredAt:HH:mm}";
 
         return result.State == TransactionLifecycleState.Accepted
-            ? new KeypadReply(KeypadOutcome.Recorded, $"Zazi OK: {summary}.")
+            ? new KeypadReply(KeypadOutcome.Recorded, $"Zazi OK: {summary}." + await FloatWarningAsync(phone, result.Network, cancellationToken))
             : new KeypadReply(
                 KeypadOutcome.HeldForReview,
                 "Zazi: received, but some details were unclear, so it is waiting for your owner to check. " +
@@ -298,7 +298,46 @@ public sealed class KeypadSmsService : IKeypadSmsService
 
         return new KeypadReply(
             KeypadOutcome.Recorded,
-            $"Zazi OK: {Describe(type)} GHS {amount:N2}, {GhanaPhoneNumber.Display(customer)}, {NetworkName(network)}, {recorded.TransactionAt:HH:mm}.");
+            $"Zazi OK: {Describe(type)} GHS {amount:N2}, {GhanaPhoneNumber.Display(customer)}, {NetworkName(network)}, {recorded.TransactionAt:HH:mm}." +
+            await FloatWarningAsync(phone, network, cancellationToken));
+    }
+
+    /// <summary>
+    /// " Low MTN float: GHS 180.00. Top up soon." — added to the reply the agent is getting
+    /// anyway, so the warning costs no extra SMS. Only where the owner has set a warning level
+    /// for that network on the Cash &amp; float page: a business that does not track float would
+    /// otherwise be told it is always low.
+    /// </summary>
+    private async Task<string> FloatWarningAsync(LinkedPhone phone, string? network, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(network))
+        {
+            return string.Empty;
+        }
+
+        var key = network.ToUpperInvariant();
+        var threshold = await _dbContext.AlertThresholds.AsNoTracking()
+            .Where(t => t.OrganizationId == phone.OrganizationId && t.IsEnabled && t.Network.ToUpper() == key
+                && (t.BranchId == null || t.BranchId == phone.BranchId))
+            // A branch's own level wins over the business-wide one.
+            .OrderByDescending(t => t.BranchId != null)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (threshold is null || threshold.WarningThreshold <= 0)
+        {
+            return string.Empty;
+        }
+
+        var held = await _dbContext.FloatBalances.AsNoTracking()
+            .Where(b => b.OrganizationId == phone.OrganizationId && b.AgentId == phone.WorkerId && b.Network.ToUpper() == key)
+            .SumAsync(b => (decimal?)b.CurrentFloat, cancellationToken) ?? 0m;
+
+        if (held >= threshold.WarningThreshold)
+        {
+            return string.Empty;
+        }
+
+        var level = held < threshold.CriticalThreshold ? "Very low" : "Low";
+        return $" {level} {NetworkName(network)} float: GHS {held:N2}. Top up soon.";
     }
 
     /// <summary>
@@ -485,7 +524,16 @@ public sealed class KeypadSmsService : IKeypadSmsService
                 continue;
             }
 
-            if (await _sms.SendAsync(number, await TodayAsync(phone, cancellationToken), cancellationToken))
+            // The summary is also the nudge to count up: a close is what turns a day's records
+            // into a day's answer, and agents who are reminded close far more often.
+            var closed = await _dbContext.DayCloses.AsNoTracking()
+                .AnyAsync(c => c.OrganizationId == phone.OrganizationId
+                    && c.AgentId == phone.WorkerId
+                    && c.ClosedAtUtc >= dayStart, cancellationToken);
+            var summary = await TodayAsync(phone, cancellationToken) +
+                (closed ? string.Empty : " Count up and send: CLOSE cash float");
+
+            if (await _sms.SendAsync(number, summary, cancellationToken))
             {
                 sent++;
             }

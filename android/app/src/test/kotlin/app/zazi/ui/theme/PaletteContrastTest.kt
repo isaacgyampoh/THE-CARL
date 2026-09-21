@@ -137,19 +137,19 @@ class PaletteContrastTest {
 
     @Test
     fun `the brand introduction is readable on its own background`() {
-        // Not part of either scheme — the introduction is fixed deep green in light and dark —
+        // Not part of either scheme — the introduction is fixed deep navy in light and dark —
         // so it would otherwise escape every check above.
         assertReadable("intro wordmark", BrandInk, BrandBackground, bodyText)
-        assertReadable("intro mark", BrandLime, BrandBackground, largeText)
+        assertReadable("intro mark", BrandGold, BrandBackground, largeText)
         assertReadable("intro tagline", BrandMuted, BrandBackground, bodyText)
     }
 
     private companion object {
         // Mirrors app.zazi.ui.brand.BrandColours. Duplicated deliberately: the test states
         // what the values must be, so changing the brand cannot silently change the assertion.
-        val BrandBackground = Color(0xFF16250A)
-        val BrandLime = Color(0xFFC6F432)
-        val BrandInk = Color(0xFFF2F8E4)
-        val BrandMuted = Color(0xFFA8B79A)
+        val BrandBackground = Color(0xFF0B1F33)
+        val BrandGold = Color(0xFFF2A900)
+        val BrandInk = Color(0xFFF4F7FB)
+        val BrandMuted = Color(0xFFA9B8C9)
     }
 }

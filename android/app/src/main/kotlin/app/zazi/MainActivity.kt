@@ -23,6 +23,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import app.zazi.ui.theme.LocalStatusBarGround
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -101,7 +109,18 @@ class MainActivity : ComponentActivity() {
                 // first screen composing — happens underneath it and is already finished
                 // when it lifts. Branching instead would have made the brand cost the user
                 // time rather than occupy time they were spending anyway.
+                var statusGround by remember { mutableStateOf<Color?>(null) }
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // The strip behind the status bar, coloured by whichever screen asks for it.
+                    statusGround?.let { ground ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .windowInsetsTopHeight(WindowInsets.statusBars)
+                                .background(ground)
+                        )
+                    }
+                    CompositionLocalProvider(LocalStatusBarGround provides { statusGround = it }) {
                     Surface(
                         modifier = Modifier
                             .fillMaxSize()
@@ -109,6 +128,7 @@ class MainActivity : ComponentActivity() {
                             .imePadding()
                     ) {
                         ZaziApp(container, application as ZaziApplication)
+                    }
                     }
 
                     val sessionState by container.sessionRepository.state
@@ -418,6 +438,10 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         },
                         statementBusy = statementBusy,
                         statementError = statementError,
+                        onQuickCapture = { type ->
+                            captureViewModel.onTypeChanged(type)
+                            screen = AuthenticatedScreen.CAPTURE
+                        },
                         onCloseDay = {
                             closeResult = null
                             closeError = null

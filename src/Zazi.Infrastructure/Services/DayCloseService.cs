@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Zazi.Application.Closing;
+using Zazi.Application.Keypad;
 using Zazi.Domain;
 
 namespace Zazi.Infrastructure.Services;
@@ -15,11 +17,23 @@ namespace Zazi.Infrastructure.Services;
 public sealed class DayCloseService : IDayCloseService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ISmsSender? _sms;
+    private readonly ILogger<DayCloseService>? _logger;
     private readonly TimeProvider _clock;
 
-    public DayCloseService(ApplicationDbContext db, TimeProvider? clock = null)
+    /// <param name="sms">
+    /// Optional: the portal has no SMS gateway, and a close from there needs none. Taken as a
+    /// sequence so the service resolves wherever it is registered.
+    /// </param>
+    public DayCloseService(
+        ApplicationDbContext db,
+        IEnumerable<ISmsSender>? sms = null,
+        ILogger<DayCloseService>? logger = null,
+        TimeProvider? clock = null)
     {
         _db = db;
+        _sms = sms?.LastOrDefault();
+        _logger = logger;
         _clock = clock ?? TimeProvider.System;
     }
 
@@ -126,7 +140,57 @@ public sealed class DayCloseService : IDayCloseService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (result.Status == "Short")
+        {
+            await TellOwnerAsync(close, result, cancellationToken);
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// A shortage is texted to the business's own number the moment it is counted. Many owners
+    /// in this market are not at a computer in the evening, and a shortage found the next
+    /// morning is a day harder to trace. Best effort: the close is recorded whether or not the
+    /// text goes.
+    /// </summary>
+    private async Task TellOwnerAsync(DayClose close, DayCloseResult result, CancellationToken cancellationToken)
+    {
+        if (_sms is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var raw = await _db.Organizations.AsNoTracking()
+                .Where(o => o.Id == close.OrganizationId)
+                .Select(o => o.PhoneNumber)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (GhanaPhoneNumber.Normalise(raw) is not { } owner)
+            {
+                return;
+            }
+
+            static string Part(string what, decimal? difference) => difference switch
+            {
+                { } d when d <= -DayCloseRules.Tolerance => $"{what} SHORT {-d:N2}",
+                { } d when d >= DayCloseRules.Tolerance => $"{what} over {d:N2}",
+                _ => $"{what} OK"
+            };
+
+            await _sms.SendAsync(
+                owner,
+                $"Zazi: {result.AgentName ?? "An agent"} closed short at {close.ClosedAtUtc:HH:mm}. " +
+                $"{Part("Cash", result.CashDifference)}, {Part("float", result.FloatDifference)}. " +
+                "See Closing in the portal.",
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger?.LogWarning(exception, "Could not text the owner about a short close.");
+        }
     }
 
     public async Task<DayCloseResult?> LatestAsync(Guid organizationId, Guid agentId, CancellationToken cancellationToken = default)

@@ -1,37 +1,57 @@
 @using Microsoft.AspNetCore.Components.Authorization
 
-@* Only for someone signed in. The account pages carry their own masthead, so a header with
-   nothing in it but the logo put "Zazi" on screen twice, one above the other.
+@* Only for someone signed in; the account pages carry their own brand panel.
+
+   A sidebar on a desktop, the way banking and payments dashboards are laid out: the sections
+   stay in view while the page scrolls, and each has an icon that can be found without
+   reading. On a phone it folds into a bar with the sections in a row that scrolls sideways.
 
    <header>/<nav> rather than divs, so a screen reader can announce the banner and the
    navigation as landmarks and skip between them. *@
 <AuthorizeView>
     <Authorized>
         <header class="nav">
-            @* The mark and the word. An agent who sees the handset and the portal in the same
-               afternoon should be looking at one product. *@
-            <a class="brand" href="/">
-                <ZaziMark Size="20" />
+            <a class="brand" href="/" aria-label="Zazi — Today">
+                <span class="brand-tile"><ZaziMark Size="16" /></span>
                 <span>Zazi</span>
             </a>
 
-            @* NavLink sets aria-current="page" on the active link, which tells a screen reader
-               which page this is and drives the underline in app.css. Match.All on "/" stops
-               Today staying highlighted on every page, since every path starts with it.
-
-               On a phone this becomes one row that scrolls sideways, rather than wrapping the
-               links, the name and "Sign out" onto three lines above every page. *@
+            @* NavLink sets aria-current="page" on the active link. Match.All on "/" stops Today
+               staying highlighted on every page, since every path starts with it. Icons are
+               decoration beside a label, so they are hidden from assistive technology. *@
             <nav class="links" aria-label="Sections">
-                <NavLink href="/" Match="NavLinkMatch.All">Today</NavLink>
-                <NavLink href="/transactions">Transactions</NavLink>
-                <NavLink href="/held">Held</NavLink>
-                <NavLink href="/team">Team</NavLink>
-                <NavLink href="/float">Cash &amp; float</NavLink>
-                <NavLink href="/closing">Closing</NavLink>
-                <NavLink href="/operations">Operations</NavLink>
+                <NavLink href="/" Match="NavLinkMatch.All">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+                    <span>Today</span>
+                </NavLink>
+                <NavLink href="/transactions">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4m13 0l-3-3m3 3l-3 3"/></svg>
+                    <span>Transactions</span>
+                </NavLink>
+                <NavLink href="/float">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>
+                    <span>Cash &amp; float</span>
+                </NavLink>
+                <NavLink href="/closing">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>
+                    <span>Closing</span>
+                </NavLink>
+                <NavLink href="/team">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
+                    <span>Team</span>
+                </NavLink>
+                <NavLink href="/held">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span>Held</span>
+                </NavLink>
+                <NavLink href="/operations">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+                    <span>Operations</span>
+                </NavLink>
             </nav>
 
             <div class="account">
+                <span class="avatar" aria-hidden="true">@Initials(context.User.Identity?.Name)</span>
                 <span class="who">@context.User.Identity?.Name</span>
                 @* A form post, because signing out must clear the cookie on a real response. *@
                 <form method="post" action="/auth/sign-out">
@@ -42,3 +62,16 @@
         </header>
     </Authorized>
 </AuthorizeView>
+
+@code {
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "Z",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
+        };
+    }
+}

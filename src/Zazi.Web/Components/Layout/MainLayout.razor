@@ -5,51 +5,63 @@
    tabbing through it on every page. Hidden until focused — see .skip in app.css. *@
 <a class="skip" href="#content">Skip to content</a>
 
-<NavMenu />
-
 <AuthorizeView>
     <Authorized>
-        <main id="content" tabindex="-1">
-            @Body
-        </main>
+        @* Sidebar and page side by side on a desktop; stacked on a phone. *@
+        <div class="app-shell">
+            <NavMenu />
+            <div class="app-main">
+                <main id="content" tabindex="-1">
+                    @Body
+                </main>
+            </div>
+        </div>
     </Authorized>
     <NotAuthorized>
         @* Signed out: sign in, sign up, reset. The first thing a new owner sees, so it says
-           what Zazi is before asking for anything, against a woven kente-inspired panel in
-           the product's colours. On a phone the panel is a band above the form; on a wider
-           screen it sits beside it. *@
+           what Zazi is before asking for anything — and shows it: a balance card of the kind
+           the portal is built around. On a phone the panel is a band above the form. *@
         <div class="auth-shell">
             <aside class="auth-art">
                 <div class="auth-art-inner">
                     <a class="auth-brand" href="/sign-in">
-                        <ZaziMark Size="26" />
+                        <span class="brand-tile"><ZaziMark Size="18" /></span>
                         <span>Zazi</span>
                     </a>
 
-                    <p class="auth-headline">Every cedi, accounted for.</p>
+                    <p class="auth-headline">Run your mobile money business with <em>every cedi</em> accounted for.</p>
                     <p class="auth-sub">
-                        Zazi records every mobile money transaction and keeps your cash and float
-                        in balance across MTN, Telecel and AirtelTigo.
+                        Cash, MTN, Telecel and AirtelTigo float, every agent and every transaction —
+                        in one place. Agents on keypad phones record by SMS.
                     </p>
 
-                    @* What the product records, shown rather than described: one transaction,
-                       with the customer's number and the exact time. *@
-                    <div class="auth-receipt" aria-hidden="true">
-                        <div class="row top">
-                            <span class="kind">Cash out</span>
-                            <span class="amount">−₵50.00</span>
+                    @* The product shown rather than described. Illustrative figures. *@
+                    <div class="auth-preview" aria-hidden="true">
+                        <div class="pv-card">
+                            <span class="pv-label">Money on hand</span>
+                            <span class="pv-amount">₵48,250.00</span>
+                            <div class="pv-split">
+                                <span><i class="dot cash"></i>Cash ₵12,400</span>
+                                <span><i class="dot mtn"></i>MTN ₵26,150</span>
+                                <span><i class="dot telecel"></i>Telecel ₵9,700</span>
+                            </div>
                         </div>
-                        <div class="row meta">
-                            <span>MTN · 024 412 3456</span>
-                            <span>11:50</span>
+                        <div class="pv-row">
+                            <span class="net-badge mtn">MTN</span>
+                            <span class="pv-what"><b>Cash out</b><small>024 412 3456 · 11:50</small></span>
+                            <span class="pv-amt">−₵50.00</span>
                         </div>
-                        <div class="row status"><span class="dot"></span> Recorded and synced</div>
+                        <div class="pv-row">
+                            <span class="net-badge telecel">T</span>
+                            <span class="pv-what"><b>Cash in</b><small>020 555 1234 · 11:42</small></span>
+                            <span class="pv-amt in">+₵300.00</span>
+                        </div>
                     </div>
 
                     <ul class="auth-points">
-                        <li>Every transaction with the customer's number and time</li>
-                        <li>Statements for any day, week, month or year</li>
-                        <li>Works without internet — syncs when you have data</li>
+                        <li><b>Works offline</b> — the app syncs when there is data</li>
+                        <li><b>Keypad phones</b> — agents record and close the day by SMS</li>
+                        <li><b>Close the day</b> — shortages flagged the same evening</li>
                     </ul>
                 </div>
             </aside>

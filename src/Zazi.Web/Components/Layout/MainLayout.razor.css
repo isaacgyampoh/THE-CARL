@@ -1,3 +1,3 @@
 /* Width only. Padding lives in app.css, where it changes with the screen: a scoped rule wins
    on specificity and would pin phones to the desktop gutter. */
-main { max-width: 64rem; margin: 0 auto; }
+main { max-width: 72rem; margin: 0 auto; }

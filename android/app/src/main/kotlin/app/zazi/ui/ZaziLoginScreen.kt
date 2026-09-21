@@ -1,8 +1,7 @@
 package app.zazi.ui
 
-import app.zazi.ui.brand.KenteOn
-import app.zazi.ui.brand.KenteStrip
-import app.zazi.ui.brand.KenteBackground
+import app.zazi.ui.brand.BrandOn
+import app.zazi.ui.brand.BrandBand
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -87,10 +86,9 @@ fun LoginScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // The woven band: the product's identity, on the same kente-inspired pattern as the
-        // owner's portal, before anything is asked of the agent. Words sit on a deep-green
-        // wash so they stay readable; the full-colour strip marks where the form begins.
-        KenteBackground(Modifier.fillMaxWidth()) {
+        // The brand band: the product's identity, on the same navy as the owner's portal,
+        // before anything is asked of the agent.
+        BrandBand(Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier
                     .padding(horizontal = 24.dp)
@@ -99,7 +97,7 @@ fun LoginScreen(
                     // Small enough to feel like settling rather than zooming.
                     .scale(0.96f + 0.04f * progress)
             ) {
-                ZaziWordmark(markColor = KenteOn.Accent, textColor = KenteOn.Text)
+                ZaziWordmark(markColor = BrandOn.Accent, textColor = BrandOn.Text)
 
                 Spacer(Modifier.height(Spacing.small))
 
@@ -109,11 +107,10 @@ fun LoginScreen(
                     // say to someone trusting it with their day's takings.
                     "Your simple way to keep track of every transaction.",
                     style = MaterialTheme.typography.bodyLarge,
-                    color = KenteOn.Muted
+                    color = BrandOn.Muted
                 )
             }
         }
-        KenteStrip()
 
     Column(modifier = Modifier.padding(horizontal = 24.dp)) {
         Spacer(Modifier.height(Spacing.section))

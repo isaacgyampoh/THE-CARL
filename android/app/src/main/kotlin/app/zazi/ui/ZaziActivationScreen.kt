@@ -1,8 +1,7 @@
 package app.zazi.ui
 
-import app.zazi.ui.brand.KenteOn
-import app.zazi.ui.brand.KenteStrip
-import app.zazi.ui.brand.KenteBackground
+import app.zazi.ui.brand.BrandOn
+import app.zazi.ui.brand.BrandBand
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -57,15 +56,15 @@ fun ActivationScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
     ) {
-        // The same woven band as the sign-in screen: a worker activating their phone for the
+        // The same brand band as the sign-in screen: a worker activating their phone for the
         // first time should meet the same product their owner sees in the portal.
-        KenteBackground(Modifier.fillMaxWidth()) {
+        BrandBand(Modifier.fillMaxWidth()) {
             Column(
                 Modifier
                     .padding(horizontal = Spacing.medium)
                     .padding(top = 56.dp, bottom = 32.dp)
             ) {
-                ZaziWordmark(markColor = KenteOn.Accent, textColor = KenteOn.Text)
+                ZaziWordmark(markColor = BrandOn.Accent, textColor = BrandOn.Text)
 
                 Spacer(Modifier.height(Spacing.small))
 
@@ -73,7 +72,7 @@ fun ActivationScreen(
                     "Activate your Zazi access",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
-                    color = KenteOn.Text
+                    color = BrandOn.Text
                 )
 
                 Spacer(Modifier.height(Spacing.tight))
@@ -81,11 +80,10 @@ fun ActivationScreen(
                 Text(
                     "Enter the activation code provided by your business owner.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = KenteOn.Muted
+                    color = BrandOn.Muted
                 )
             }
         }
-        KenteStrip()
 
     Column(modifier = Modifier.padding(horizontal = Spacing.medium)) {
         Spacer(Modifier.height(Spacing.large))

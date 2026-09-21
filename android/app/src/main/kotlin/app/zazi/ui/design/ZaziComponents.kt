@@ -2,6 +2,8 @@ package app.zazi.ui.design
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.ui.unit.sp
+import app.zazi.ui.theme.Brand
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,6 +145,33 @@ fun DirectionBadge(incoming: Boolean, modifier: Modifier = Modifier) {
             contentDescription = if (incoming) "Cash in" else "Cash out",
             tint = if (incoming) colours.onTertiaryContainer else colours.onSurfaceVariant,
             modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+/**
+ * The mobile-money operator, in its own colour: MTN yellow, Telecel red, AirtelTigo blue. An
+ * agent looking for "that Telecel one" finds it by colour before reading a word.
+ */
+@Composable
+fun NetworkBadge(provider: String, modifier: Modifier = Modifier) {
+    val colours = MaterialTheme.colorScheme
+    val (ground, ink, letters) = when (provider.uppercase().replace(" ", "")) {
+        "MTN" -> Triple(Brand.Mtn, Brand.OnMtn, "MTN")
+        "TELECEL", "VODAFONE" -> Triple(Brand.Telecel, Color.White, "T")
+        "AIRTELTIGO", "AT" -> Triple(Brand.AirtelTigo, Color.White, "AT")
+        else -> Triple(colours.surfaceContainerHighest, colours.onSurfaceVariant, provider.take(1).uppercase())
+    }
+    Box(
+        modifier = modifier.size(Sizing.badge).background(ground, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            letters,
+            color = ink,
+            fontSize = if (letters.length > 2) 10.sp else 12.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1
         )
     }
 }

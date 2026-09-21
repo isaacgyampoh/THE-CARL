@@ -17,7 +17,17 @@ everything in the portal.
 | `CLOSE 1200 3500` | Closes the day: cash counted, then float on all SIMs. The reply says OK, SHORT or OVER against everything recorded since the last close. The owner sees it on the Closing page. |
 | `HELP` | The list above. |
 
-Every message gets a reply. Agents who traded get a summary each evening at 20:00.
+Every message gets a reply. Agents who traded get a summary each evening at 20:00, and if they
+have not closed the day it ends with a reminder to send `CLOSE cash float`.
+
+## What the owner gets
+
+- **Low float warnings.** Set a level per network on the Cash & float page. When an agent's
+  float on that network falls below it, the reply to their next transaction says so ("Low MTN
+  float: GHS 180.00. Top up soon.", or "Very low" below half the level). No extra SMS is sent.
+- **A text when someone closes short.** If an agent's count is short by a cedi or more, the
+  business's phone number (the one given at sign-up) gets an SMS straight away, with the cash
+  and float differences. The Closing page and the Today page show it too.
 
 ## Rules that keep it safe
 

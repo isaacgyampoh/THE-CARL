@@ -1,49 +1,73 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Zazi — a money product first.
+   Deep navy ink carries the brand and every primary action; Ghana gold is the one accent;
+   green and red are kept for money in and money out and nothing else, so they always mean
+   the same thing. Network colours identify MTN, Telecel and AirtelTigo at a glance.
+   Flat colour throughout — no gradients.
+   ═══════════════════════════════════════════════════════════════════════════ */
 :root {
     color-scheme: light dark;
 
-    --ink: #181d12;
-    --muted: #5f6b52;
-    --line: #e3e9d6;
-    --accent: #2f5d12;
-    --bad: #b3261e;
-    --surface: #fafbf5;
-    --card: #fff;
-    /* Text drawn on the accent. In dark mode the accent lightens, so white on it would
-       fail contrast — the pairing has to flip with the palette, not stay fixed. */
+    --ink: #0e1726;
+    --muted: #5b6676;
+    --line: #e3e8ef;
+    --accent: #0f2a44;
+    --accent-hover: #173b5f;
     --on-accent: #fff;
-    /* The accent under the pointer. A token rather than a filter, because the accent is dark
-       in light mode and light in dark mode — "brighter" is the wrong answer in one of them. */
-    --accent-hover: #24490e;
+    --bad: #c0362c;
+    --surface: #f4f6f9;
+    --card: #fff;
 
-    /* Status colours are tokens too, so dark mode redefines them in one place rather than
-       each rule carrying a hard-coded pair. */
-    --ok-bg: #e4f7be;   --ok-fg: #2f5d12;
-    --warn-bg: #fdf3e2; --warn-fg: #8a5a00;
-    --bad-bg: #fdeceb;
+    /* The brand ground: sidebar, balance card, sign-in panel. Stays navy in both themes. */
+    --navy: #0b1f33;
+    --navy-2: #13304d;
+    --navy-line: #20405f;
+    --on-navy: #f4f7fb;
+    --on-navy-muted: #a9b8c9;
+    --gold: #f2a900;
+
+    --in: #067647;
+
+    --ok-bg: #e7f6ee;   --ok-fg: #067647;
+    --warn-bg: #fff4de; --warn-fg: #8a5300;
+    --bad-bg: #fdecea;
     --row-warn: #fffaf0;
-    --code-bg: #eff3e4;
+    --code-bg: #eef2f6;
+
+    --mtn: #ffcb05;      --on-mtn: #1a1a1a;
+    --telecel: #e30613;  --on-telecel: #fff;
+    --airteltigo: #0a4da2; --on-airteltigo: #fff;
+
+    --radius: .75rem;
+    --shadow: 0 1px 2px rgba(14, 23, 38, .05);
 }
 
-/* An agent reconciling at the end of a night shift is reading this in the dark. The palette
-   is rebuilt rather than inverted: pure white on pure black is harder to read for long
-   stretches than a lifted dark surface, and the accent has to stay legible on it. */
+/* Rebuilt rather than inverted: an agent reconciling at night reads this in the dark. Gold
+   takes over as the action colour, since navy vanishes on a dark ground. */
 @media (prefers-color-scheme: dark) {
     :root {
-        --ink: #e6eedc;
-        --muted: #a8b79a;
-        --line: #2e3a24;
-        --accent: #c6f432;
+        --ink: #e6ebf2;
+        --muted: #9aa7b8;
+        --line: #243244;
+        --accent: #f2b544;
+        --accent-hover: #f7c766;
+        --on-accent: #1a1200;
         --bad: #ff8a80;
-        --surface: #0e140a;
-        --card: #171e12;
-        --on-accent: #16250a;
-        --accent-hover: #d4f95e;
+        --surface: #0a121c;
+        --card: #111c29;
 
-        --ok-bg: #2e4d12;   --ok-fg: #b8e86a;
-        --warn-bg: #362a15; --warn-fg: #f0c274;
+        --navy: #0d1a2a;
+        --navy-2: #152a42;
+        --navy-line: #25405e;
+
+        --in: #5fd39a;
+
+        --ok-bg: #0f2e22;   --ok-fg: #5fd39a;
+        --warn-bg: #33270f; --warn-fg: #f2c46a;
         --bad-bg: #3a1d1c;
         --row-warn: #2a2116;
-        --code-bg: #253019;
+        --code-bg: #1a2636;
+        --shadow: none;
     }
 }
 
@@ -51,13 +75,11 @@
 
 body {
     margin: 0;
-    /* A named face rather than system-ui. Not decoration: system-ui renders the portal in a
-       different typeface on every machine that opens it, so nobody is looking at the same
-       product, and figures set in one metric do not line up with the same figures set in
-       another. Source Sans 3 is a UI face with real tabular numerals, which is what a page
-       of cedi amounts in a column actually needs. The stack behind it keeps the page legible
-       on a handset that blocks web fonts, which is squarely in this audience. */
-    font: 16px/1.5 "Source Sans 3", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* A named face rather than system-ui, so every owner sees the same product and figures
+       line up: Inter has true tabular numerals, which is what a page of cedi amounts in a
+       column needs. The stack behind it keeps the page legible where web fonts are blocked. */
+    font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
     color: var(--ink);
     background: var(--surface);
     /* Amounts, references and timestamps sit in columns throughout. Lining figures of equal
@@ -66,7 +88,7 @@ body {
 }
 
 h1 { font-size: 1.6rem; margin: 0 0 1rem; }
-h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 2rem 0 .5rem; }
+h2 { font-size: 1.05rem; font-weight: 650; letter-spacing: -.01em; color: var(--ink); margin: 2rem 0 .75rem; }
 
 button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
 
@@ -351,10 +373,10 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
    screen. Everything below is written phone-first; wider screens are the enhancement.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Header ───────────────────────────────────────────────────────────────
-   Phone: logo and sign-out on one row, the sections on a second row that scrolls sideways.
-   Desktop: all three on one row. A grid rather than wrapping flex, so the arrangement is
-   decided rather than left to whatever happens to fit. */
+/* ─── Shell and navigation ────────────────────────────────────────────────
+   Phone: a navy bar with the brand and account, and the sections in a row beneath it that
+   scrolls sideways. Desktop: a fixed navy sidebar, the way banking dashboards are laid out,
+   with the page beside it. */
 .nav {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -363,9 +385,9 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
         "links links";
     align-items: center;
     column-gap: 1rem;
-    padding: .6rem 1rem 0;
-    background: var(--card);
-    border-bottom: 1px solid var(--line);
+    padding: .7rem 1rem 0;
+    background: var(--navy);
+    color: var(--on-navy);
     position: sticky;
     top: 0;
     z-index: 5;
@@ -374,40 +396,52 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
     grid-area: brand;
     display: inline-flex;
     align-items: center;
-    gap: .45rem;
+    gap: .55rem;
     font-weight: 700;
     font-size: 1.1rem;
-    letter-spacing: -.01em;
-    color: var(--ink);
+    letter-spacing: -.02em;
+    color: #fff;
     text-decoration: none;
 }
-/* The mark takes the accent; the word stays ink. The header is not what anyone came for. */
-.nav .brand .mark { color: var(--accent); flex: none; }
+.brand-tile {
+    display: inline-grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: .55rem;
+    background: var(--gold);
+    color: var(--navy);
+    flex: none;
+}
+.brand-tile .mark { color: #0b1f33; }
 
 .nav .account {
     grid-area: account;
     justify-self: end;
     display: flex;
     align-items: center;
-    gap: .9rem;
+    gap: .6rem;
     min-width: 0;
 }
+.nav .avatar { display: none; }
 .nav .who {
-    color: var(--muted);
-    font-size: .88rem;
+    color: var(--on-navy-muted);
+    font-size: .85rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 10rem;
+    max-width: 9rem;
 }
 .nav form { margin: 0; }
+.nav button.link { color: #fff; font-size: .88rem; font-weight: 600; text-decoration: none; min-height: 0; }
+.nav button.link:hover { color: var(--gold); }
 
 .nav .links {
     grid-area: links;
     display: flex;
-    gap: .25rem;
-    margin: .35rem -1rem 0;
-    padding: 0 1rem;
+    gap: .15rem;
+    margin: .5rem -1rem 0;
+    padding: 0 .6rem;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
@@ -415,32 +449,86 @@ code { font: .85em ui-monospace, SFMono-Regular, Menlo, monospace;
 .nav .links::-webkit-scrollbar { display: none; }
 .nav .links a {
     flex: none;
-    padding: .55rem .7rem .7rem;
-    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .6rem .65rem .75rem;
+    color: var(--on-navy-muted);
     text-decoration: none;
-    font-size: .95rem;
+    font-size: .9rem;
     font-weight: 500;
     border-bottom: 2px solid transparent;
     white-space: nowrap;
 }
-.nav .links a:hover { color: var(--ink); }
-/* Which page you are on, said by weight and a rule as well as colour. */
-.nav .links a[aria-current="page"] {
-    color: var(--ink);
-    font-weight: 600;
-    border-bottom-color: var(--accent);
+.nav .links svg {
+    width: 1.1rem; height: 1.1rem; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.nav .links a svg { display: none; }
+.nav .links a:hover { color: #fff; }
+.nav .links a[aria-current="page"] { color: #fff; font-weight: 600; border-bottom-color: var(--gold); }
+
+@media (min-width: 1024px) {
+    .app-shell { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr); min-height: 100vh; }
+    .nav {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 1.4rem .9rem 1rem;
+        border-right: 1px solid var(--navy-line);
+    }
+    .nav .brand { padding: 0 .55rem 1.6rem; font-size: 1.2rem; }
+    .nav .links {
+        flex-direction: column;
+        gap: .2rem;
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+    }
+    .nav .links a {
+        padding: .62rem .75rem;
+        border-bottom: 0;
+        border-radius: .6rem;
+        font-size: .93rem;
+    }
+    .nav .links a svg { display: block; }
+    .nav .links a:hover { background: var(--navy-2); }
+    .nav .links a[aria-current="page"] {
+        background: var(--navy-2);
+        box-shadow: inset 3px 0 0 var(--gold);
+    }
+    .nav .account {
+        margin-top: auto;
+        justify-self: stretch;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas: "avatar who" "avatar out";
+        column-gap: .65rem;
+        row-gap: .05rem;
+        padding: .9rem .55rem 0;
+        border-top: 1px solid var(--navy-line);
+    }
+    .nav .avatar { grid-area: avatar; display: inline-grid; }
+    .nav .who { grid-area: who; color: #fff; font-weight: 600; max-width: none; }
+    .nav .account form { grid-area: out; }
+    .nav button.link { color: var(--on-navy-muted); font-weight: 500; font-size: .82rem; }
 }
 
-@media (min-width: 760px) {
-    .nav {
-        grid-template-columns: auto 1fr auto;
-        grid-template-areas: "brand links account";
-        padding: 0 1.5rem;
-        column-gap: 2rem;
-    }
-    .nav .links { margin: 0; padding: 0; }
-    .nav .links a { padding: 1.05rem .6rem .95rem; }
-    .nav .who { max-width: 16rem; }
+.avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    background: var(--navy-2);
+    color: #fff;
+    font-size: .8rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    flex: none;
 }
 
 /* ─── Page ─────────────────────────────────────────────────────────────── */
@@ -453,11 +541,7 @@ main > h1 {
     line-height: 1.2;
     margin: 0 0 .4rem;
 }
-main > h2 {
-    margin-top: 2.25rem;
-    font-size: .8rem;
-    letter-spacing: .07em;
-}
+main > h2 { margin-top: 2.25rem; }
 .lead { color: var(--muted); max-width: 42rem; margin: 0 0 1.25rem; }
 
 /* ─── Figures at the top of a page ─────────────────────────────────────────
@@ -929,118 +1013,82 @@ main a.download:hover { background: var(--accent); color: var(--on-accent); }
 main nav.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Signed-out pages: the woven panel
-   The first screen a new owner sees. It says what Zazi is before asking for anything, on a
-   kente-inspired pattern in the product's own colours — drawn, not photographed, so it is a
-   few kilobytes on a slow connection. The pattern sits under a deep-green wash so the words
-   on it stay readable; at full strength it appears only as a woven strip along the edge.
+   Signed-out pages
+   The first screen a new owner sees: what Zazi is, shown with a balance card of the kind
+   the portal is built around, beside the form. Navy ground, flat.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-:root {
-    --kente: url("/img/kente.svg");
-    /* Solid deep green, with the pattern on its own layer above it at low strength. Flat colour
-       throughout: no gradient anywhere. */
-    --art-ground: #0e1e06;
-    --pattern-strength: .12;
-}
 
 .auth-shell { min-height: 100vh; min-height: 100dvh; }
 
-.auth-art {
-    position: relative;
-    color: #f4f8ec;
-    background: var(--art-ground);
-    overflow: hidden;
-}
-/* The pattern on its own layer, faint, so words on the panel read against flat colour. */
-.auth-art::before,
-.hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: var(--kente);
-    background-size: 120px 120px;
-    opacity: var(--pattern-strength);
-    pointer-events: none;
-}
-/* The woven strip, at full colour, along the edge that meets the form. */
-.auth-art::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    height: 10px;
-    background: var(--kente);
-    background-size: 40px 40px;
-}
-
-.auth-art-inner { position: relative; padding: 1.4rem 1.25rem 2.1rem; }
+.auth-art { position: relative; color: var(--on-navy); background: var(--navy); overflow: hidden; }
+.auth-art-inner { position: relative; padding: 1.4rem 1.25rem 2.4rem; }
 
 .auth-brand {
     display: inline-flex;
     align-items: center;
-    gap: .5rem;
+    gap: .55rem;
     color: #fff;
     text-decoration: none;
     font-weight: 700;
     font-size: 1.25rem;
-    letter-spacing: -.01em;
+    letter-spacing: -.02em;
 }
-.auth-brand .mark { color: #c6f432; }
 
 .auth-headline {
-    margin: 1.1rem 0 .4rem;
-    font-size: 1.7rem;
+    margin: 1.25rem 0 .5rem;
+    font-size: 1.6rem;
     line-height: 1.15;
     font-weight: 700;
-    letter-spacing: -.02em;
+    letter-spacing: -.03em;
     color: #fff;
     text-wrap: balance;
 }
-.auth-sub { margin: 0; max-width: 30rem; color: #d5e2c4; font-size: .98rem; }
+.auth-headline em { font-style: normal; color: var(--gold); }
+.auth-sub { margin: 0; max-width: 30rem; color: var(--on-navy-muted); font-size: .98rem; }
 
-/* A transaction as Zazi records it — the product shown rather than described. */
-.auth-receipt {
-    display: none;
-    margin: 1.75rem 0 1.5rem;
-    max-width: 21rem;
-    padding: 1rem 1.1rem;
-    border-radius: .9rem;
-    background: #fbfdf7;
-    color: #16200f;
-    border: 1px solid #d9e2c9;
+/* The product, shown. */
+.auth-preview { display: none; margin: 2rem 0 1.75rem; max-width: 24rem; }
+.pv-card {
+    padding: 1.2rem 1.25rem;
+    border-radius: 1rem;
+    background: var(--navy-2);
+    border: 1px solid var(--navy-line);
 }
-.auth-receipt .row { display: flex; justify-content: space-between; gap: 1rem; }
-.auth-receipt .top { font-weight: 700; font-size: 1.05rem; }
-.auth-receipt .amount { font-variant-numeric: tabular-nums; }
-.auth-receipt .meta { margin-top: .25rem; color: #5f6b52; font-size: .88rem; font-variant-numeric: tabular-nums; }
-.auth-receipt .status {
-    justify-content: flex-start;
+.pv-label { display: block; color: var(--on-navy-muted); font-size: .8rem; font-weight: 500; }
+.pv-amount { display: block; margin: .2rem 0 .8rem; color: #fff; font-size: 1.9rem; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.pv-split { display: flex; flex-wrap: wrap; gap: .35rem 1rem; color: var(--on-navy); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.pv-split span { display: inline-flex; align-items: center; gap: .35rem; }
+.pv-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: .45rem;
-    margin-top: .75rem;
-    padding-top: .6rem;
-    border-top: 1px dashed #d9e2c9;
-    color: #2f5d12;
-    font-size: .82rem;
-    font-weight: 600;
+    gap: .75rem;
+    margin-top: .6rem;
+    padding: .7rem .9rem;
+    border-radius: .8rem;
+    background: #fff;
+    color: #0e1726;
 }
-.auth-receipt .dot { width: .55rem; height: .55rem; border-radius: 50%; background: #2f5d12; }
+.pv-what b { display: block; font-size: .9rem; }
+.pv-what small { display: block; color: #5b6676; font-size: .78rem; font-variant-numeric: tabular-nums; }
+.pv-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pv-amt.in { color: #067647; }
 
 .auth-points { display: none; list-style: none; margin: 0; padding: 0; }
 .auth-points li {
     position: relative;
-    padding: .45rem 0 .45rem 1.6rem;
-    color: #e3ecd6;
-    font-size: .95rem;
+    padding: .4rem 0 .4rem 1.7rem;
+    color: var(--on-navy-muted);
+    font-size: .93rem;
 }
+.auth-points li b { color: #fff; font-weight: 600; }
 .auth-points li::before {
     content: "";
     position: absolute;
-    left: 0; top: .78rem;
-    width: .8rem; height: .8rem;
-    border-radius: 3px;
-    background: #e3b23c;
-    border: 3px solid #b8321f;
+    left: 0; top: .72rem;
+    width: 1rem; height: 1rem;
+    border-radius: 50%;
+    background: var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 8.3l2.2 2.2 4.8-5' fill='none' stroke='%230b1f33' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% no-repeat;
 }
 
 /* The form sits in a card that rises over the bottom of the band on a phone. */
@@ -1051,54 +1099,31 @@ main nav.pager { display: flex; justify-content: space-between; align-items: cen
     border: 1px solid var(--line);
     border-radius: 1rem;
     background: var(--card);
+    box-shadow: 0 8px 24px rgba(11, 31, 51, .08);
     padding: 1.6rem 1.25rem 1.75rem;
 }
-/* The logo is on the panel now; repeating it inside the card said "Zazi" twice. */
 .auth-shell .signin .masthead { display: none; }
 
 @media (min-width: 900px) {
-    .auth-shell {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-    .auth-art {
-        position: sticky;
-        top: 0;
-        height: 100vh;
-        height: 100dvh;
-    }
-    .auth-art::after {
-        left: auto; top: 0; bottom: 0; right: 0;
-        width: 12px; height: auto;
-    }
+    .auth-shell { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+    .auth-art { position: sticky; top: 0; height: 100vh; height: 100dvh; }
     .auth-art-inner {
         height: 100%;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        max-width: 34rem;
+        max-width: 36rem;
         margin: 0 auto;
         padding: 3rem 3.5rem;
     }
-    .auth-headline { font-size: 2.6rem; margin-top: 2rem; }
+    .auth-headline { font-size: 2.45rem; margin-top: 2.25rem; }
     .auth-sub { font-size: 1.05rem; }
-    .auth-receipt, .auth-points { display: block; }
-    .auth-receipt .row { display: flex; }
-
-    .auth-shell > main {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 3rem 2rem;
-    }
-    .auth-shell .signin {
-        margin: 0;
-        width: 100%;
-        max-width: 26rem;
-    }
+    .auth-preview, .auth-points { display: block; }
+    .pv-split { display: flex; }
+    .auth-shell > main { display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; background: var(--surface); }
+    .auth-shell .signin { margin: 0; width: 100%; max-width: 26rem; padding: 2.25rem 2rem; }
 }
 
-/* The phone rule that flattened the card for a bare page does not apply inside the shell. */
 @media (max-width: 480px) {
     .auth-shell .signin {
         border: 1px solid var(--line);
@@ -1108,53 +1133,177 @@ main nav.pager { display: flex; justify-content: space-between; align-items: cen
     }
 }
 
-/* ─── Woven accents on signed-in pages ─────────────────────────────────────
-   A thin strip of the pattern under the header on every page, and a welcome banner on
-   Today. Restrained on purpose: these are pages people work in, and the pattern is identity,
-   not decoration to read around. */
-.nav::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; bottom: -4px;
-    height: 4px;
-    background: var(--kente);
-    background-size: 16px 16px;
-}
-.nav { border-bottom: 0; }
+/* ═══════════════════════════════════════════════════════════════════════════
+   Today
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-.hero {
-    position: relative;
-    overflow: hidden;
-    margin: -1.25rem -1rem 1.25rem;
-    padding: 1.5rem 1.25rem 1.4rem;
-    color: #f4f8ec;
-    background: var(--art-ground);
+.page-head {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: .5rem 1rem;
+    margin-bottom: 1.25rem;
 }
-.hero > * { position: relative; }
-.hero h1 {
-    margin: .15rem 0 .35rem;
-    color: #fff;
-    font-size: 1.65rem;
-    letter-spacing: -.02em;
-}
-.hero-date {
+.page-head h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.03em; }
+.eyebrow { margin: 0 0 .15rem; color: var(--muted); font-size: .85rem; font-weight: 500; }
+.asof-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
     margin: 0;
-    color: #c6f432;
-    font-size: .8rem;
-    font-weight: 600;
-    letter-spacing: .06em;
-    text-transform: uppercase;
+    padding: .35rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--muted);
+    font-size: .82rem;
 }
-.hero-asof { margin: 0; color: #d5e2c4; font-size: .85rem; }
-.hero-asof a { color: #fff; }
+.asof-chip a { font-weight: 600; }
+.live-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--in); }
+
+/* The balance card: the one figure an owner opens the page for. */
+.balance-card {
+    padding: 1.35rem 1.25rem 1.1rem;
+    border-radius: 1.1rem;
+    background: var(--navy);
+    color: var(--on-navy);
+}
+.bc-label { margin: 0; color: var(--on-navy-muted); font-size: .85rem; font-weight: 500; }
+.bc-amount {
+    margin: .2rem 0 .1rem;
+    color: #fff;
+    font-size: 2.1rem;
+    font-weight: 700;
+    letter-spacing: -.035em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+}
+.bc-sub { margin: 0 0 1.1rem; color: var(--on-navy-muted); font-size: .82rem; }
+.bc-split {
+    list-style: none;
+    margin: 0;
+    padding: .9rem 0 0;
+    border-top: 1px solid var(--navy-line);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .9rem 1rem;
+}
+.bc-split li { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.bc-net { display: inline-flex; align-items: center; gap: .4rem; color: var(--on-navy-muted); font-size: .8rem; }
+.bc-val { color: #fff; font-weight: 650; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.bc-split li.negative .bc-val { color: #ffb4a8; }
+.bc-note { color: #ffb4a8; font-size: .74rem; }
 
 @media (min-width: 760px) {
-    .hero {
-        margin: 0 0 1.5rem;
-        padding: 1.9rem 2rem;
-        border-radius: 1rem;
-    }
-    .hero h1 { font-size: 2rem; }
+    .balance-card { padding: 1.75rem 1.9rem 1.5rem; }
+    .bc-amount { font-size: 2.75rem; }
+    .bc-split { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+.dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; flex: none; }
+.dot.cash { background: #35c28a; }
+.dot.mtn { background: var(--mtn); }
+.dot.telecel { background: var(--telecel); }
+.dot.airteltigo { background: #4d8fe6; }
+
+/* Network badge on a transaction row: the operator's own colour, readable at a glance. */
+.net-badge {
+    display: inline-grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 50%;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    flex: none;
+}
+.net-badge.mtn { background: var(--mtn); color: var(--on-mtn); }
+.net-badge.telecel { background: var(--telecel); color: var(--on-telecel); }
+.net-badge.airteltigo { background: var(--airteltigo); color: var(--on-airteltigo); }
+.net-badge.other { background: var(--code-bg); color: var(--muted); }
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .5rem;
+    margin: 1rem 0 0;
+}
+main .quick-actions a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .45rem;
+    padding: .85rem .35rem .75rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: .78rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.25;
+}
+main .quick-actions a:hover { border-color: var(--accent); color: var(--ink); }
+.qa-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: .75rem;
+    background: var(--code-bg);
+    color: var(--accent);
+}
+.qa-icon svg { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (min-width: 760px) {
+    main .quick-actions a { flex-direction: row; justify-content: flex-start; padding: .8rem .9rem; font-size: .9rem; text-align: left; }
+}
+
+main a.closing-strip {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: .85rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--card);
+    color: var(--ink);
+    text-decoration: none;
+}
+.cs-title { font-weight: 650; }
+.cs-facts { display: flex; flex-wrap: wrap; gap: .25rem .9rem; flex: 1; color: var(--ok-fg); font-size: .9rem; font-weight: 600; }
+.cs-facts .bad { color: var(--bad); }
+.cs-facts .warn { color: var(--warn-fg); }
+.cs-facts .muted { font-weight: 500; }
+.cs-go { color: var(--muted); }
+
+/* Today's trading: one card, four figures, rules between them. */
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+.stat-strip .tile {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid var(--line);
+}
+.stat-strip .tile:nth-child(odd) { border-right: 1px solid var(--line); }
+.stat-strip .tile:nth-last-child(-n+2) { border-bottom: 0; }
+@media (min-width: 760px) {
+    .stat-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .stat-strip .tile { border-bottom: 0; border-right: 1px solid var(--line); }
+    .stat-strip .tile:last-child { border-right: 0; }
 }
 
 /* Secondary actions. Last in the file and one step more specific than the rule that makes
@@ -1181,3 +1330,54 @@ main form button[type="submit"].secondary:not(.link):hover { background: var(--c
 
 /* A status pill keeps its own width inside a stacked table cell on a phone. */
 td .pill { justify-self: start; width: fit-content; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Finish
+   Buttons are rounded rectangles rather than pills; cards carry a hairline shadow; lists
+   of money lead with the network's badge. Last in the file so it settles earlier rules.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+main form button[type="submit"]:not(.link),
+.signin button { border-radius: .65rem; font-weight: 600; letter-spacing: -.005em; }
+.signin button { padding: .8rem; }
+.periods a { border-radius: .6rem; }
+.periods a[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+main a.download { border-radius: .6rem; }
+
+.tile, table, .people, .feed, .ledger, ul.estate, ul.attention, .callout { box-shadow: var(--shadow); }
+.tile .value { font-weight: 650; letter-spacing: -.02em; }
+.tile .label { color: var(--muted); font-weight: 500; }
+
+.signin h1, .signin h1.purpose { font-size: 1.5rem; letter-spacing: -.03em; }
+.signin input { background: var(--card); min-height: 2.9rem; }
+
+.feed li {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .85rem;
+    padding: .8rem 1rem;
+}
+.feed .kind { font-weight: 600; }
+.feed .amount { font-weight: 700; }
+.feed .amount.in, .ledger .amount.in { color: var(--in); }
+
+.people li { padding: .9rem 1rem; }
+.people .who-line { justify-content: flex-start; align-items: center; gap: .7rem; }
+.people .who-line .branch { margin-left: auto; }
+.people .avatar { background: var(--code-bg); color: var(--accent); width: 2.1rem; height: 2.1rem; }
+.people .held { margin-left: 2.8rem; }
+
+.all-clear { border: 1px solid transparent; }
+.callout.warn { border-color: #f1c66a; }
+
+main > h1 { letter-spacing: -.03em; }
+
+/* Fields are white on the grey page, so where to type is obvious at a glance. */
+main input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+main select,
+main textarea { background-color: var(--card); border-color: #d5dce5; }
+@media (prefers-color-scheme: dark) {
+    main input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+    main select,
+    main textarea { border-color: var(--line); }
+}

@@ -4,13 +4,13 @@
          app's Compose theme use, so the icon on the home screen belongs to the same product
          as the screen it opens. Kept as a colour resource rather than inlined in the icon so
          the adaptive-icon layers and any themed variant stay in step. -->
-    <color name="ic_launcher_background">#C6F432</color>
+    <color name="ic_launcher_background">#F2A900</color>
     <!-- The deep green the brand introduction opens on. The system splash is painted the
          same value so there is no seam between the platform's launch window and Zazi's own
          first frame: one continuous surface, then a fade into the app. It is deliberately
          NOT window_background — the brand reads the same in light and dark, and a brand that
          changes colour with a system setting is not a brand. -->
-    <color name="brand_splash_background">#16250A</color>
+    <color name="brand_splash_background">#0B1F33</color>
     <!-- Matches ZaziTheme's light background; see values-night for the dark counterpart. -->
-    <color name="window_background">#FAFBF5</color>
+    <color name="window_background">#FFFFFF</color>
 </resources>

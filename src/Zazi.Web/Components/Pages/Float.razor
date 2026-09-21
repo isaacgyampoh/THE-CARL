@@ -4,6 +4,7 @@
 @attribute [Authorize(Policy = ZaziPolicies.BranchManage)]
 @rendermode InteractiveServer
 @inject IFloatService Floats
+@inject Zazi.Application.IAlertService Alerts
 @inject ICurrentUserContext CurrentUser
 @inject ILogger<Float> Log
 
@@ -134,6 +135,36 @@ else
     <button type="submit" disabled="@_busy">Record</button>
 </EditForm>
 
+<h2>Low float warning</h2>
+
+<p class="muted">
+    Set the level at which an agent's float counts as low. Agents on keypad phones are told in
+    the reply to each transaction — no extra SMS — and the Today page counts who is low.
+</p>
+
+@if (_warningSaved is not null)
+{
+    <p class="muted" role="status">@_warningSaved</p>
+}
+
+<EditForm Model="_warning" OnValidSubmit="SaveWarningAsync" FormName="float-warning">
+    <p>
+        <label for="warn-network">Network</label>
+        <InputSelect id="warn-network" @bind-Value="_warning.Network">
+            <option value="MTN">MTN</option>
+            <option value="TELECEL">Telecel</option>
+            <option value="AIRTELTIGO">AirtelTigo</option>
+        </InputSelect>
+    </p>
+
+    <p>
+        <label for="warn-level">Warn when float is below (GHS)</label>
+        <InputNumber id="warn-level" @bind-Value="_warning.Level" step="1" />
+    </p>
+
+    <button type="submit" disabled="@_busy">Save warning</button>
+</EditForm>
+
 @if (_movements is not null && _movements.Count > 0)
 {
     <h2>Recent movements for @_movementsFor</h2>
@@ -173,6 +204,50 @@ else
     private bool _busy;
 
     private readonly Entry _entry = new();
+    private readonly Warning _warning = new();
+    private string? _warningSaved;
+
+    private sealed class Warning
+    {
+        public string Network { get; set; } = "MTN";
+        public decimal Level { get; set; } = 500m;
+    }
+
+    /// <summary>
+    /// One level per network for the owner's scope. "Very low" is half of it, so the agent hears
+    /// the difference between "top up today" and "top up now" without a second setting.
+    /// </summary>
+    private async Task SaveWarningAsync()
+    {
+        _busy = true;
+        _error = null;
+        _warningSaved = null;
+        try
+        {
+            if (_warning.Level <= 0m || _warning.Level > 1_000_000m)
+            {
+                _error = "Enter a level above zero.";
+                return;
+            }
+
+            await Alerts.SetThresholdAsync(new Zazi.Application.AlertThresholdRequest(
+                CurrentUser.OrganizationId,
+                CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId,
+                _warning.Network,
+                decimal.Round(_warning.Level, 2),
+                decimal.Round(_warning.Level / 2m, 2)));
+
+            _warningSaved = $"Saved. Agents will be warned when {NetworkName(_warning.Network)} float is below {Money(_warning.Level)}.";
+        }
+        catch (Exception exception)
+        {
+            _error = Fail(exception, "saving the float warning", "The warning could not be saved. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     // With the cedi sign, as every other page writes money. This one alone wrote "2,020.00".
     private static string Money(decimal value) =>
