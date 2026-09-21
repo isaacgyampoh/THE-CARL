@@ -31,7 +31,17 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
         var amount = TryParseAmount(normalizedText);
         var customerPhone = TryExtractPhone(normalizedText);
         var reference = TryExtractReference(normalizedText);
-        var transactionType = DetermineTransactionType(normalizedText);
+        // Read from the clause that states what happened, not from the whole message.
+        //
+        // Providers routinely append what the agent is left holding — "Cash Out of GHS 250.00
+        // to 0241000002. Your cash in hand is now GHS 1,750.00". Searching the whole body finds
+        // "CASH IN" in that reminder, and since it is tested first the transaction is recorded
+        // as a deposit. Cash-in and cash-out move cash and float in opposite directions, so the
+        // balance ends up wrong by twice the amount and every figure built on it inherits it.
+        //
+        // Falling back to the full text keeps messages that lead with the amount working.
+        var stated = DetermineTransactionType(DirectionClause(normalizedText));
+        var transactionType = stated == "UNKNOWN" ? DetermineTransactionType(normalizedText) : stated;
 
         // Confidence and the auto-post bar are decided by SmsEvidencePolicy, the single
         // authority shared conceptually with the Android client. IsValid means "complete
@@ -57,6 +67,22 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
             "SMS",
             deviceId,
             sourceDeviceId);
+    }
+
+    /// <summary>
+    /// The part of a message that states what this transaction was: everything up to the first
+    /// amount. Anything after it is commentary about balances.
+    /// </summary>
+    protected static string DirectionClause(string normalizedText)
+    {
+        var amount = AmountPattern.Match(normalizedText);
+        if (!amount.Success || amount.Index == 0)
+        {
+            return normalizedText;
+        }
+
+        var prefix = normalizedText[..amount.Index];
+        return string.IsNullOrWhiteSpace(prefix) ? normalizedText : prefix;
     }
 
     protected abstract string DetermineTransactionType(string normalizedText);

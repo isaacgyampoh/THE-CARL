@@ -44,7 +44,14 @@ class MtnSmsParser : BaseSmsParser() {
         )
     }
 
-    private fun classify(body: String): TransactionType = when {
+    private fun classify(body: String): TransactionType {
+        val stated = classifyIn(BaseSmsParser.directionClause(body))
+        // Falling back to the whole body keeps messages that lead with the amount working;
+        // the clause is consulted first so a balance reminder cannot outvote the transaction.
+        return if (stated != TransactionType.UNKNOWN) stated else classifyIn(body)
+    }
+
+    private fun classifyIn(body: String): TransactionType = when {
         mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("CASH IN") || body.contains("CASH-IN") -> TransactionType.CASH_IN
@@ -90,7 +97,14 @@ class TelecelSmsParser : BaseSmsParser() {
         )
     }
 
-    private fun classify(body: String): TransactionType = when {
+    private fun classify(body: String): TransactionType {
+        val stated = classifyIn(BaseSmsParser.directionClause(body))
+        // Falling back to the whole body keeps messages that lead with the amount working;
+        // the clause is consulted first so a balance reminder cannot outvote the transaction.
+        return if (stated != TransactionType.UNKNOWN) stated else classifyIn(body)
+    }
+
+    private fun classifyIn(body: String): TransactionType = when {
         mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("DEPOSIT") || body.contains("CASH IN") -> TransactionType.CASH_IN
@@ -135,7 +149,14 @@ class AirtelTigoSmsParser : BaseSmsParser() {
         )
     }
 
-    private fun classify(body: String): TransactionType = when {
+    private fun classify(body: String): TransactionType {
+        val stated = classifyIn(BaseSmsParser.directionClause(body))
+        // Falling back to the whole body keeps messages that lead with the amount working;
+        // the clause is consulted first so a balance reminder cannot outvote the transaction.
+        return if (stated != TransactionType.UNKNOWN) stated else classifyIn(body)
+    }
+
+    private fun classifyIn(body: String): TransactionType = when {
         mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("CASH IN") || body.contains("DEPOSIT") -> TransactionType.CASH_IN

@@ -155,6 +155,28 @@ abstract class BaseSmsParser : SmsTransactionParser {
         fun normalize(body: String): String =
             body.trim().replace(Regex("\\s+"), " ").uppercase()
 
+        /**
+         * The part of a message that states what this transaction was.
+         *
+         * A provider message routinely tells the agent what they are left holding — "Cash Out
+         * of GHS 250.00 to 0241000002. Your cash in hand is now GHS 1,750.00". Searching the
+         * whole body for "CASH IN" finds that reminder, and because it is checked before
+         * "CASH OUT" the transaction is recorded as a deposit. A deposit and a cash-out move
+         * cash and float in opposite directions, so the balance ends up wrong by twice the
+         * amount, and every figure built on it inherits the error.
+         *
+         * The direction is stated before the amount it applies to, so everything up to the
+         * first amount is the clause that describes this transaction. Anything after it is
+         * commentary about balances.
+         */
+        fun directionClause(normalizedBody: String): String {
+            val amount = AMOUNT_PATTERN.find(normalizedBody) ?: return normalizedBody
+            val prefix = normalizedBody.substring(0, amount.range.first)
+            // A message that leads with the amount — "GHS 500.00 has been deposited" — has no
+            // prefix to read, so the whole body is still the best available evidence.
+            return if (prefix.isBlank()) normalizedBody else prefix
+        }
+
         private val AMOUNT_PATTERN =
             Regex("""(?:GHS|GH¢|GHC|₵|CEDIS)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
 

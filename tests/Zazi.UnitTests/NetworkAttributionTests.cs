@@ -53,4 +53,29 @@ public class NetworkAttributionTests
     [Fact]
     public void AnUnattributableMessageIsReportedUnknownRatherThanGuessed() =>
         Assert.Equal("UNKNOWN", Claimed("RandomCo", "You have received GHS 75.00. Ref: XY123"));
+
+    // ─── Direction: deposit versus cash-out ──────────────────────────────────
+
+    private static string TypeOf(string sender, string body) =>
+        Parsers.First(p => p.CanHandle(sender, body)).Parse(body, sender, null, null, null, Guid.NewGuid(), null).TransactionType;
+
+    [Theory]
+    [InlineData("MTN", "Cash In of GHS 500.00 from 0241000001", "CASH_IN")]
+    [InlineData("MTN", "Cash Out of GHS 250.00 to 0241000002", "CASH_OUT")]
+    [InlineData("TelecelCash", "Telecel Cash: Deposit of GHS 1,250.00 from 0201000001", "CASH_IN")]
+    [InlineData("TelecelCash", "Telecel Cash: Withdrawal of GHS 300.00 to 0201000003", "CASH_OUT")]
+    [InlineData("AirtelTigo", "AirtelTigo Money: Cash In GHS 150.00 from 0271000004", "CASH_IN")]
+    [InlineData("AirtelTigo", "AirtelTigo Money: Cash Out GHS 420.00 to 0271000002", "CASH_OUT")]
+    public void DirectionIsReadCorrectlyForEachNetwork(string sender, string body, string expected) =>
+        Assert.Equal(expected, TypeOf(sender, body));
+
+    [Theory]
+    // A balance reminder must not outvote the transaction. Cash-in and cash-out move cash and
+    // float in opposite directions, so getting this wrong is a balance wrong by twice the
+    // amount — not a wrong label.
+    [InlineData("MTN", "Cash Out of GHS 250.00 to 0241000002. Your cash in hand is now GHS 1,750.00", "CASH_OUT")]
+    [InlineData("TelecelCash", "Telecel Cash: Withdrawal of GHS 300.00. Deposit balance GHS 900.00", "CASH_OUT")]
+    [InlineData("AirtelTigo", "AirtelTigo Money: Cash Out GHS 80.00. Today's deposits GHS 4,200.00", "CASH_OUT")]
+    public void ABalanceReminderDoesNotReverseTheDirection(string sender, string body, string expected) =>
+        Assert.Equal(expected, TypeOf(sender, body));
 }
