@@ -251,7 +251,7 @@ else
                                 <td data-label="Agent">
                                     <span class="who-cell">
                                         <span class="avatar" aria-hidden="true">@Initials(person.AgentName)</span>
-                                        <span><span class="name">@person.AgentName</span><span class="sub">@person.BranchName</span></span>
+                                        <span><a class="name" href="@($"/agents/{person.AgentId}")">@person.AgentName</a><span class="sub">@person.BranchName</span></span>
                                     </span>
                                 </td>
                                 <td class="n" data-label="Transactions">@_agentCount.GetValueOrDefault(person.AgentId)</td>

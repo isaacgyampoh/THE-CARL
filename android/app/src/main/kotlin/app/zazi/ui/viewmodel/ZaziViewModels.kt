@@ -25,6 +25,7 @@ import app.zazi.ui.state.CaptureProvider
 import app.zazi.ui.state.CaptureTransactionType
 import app.zazi.ui.state.CaptureUiState
 import app.zazi.ui.state.DashboardUiState
+import app.zazi.ui.state.HoldingsUiState
 import app.zazi.ui.state.EnrolmentError
 import app.zazi.ui.state.EnrolmentUiState
 import app.zazi.ui.state.LoginError
@@ -202,7 +203,12 @@ class DashboardViewModel(
      */
     private val transactionDetailStream: (String) -> Flow<TransactionDetail?> = { emptyFlow() },
     /** Returns whether the item was actually re-queued. */
-    private val retryTransaction: suspend (String) -> Boolean = { false }
+    private val retryTransaction: suspend (String) -> Boolean = { false },
+    /**
+     * What the owner has given this agent, from the server. Defaulted to nothing so existing
+     * callers and tests are unaffected, and absent rather than zero when it cannot be read.
+     */
+    private val holdings: suspend () -> HoldingsUiState? = { null }
 ) {
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
@@ -279,6 +285,9 @@ class DashboardViewModel(
             activityFilter = filter,
             searchQuery = query,
             isOnline = isOnline,
+            // Absent rather than zero when the server cannot be reached: a made-up holding is
+            // worse than none, and the agent knows what "—" means.
+            holdings = runCatching { holdings() }.getOrNull(),
             isSyncing = outboxRepository.countByState(OutboxState.SYNCING) > 0
         )
     }

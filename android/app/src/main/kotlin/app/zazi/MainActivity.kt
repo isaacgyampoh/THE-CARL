@@ -70,6 +70,9 @@ import app.zazi.ui.state.EntryNavigator
 import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
+import app.zazi.ui.state.CloseDay
+import app.zazi.ui.state.NetworkHolding
+import app.zazi.ui.state.HoldingsUiState
 import app.zazi.ui.state.RemoteActivity
 import app.zazi.core.data.network.RemoteTransaction
 import app.zazi.ui.state.CaptureTransactionType
@@ -259,6 +262,17 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 container.dashboardRepository
                     .observeDetail(clientTransactionId)
                     .map { row -> row?.toDetail() }
+            },
+            holdings = {
+                container.balancesRepository.mine()?.let { balances ->
+                    HoldingsUiState(
+                        cashMinor = CloseDay.minor(balances.cash),
+                        floatMinor = CloseDay.minor(balances.totalFloat),
+                        networks = balances.floats.map { NetworkHolding(it.network, CloseDay.minor(it.amount)) },
+                        cashGivenTodayMinor = CloseDay.minor(balances.cashGivenToday),
+                        floatGivenTodayMinor = CloseDay.minor(balances.floatGivenToday)
+                    )
+                }
             },
             retryTransaction = { clientTransactionId ->
                 val requeued = container.dashboardRepository

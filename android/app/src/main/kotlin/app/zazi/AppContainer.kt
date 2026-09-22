@@ -15,6 +15,7 @@ import app.zazi.core.data.network.ZaziApi
 import app.zazi.core.data.network.ZaziAuthApi
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
+import app.zazi.core.data.repository.BalancesRepository
 import app.zazi.core.data.repository.DayCloseRepository
 import app.zazi.core.data.repository.FloatRequestRepository
 import app.zazi.core.data.repository.ParsingReportRepository
@@ -142,6 +143,9 @@ class AppContainer(private val context: Context, private val baseUrl: String) {
     val dayCloseRepository: DayCloseRepository by lazy { DayCloseRepository(api) }
 
     val floatRequestRepository: FloatRequestRepository by lazy { FloatRequestRepository(api) }
+
+    /** Cash and float the owner has given this agent, as the server's ledger has it. */
+    val balancesRepository: BalancesRepository by lazy { BalancesRepository(api) }
 
     val parsingReportRepository: ParsingReportRepository by lazy {
         ParsingReportRepository(database, api, BuildConfigCompat.versionName)

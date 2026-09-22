@@ -6,12 +6,18 @@ namespace Zazi.Application.Float;
 /// the till and e-money for the wallet — so one record covers both. Either may be zero, and
 /// either may be negative when the owner is taking money back at the end of a day.
 /// </remarks>
+/// <param name="SubmissionToken">
+/// Identifies one attempt to record. Sent again when the same form is submitted twice — the
+/// owner pressing "Record" once more because the page seemed to hang — so the ledger recognises
+/// the repeat and keeps one record instead of two.
+/// </param>
 public sealed record RecordFloatRequest(
     Guid AgentId,
     string Network,
     decimal CashAmount,
     decimal FloatAmount,
-    string? Note = null);
+    string? Note = null,
+    string? SubmissionToken = null);
 
 /// <summary>What an agent is currently holding.</summary>
 public sealed record AgentHoldingsDto(
@@ -27,6 +33,57 @@ public sealed record AgentHoldingsDto(
 }
 
 public sealed record NetworkFloatDto(string Network, decimal Amount);
+
+/// <summary>What moved through an agent's hands in one day.</summary>
+public sealed record AgentDayMovement(
+    decimal CashAllocated,
+    decimal FloatAllocated,
+    decimal CashIn,
+    decimal CashOut,
+    decimal FloatIn,
+    decimal FloatOut,
+    decimal CashAdjusted,
+    decimal FloatAdjusted,
+    int Transactions)
+{
+    public decimal NetCash => CashAllocated + CashIn - CashOut + CashAdjusted;
+    public decimal NetFloat => FloatAllocated + FloatIn - FloatOut + FloatAdjusted;
+}
+
+/// <summary>
+/// One line of an agent's ledger, with what the balances stood at after it.
+/// </summary>
+/// <remarks>
+/// The running figures are computed backwards from today's balances, so every line explains
+/// how the current balance came about rather than restating a stored number.
+/// </remarks>
+public sealed record AgentLedgerEntry(
+    DateTimeOffset At,
+    string Description,
+    string Network,
+    decimal CashDelta,
+    decimal FloatDelta,
+    decimal RunningCash,
+    decimal RunningFloat,
+    bool IsAllocation);
+
+/// <summary>Everything the owner needs to answer "what is this agent holding, and why".</summary>
+public sealed record AgentLedgerDto(
+    Guid AgentId,
+    string AgentName,
+    string BranchName,
+    decimal Cash,
+    IReadOnlyList<NetworkFloatDto> Floats,
+    decimal OpeningCash,
+    decimal OpeningFloat,
+    AgentDayMovement Today,
+    IReadOnlyList<AgentLedgerEntry> History)
+{
+    public decimal TotalFloat => Floats.Sum(f => f.Amount);
+
+    /// <summary>Cash plus float: the whole of what the business has in this agent's hands.</summary>
+    public decimal Total => Cash + TotalFloat;
+}
 
 /// <summary>One movement in an agent's cash or float, most recent first.</summary>
 public sealed record HoldingMovementDto(
@@ -59,6 +116,16 @@ public interface IFloatService
     Task<IReadOnlyList<AgentHoldingsDto>> GetHoldingsAsync(
         Guid organizationId,
         Guid? branchId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One agent's position: what they hold now, what moved today, and the history that
+    /// produced it — the answer to "how much does my agent have" without a phone call.
+    /// </summary>
+    Task<AgentLedgerDto?> GetAgentLedgerAsync(
+        Guid organizationId,
+        Guid agentId,
+        int historyLimit = 50,
         CancellationToken cancellationToken = default);
 
     /// <summary>Recent movements for one agent.</summary>

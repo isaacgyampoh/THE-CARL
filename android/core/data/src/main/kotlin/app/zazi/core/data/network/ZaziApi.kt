@@ -54,6 +54,10 @@ interface ZaziApi {
      * included — sends the parsed result and leaves the text here. This one is sent because
      * an agent tapped a button about a specific transaction, and never in the background.</p>
      */
+    /** What this agent is holding: cash in hand and float on each network, from the ledger. */
+    @GET("api/v1/balances/mine")
+    suspend fun myBalances(): Response<MyBalances>
+
     /** Closes the signed-in agent's day with their count. Never anyone else's. */
     @POST("api/v1/day-close")
     suspend fun closeDay(@Body request: DayCloseRequest): Response<DayCloseResponse>
@@ -405,3 +409,17 @@ data class FloatRequestInfo(
     val status: Int = 0,
     val requestedAtUtc: String = ""
 )
+
+@Serializable
+data class MyBalances(
+    val cash: Double = 0.0,
+    val floats: List<NetworkFloat> = emptyList(),
+    val totalFloat: Double = 0.0,
+    val cashGivenToday: Double = 0.0,
+    val floatGivenToday: Double = 0.0
+) {
+    val total: Double get() = cash + totalFloat
+}
+
+@Serializable
+data class NetworkFloat(val network: String = "", val amount: Double = 0.0)

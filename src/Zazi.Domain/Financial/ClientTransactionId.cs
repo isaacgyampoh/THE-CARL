@@ -75,6 +75,31 @@ public static class ClientTransactionId
     }
 
     /// <summary>
+    /// A well-formed id derived from what the record is, rather than from chance.
+    /// </summary>
+    /// <remarks>
+    /// The same source and key always produce the same id, so a repeat — a forwarded SMS
+    /// delivered twice, an owner pressing "Record" again because the page seemed to hang —
+    /// collides with the first on the ledger's uniqueness constraint and is recorded once.
+    /// </remarks>
+    public static string Deterministic(string sourceKey, string uniqueKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(uniqueKey);
+
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(uniqueKey)).AsSpan(0, 16).ToArray();
+        var value = new System.Numerics.BigInteger(bytes, isUnsigned: true, isBigEndian: true);
+        var chars = new char[UlidLength];
+        for (var i = UlidLength - 1; i >= 0; i--)
+        {
+            chars[i] = Base32Alphabet[(int)(value & 31)];
+            value >>= 5;
+        }
+
+        return $"{Prefix}-{DeviceTag(sourceKey)}-{new string(chars)}";
+    }
+
+    /// <summary>
     /// Validates the shape of a client-supplied id. Shape only: the server never trusts a
     /// client id for anything beyond replay detection, and uniqueness is enforced by a
     /// database constraint rather than by this check.

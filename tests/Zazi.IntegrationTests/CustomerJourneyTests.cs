@@ -876,6 +876,106 @@ public class CustomerJourneyTests
         Assert.Contains("No transactions yet today", html, StringComparison.Ordinal);
     }
 
+    // ─── Giving an agent cash and float ──────────────────────────────────────
+
+    [SkippableFact]
+    public async Task AnOwnerCanGiveAnAgentCashAndFloatAndSeeItStraightAway()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+
+        var inbox = new Inbox();
+        using var factory = new PortalFactory(_postgres.ConnectionString!, inbox);
+        using var client = Browser(factory);
+        var email = UniqueEmail();
+
+        await SignUpAsync(client, email, Password);
+        await client.GetAsync($"/verify-email?token={Uri.EscapeDataString(inbox.LatestToken())}");
+        Assert.Equal("/", await SignInAsync(client, email, Password));
+
+        // The owner is the only person in a new business, so they are the agent to give to.
+        var page = await client.GetStringAsync("/float");
+        var agentId = Regex.Match(page, "<option value=\"([0-9a-f-]{36})\"").Groups[1].Value;
+        Assert.NotEmpty(agentId);
+
+        // The form as the browser posts it: no JavaScript, no live connection — which is what
+        // made "Add record" appear to do nothing, silently, for the owner who reported it.
+        using var recorded = await SubmitFormAsync(client, "/float", "give-float",
+            Field("Give.AgentId", agentId),
+            Field("Give.Network", "MTN"),
+            Field("Give.Cash", "1000"),
+            Field("Give.EFloat", "2500"),
+            Field("Give.Note", "Morning float"));
+
+        Assert.Equal(HttpStatusCode.Redirect, recorded.StatusCode);
+        Assert.Contains("done=", Uri.UnescapeDataString(recorded.Headers.Location!.ToString()), StringComparison.Ordinal);
+
+        // It is there when the page is read again, which is what "nothing happened" was about.
+        var after = await client.GetStringAsync("/float");
+        Assert.Contains("1,000.00", after, StringComparison.Ordinal);
+        Assert.Contains("2,500.00", after, StringComparison.Ordinal);
+
+        // And the agent's own ledger page explains it.
+        var ledger = await client.GetStringAsync($"/agents/{agentId}");
+        Assert.Contains("Morning float", ledger, StringComparison.Ordinal);
+        Assert.Contains("3,500.00", ledger, StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task AnAllocationWithNoAmountSaysSoRatherThanFailingSilently()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+
+        var inbox = new Inbox();
+        using var factory = new PortalFactory(_postgres.ConnectionString!, inbox);
+        using var client = Browser(factory);
+        var email = UniqueEmail();
+
+        await SignUpAsync(client, email, Password);
+        await client.GetAsync($"/verify-email?token={Uri.EscapeDataString(inbox.LatestToken())}");
+        await SignInAsync(client, email, Password);
+
+        var page = await client.GetStringAsync("/float");
+        var agentId = Regex.Match(page, "<option value=\"([0-9a-f-]{36})\"").Groups[1].Value;
+
+        using var refused = await SubmitFormAsync(client, "/float", "give-float",
+            Field("Give.AgentId", agentId),
+            Field("Give.Network", "MTN"),
+            Field("Give.Cash", "0"),
+            Field("Give.EFloat", "0"));
+
+        Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
+        var landing = Uri.UnescapeDataString(refused.Headers.Location!.ToString());
+        Assert.Contains("Enter an amount", landing, StringComparison.Ordinal);
+    }
+
+    /// <summary>Posts one named form on a page, carrying its own hidden fields.</summary>
+    private static async Task<HttpResponseMessage> SubmitFormAsync(
+        HttpClient client,
+        string path,
+        string handler,
+        params KeyValuePair<string, string>[] values)
+    {
+        var html = await client.GetStringAsync(path);
+        var form = Regex.Matches(html, "<form[^>]*>.*?</form>", RegexOptions.Singleline)
+            .Select(m => m.Value)
+            .FirstOrDefault(f => f.Contains($"value=\"{handler}\"", StringComparison.Ordinal))
+            ?? throw new Xunit.Sdk.XunitException($"No form with handler '{handler}' on {path}.");
+
+        var fields = new List<KeyValuePair<string, string>>();
+        foreach (Match input in Regex.Matches(form, "<input[^>]*>"))
+        {
+            var name = Regex.Match(input.Value, "name=\"([^\"]+)\"").Groups[1].Value;
+            var value = Regex.Match(input.Value, "value=\"([^\"]*)\"").Groups[1].Value;
+            if (name.Length > 0 && values.All(v => v.Key != name))
+            {
+                fields.Add(new KeyValuePair<string, string>(name, System.Net.WebUtility.HtmlDecode(value)));
+            }
+        }
+
+        fields.AddRange(values);
+        return await client.PostAsync(path, new FormUrlEncodedContent(fields));
+    }
+
     /// <summary>
     /// The fields of one form on a page, chosen by its handler name.
     /// </summary>

@@ -97,6 +97,8 @@ data class DashboardUiState(
      */
     val searchQuery: String = "",
     val isOnline: Boolean = true,
+    /** What the agent is holding, once the server has been asked; null offline and unknown. */
+    val holdings: HoldingsUiState? = null,
     val isSyncing: Boolean = false
 ) {
     val unsyncedCount: Int get() = pendingCount + syncingCount + retryingCount
@@ -226,6 +228,25 @@ data class CaptureConfirmation(
  * carries only what a row draws — no customer number, and not the provider reference, which
  * only the detail screen shows and which is read on demand when it does.</p>
  */
+/**
+ * What the owner has given this agent to work with, as the server's ledger has it.
+ *
+ * <p>Distinct from the day's movement above it: this is what is in their hands right now —
+ * notes in the drawer and e-money on each SIM — which is what an owner rings up to ask.</p>
+ */
+data class HoldingsUiState(
+    val cashMinor: Long,
+    val floatMinor: Long,
+    val networks: List<NetworkHolding>,
+    val cashGivenTodayMinor: Long,
+    val floatGivenTodayMinor: Long
+) {
+    val totalMinor: Long get() = cashMinor + floatMinor
+    val wasGivenSomethingToday: Boolean get() = cashGivenTodayMinor != 0L || floatGivenTodayMinor != 0L
+}
+
+data class NetworkHolding(val network: String, val amountMinor: Long)
+
 data class ActivityItem(
     val clientTransactionId: String,
     val label: String,

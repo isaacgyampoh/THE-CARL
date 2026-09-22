@@ -476,6 +476,42 @@ private fun BalanceHeader(state: DashboardUiState, onSignOut: () -> Unit) {
                 color = onGround
             )
         }
+
+        // What the owner has given them, which is what they are actually working with. The
+        // figures above are the day's movement; these are the balances behind it.
+        state.holdings?.let { holdings ->
+            Spacer(Modifier.height(Spacing.small))
+            HorizontalDivider(color = Brand.NavyLine)
+            Spacer(Modifier.height(Spacing.small))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("In your hands", style = MaterialTheme.typography.labelLarge, color = muted)
+                    Spacer(Modifier.height(Spacing.hairline))
+                    Text(
+                        "Cash " + MoneyFormat.format(holdings.cashMinor) + " · Float " + MoneyFormat.format(holdings.floatMinor),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = onGround
+                    )
+                }
+                Text(
+                    MoneyFormat.format(holdings.totalMinor),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onGround
+                )
+            }
+
+            if (holdings.wasGivenSomethingToday) {
+                Spacer(Modifier.height(Spacing.tight))
+                Text(
+                    "Given to you today: cash " + MoneyFormat.format(holdings.cashGivenTodayMinor) +
+                        ", float " + MoneyFormat.format(holdings.floatGivenTodayMinor),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = muted
+                )
+            }
+        }
     }
 }
 

@@ -308,7 +308,7 @@ public sealed class KeypadSmsService : IKeypadSmsService
 
         // The gateway may deliver the same message twice; an id derived from it makes the second
         // one a no-op rather than a second transaction.
-        var clientId = DeterministicClientId(
+        var clientId = ClientTransactionId.Deterministic(
             "keypad:" + message.From,
             message.ProviderMessageId ?? $"{message.From}|{message.Text}|{message.ReceivedAtUtc:yyyyMMddHHmm}");
 
@@ -372,29 +372,6 @@ public sealed class KeypadSmsService : IKeypadSmsService
 
         return KeypadText.Get(phone.Language, held < threshold.CriticalThreshold ? "float.verylow" : "float.low",
             NetworkName(network), held.ToString("N2", CultureInfo.InvariantCulture));
-    }
-
-    /// <summary>
-    /// A transaction id in the handset's own format — CTX, an 8-hex device tag, 26 base-32
-    /// characters — derived from the message rather than random, so the same text delivered twice
-    /// yields the same id and the ledger's idempotency catches it.
-    /// </summary>
-    private static string DeterministicClientId(string deviceKey, string messageKey)
-    {
-        const string alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-        var tag = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceKey)), 0, 4).ToLowerInvariant();
-
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(messageKey)).AsSpan(0, 16).ToArray();
-        var value = new System.Numerics.BigInteger(bytes, isUnsigned: true, isBigEndian: true);
-        var chars = new char[26];
-        for (var i = 25; i >= 0; i--)
-        {
-            chars[i] = alphabet[(int)(value & 31)];
-            value >>= 5;
-        }
-
-        return $"{ClientTransactionId.Prefix}-{tag}-{new string(chars)}";
     }
 
     // ─── Answers ─────────────────────────────────────────────────────────────

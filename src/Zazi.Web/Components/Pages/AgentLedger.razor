@@ -1,0 +1,412 @@
+@page "/agents/{AgentId:guid}"
+@using System.Globalization
+@using Zazi.Application.Closing
+@using Zazi.Application.Float
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.BranchManage)]
+@inject IFloatService Floats
+@inject IDayCloseService Closes
+@inject ICurrentUserContext CurrentUser
+@inject NavigationManager Navigation
+@inject ILogger<AgentLedger> Log
+
+@* One agent's money, answered without a phone call: what they hold now, what moved today, and
+   the history that produced it. Static rendering and ordinary form posts, like Cash and float:
+   handing over money must not depend on a live connection. *@
+
+<PageTitle>@(_ledger?.AgentName ?? "Agent") · Zazi</PageTitle>
+
+@if (_notFound)
+{
+    <h1>Agent</h1>
+    <p class="empty">That person is not in this business, or you cannot see them.</p>
+}
+else if (_ledger is null)
+{
+    <h1>Agent</h1>
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <header class="page-head">
+        <div>
+            <p class="eyebrow"><a href="/float">Cash and float</a> · @_ledger.BranchName</p>
+            <h1>@_ledger.AgentName</h1>
+        </div>
+        <div class="page-actions">
+            <a class="btn btn-secondary" href="@($"/transactions?agent={_ledger.AgentId}&period=Today")">Today's transactions</a>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(Problem))
+    {
+        <p class="error" role="alert">@Problem</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(Done))
+    {
+        <p role="status">@Done</p>
+    }
+
+    <section class="kpis" aria-label="What this agent holds">
+        <div class="kpi feature">
+            <span class="label">Total in their hands</span>
+            <span class="value">@Money(_ledger.Total)</span>
+            <div class="foot"><span class="note">Cash plus float on every network</span></div>
+        </div>
+        <div class="kpi">
+            <span class="label">Cash available</span>
+            <span class="value">@Money(_ledger.Cash)</span>
+            <div class="foot"><span class="note">Notes in hand</span></div>
+        </div>
+        <div class="kpi">
+            <span class="label">Float available</span>
+            <span class="value">@Money(_ledger.TotalFloat)</span>
+            <div class="foot">
+                <span class="note">
+                    @if (_ledger.Floats.Count == 0)
+                    {
+                        <text>None recorded</text>
+                    }
+                    else
+                    {
+                        @string.Join(" · ", _ledger.Floats.Select(f => $"{NetworkName(f.Network)} {f.Amount.ToString("N0", CultureInfo.InvariantCulture)}"))
+                    }
+                </span>
+            </div>
+        </div>
+        <div class="kpi">
+            <span class="label">Transactions today</span>
+            <span class="value">@_ledger.Today.Transactions.ToString("N0")</span>
+            <div class="foot"><span class="note">Cash in, cash out and the rest</span></div>
+        </div>
+    </section>
+
+    <div class="grid-2">
+        <section class="panel" aria-labelledby="breakdown-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="breakdown-title">How today's balance was reached</h2>
+                    <p class="sub">Every figure comes from recorded transactions</p>
+                </div>
+            </div>
+            <div class="panel-body flush">
+                <div class="scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Today</th>
+                                <th scope="col" class="n">Cash</th>
+                                <th scope="col" class="n">Float</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td data-label="Today">Opening balance</td>
+                                <td class="n" data-label="Cash">@Money(_ledger.OpeningCash)</td>
+                                <td class="n" data-label="Float">@Money(_ledger.OpeningFloat)</td>
+                            </tr>
+                            <tr>
+                                <td data-label="Today">You gave them</td>
+                                <td class="n" data-label="Cash">@Signed(_ledger.Today.CashAllocated)</td>
+                                <td class="n" data-label="Float">@Signed(_ledger.Today.FloatAllocated)</td>
+                            </tr>
+                            <tr>
+                                <td data-label="Today">Received from customers</td>
+                                <td class="n" data-label="Cash">@Signed(_ledger.Today.CashIn)</td>
+                                <td class="n" data-label="Float">@Signed(_ledger.Today.FloatIn)</td>
+                            </tr>
+                            <tr>
+                                <td data-label="Today">Paid out to customers</td>
+                                <td class="n" data-label="Cash">@Signed(-_ledger.Today.CashOut)</td>
+                                <td class="n" data-label="Float">@Signed(-_ledger.Today.FloatOut)</td>
+                            </tr>
+                            @if (_ledger.Today.CashAdjusted != 0m || _ledger.Today.FloatAdjusted != 0m)
+                            {
+                                <tr>
+                                    <td data-label="Today">Taken back</td>
+                                    <td class="n" data-label="Cash">@Signed(_ledger.Today.CashAdjusted)</td>
+                                    <td class="n" data-label="Float">@Signed(_ledger.Today.FloatAdjusted)</td>
+                                </tr>
+                            }
+                            <tr>
+                                <td data-label="Today"><strong>Now holding</strong></td>
+                                <td class="n" data-label="Cash"><strong>@Money(_ledger.Cash)</strong></td>
+                                <td class="n" data-label="Float"><strong>@Money(_ledger.TotalFloat)</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="close-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="close-title">Last count</h2>
+                    <p class="sub">What they counted against what Zazi expected</p>
+                </div>
+                <a href="/closing">Closing →</a>
+            </div>
+            <div class="panel-body">
+                @if (_lastClose is null)
+                {
+                    <p class="muted">
+                        They have not closed a day yet. An agent closes in the app, or by texting
+                        <strong>CLOSE cash float</strong> from a keypad phone.
+                    </p>
+                }
+                else
+                {
+                    <ul class="holdings-bars">
+                        <li>
+                            <span class="hb-name">Counted @_lastClose.ClosedAtUtc.ToLocalTime().ToString("d MMM, HH:mm")</span>
+                            <span class="hb-val"><span class="pill @Tone(_lastClose.Status)">@(_lastClose.Status == "Baseline" ? "First count" : _lastClose.Status)</span></span>
+                        </li>
+                        <li>
+                            <span class="hb-name">Cash counted</span>
+                            <span class="hb-val">@Money(_lastClose.CountedCash)</span>
+                        </li>
+                        <li>
+                            <span class="hb-name">Float counted</span>
+                            <span class="hb-val">@Money(_lastClose.CountedFloat)</span>
+                        </li>
+                        @if (_lastClose.CashDifference is { } cashDifference)
+                        {
+                            <li class="@(Math.Abs(cashDifference) >= 1m ? "negative" : "")">
+                                <span class="hb-name">Cash difference</span>
+                                <span class="hb-val">@Difference(cashDifference)</span>
+                            </li>
+                        }
+                        @if (_lastClose.FloatDifference is { } floatDifference)
+                        {
+                            <li class="@(Math.Abs(floatDifference) >= 1m ? "negative" : "")">
+                                <span class="hb-name">Float difference</span>
+                                <span class="hb-val">@Difference(floatDifference)</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </section>
+    </div>
+
+    <h2>Give @FirstName() cash or float</h2>
+
+    <EditForm Model="Give" FormName="give-to-agent" OnValidSubmit="GiveAsync">
+        <input type="hidden" name="Give.Token" value="@Give.Token" />
+
+        <p>
+            <label for="network">Network <span class="muted">(for the float)</span></label>
+            <InputSelect id="network" @bind-Value="Give.Network">
+                <option value="MTN">MTN</option>
+                <option value="TELECEL">Telecel</option>
+                <option value="AIRTELTIGO">AirtelTigo</option>
+            </InputSelect>
+        </p>
+        <p>
+            <label for="cash">Cash given (GHS)</label>
+            <InputNumber id="cash" @bind-Value="Give.Cash" step="0.01" inputmode="decimal" />
+        </p>
+        <p>
+            <label for="efloat">Float given (GHS)</label>
+            <InputNumber id="efloat" @bind-Value="Give.EFloat" step="0.01" inputmode="decimal" />
+        </p>
+        <p>
+            <label for="note">Note <span class="muted">(optional)</span></label>
+            <InputText id="note" @bind-Value="Give.Note" />
+        </p>
+        <button type="submit">Record</button>
+    </EditForm>
+
+    <h2>Ledger</h2>
+    @if (_ledger.History.Count == 0)
+    {
+        <p class="empty">Nothing recorded for @FirstName() yet.</p>
+    }
+    else
+    {
+        <div class="scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">When</th>
+                        <th scope="col">What</th>
+                        <th scope="col">Network</th>
+                        <th scope="col" class="n">Cash</th>
+                        <th scope="col" class="n">Float</th>
+                        <th scope="col" class="n">Cash after</th>
+                        <th scope="col" class="n">Float after</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var entry in _ledger.History)
+                {
+                    <tr>
+                        <td data-label="When">@entry.At.ToLocalTime().ToString("d MMM HH:mm")</td>
+                        <td data-label="What">
+                            @Describe(entry)
+                            @if (entry.IsAllocation)
+                            {
+                                <span class="sub">Given by the business</span>
+                            }
+                        </td>
+                        <td data-label="Network">@NetworkName(entry.Network)</td>
+                        <td class="n" data-label="Cash">@Signed(entry.CashDelta)</td>
+                        <td class="n" data-label="Float">@Signed(entry.FloatDelta)</td>
+                        <td class="n" data-label="Cash after">@Money(entry.RunningCash)</td>
+                        <td class="n" data-label="Float after">@Money(entry.RunningFloat)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <p class="muted small">
+            The newest line agrees with the balances above; each line shows where the balance
+            stood once it was recorded.
+        </p>
+    }
+}
+
+@code {
+    [Parameter] public Guid AgentId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")] private string? Done { get; set; }
+    [SupplyParameterFromQuery(Name = "problem")] private string? Problem { get; set; }
+
+    [SupplyParameterFromForm(FormName = "give-to-agent")] private GiveInput Give { get; set; } = new();
+
+    private AgentLedgerDto? _ledger;
+    private DayCloseResult? _lastClose;
+    private bool _notFound;
+
+    private sealed class GiveInput
+    {
+        public string Network { get; set; } = "MTN";
+        public decimal Cash { get; set; }
+        public decimal EFloat { get; set; }
+        public string? Note { get; set; }
+        public string Token { get; set; } = Guid.NewGuid().ToString("N");
+    }
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _ledger = await Floats.GetAgentLedgerAsync(CurrentUser.OrganizationId, AgentId);
+            if (_ledger is null)
+            {
+                _notFound = true;
+                return;
+            }
+
+            // A branch manager sees their own branch's people, and nobody else's.
+            if (CurrentUser.VisibleBranchId() is { } branch)
+            {
+                var visible = await Floats.GetHoldingsAsync(CurrentUser.OrganizationId, branch);
+                if (visible.All(h => h.AgentId != AgentId))
+                {
+                    _ledger = null;
+                    _notFound = true;
+                    return;
+                }
+            }
+
+            _lastClose = await Closes.LatestAsync(CurrentUser.OrganizationId, AgentId);
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Loading an agent's ledger failed.");
+            Problem = "That could not be loaded. Please try again.";
+        }
+    }
+
+    private async Task GiveAsync()
+    {
+        if (Give.Cash == 0m && Give.EFloat == 0m)
+        {
+            Back(problem: "Enter an amount of cash, float, or both.");
+            return;
+        }
+
+        // Decided first, redirected after: a redirect is signalled by an exception, and
+        // catching it as a failure would report a successful save as a failed one.
+        string? done = null;
+        string? problem = null;
+        try
+        {
+            await Floats.RecordFloatAsync(
+                new RecordFloatRequest(AgentId, Give.Network, Give.Cash, Give.EFloat, Give.Note, Give.Token),
+                CurrentUser.OrganizationId,
+                CurrentUser.UserId);
+            done = $"Recorded: cash {Money(Give.Cash)}, {NetworkName(Give.Network)} float {Money(Give.EFloat)}.";
+        }
+        catch (ArgumentException invalid)
+        {
+            problem = invalid.Message.Split(" (Parameter")[0];
+        }
+        catch (KeyNotFoundException missing)
+        {
+            problem = missing.Message;
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Recording float from the agent page failed.");
+            problem = "That could not be recorded. Nothing was saved. Please try again.";
+        }
+
+        Back(done, problem);
+    }
+
+    private void Back(string? done = null, string? problem = null)
+    {
+        var query = done is not null
+            ? "?done=" + Uri.EscapeDataString(done)
+            : problem is not null ? "?problem=" + Uri.EscapeDataString(problem) : string.Empty;
+        Navigation.NavigateTo($"/agents/{AgentId}{query}");
+    }
+
+    private string FirstName() =>
+        (_ledger?.AgentName ?? "them").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "them";
+
+    private static string Describe(AgentLedgerEntry entry) => entry.Description switch
+    {
+        "CashIn" => "Cash in (deposit)",
+        "CashOut" => "Cash out (withdrawal)",
+        "Commission" => "Commission",
+        "Transfer" => "Transfer",
+        "Reversal" => "Reversal",
+        "Adjustment" => "Adjustment",
+        var other => other
+    };
+
+    private static string Tone(string status) => status switch
+    {
+        "Balanced" or "Baseline" => "ok",
+        "Short" => "bad",
+        _ => "warn"
+    };
+
+    private static string Difference(decimal value) => Math.Abs(value) < 1m
+        ? "In agreement"
+        : value < 0
+            ? $"Short {Money(Math.Abs(value))}"
+            : $"Over {Money(value)}";
+
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value).ToString("N2", CultureInfo.InvariantCulture)}" : $"₵{value.ToString("N2", CultureInfo.InvariantCulture)}";
+
+    private static string Signed(decimal value) => value == 0m
+        ? "—"
+        : (value > 0 ? "+" : "−") + "₵" + Math.Abs(value).ToString("N2", CultureInfo.InvariantCulture);
+
+    private static string NetworkName(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        "UNKNOWN" => "—",
+        _ => network
+    };
+}

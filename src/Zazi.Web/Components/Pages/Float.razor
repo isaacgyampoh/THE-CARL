@@ -1,40 +1,47 @@
 @page "/float"
+@using System.Globalization
+@using Zazi.Application
 @using Zazi.Application.Float
+@using Zazi.Application.Growth
 @using Zazi.Application.Security
 @attribute [Authorize(Policy = ZaziPolicies.BranchManage)]
-@rendermode InteractiveServer
 @inject IFloatService Floats
-@inject Zazi.Application.IAlertService Alerts
-@inject Zazi.Application.Growth.IFloatRequestService FloatRequests
+@inject IAlertService Alerts
+@inject IFloatRequestService FloatRequests
 @inject ICurrentUserContext CurrentUser
+@inject NavigationManager Navigation
 @inject ILogger<Float> Log
 
-@* What each agent is carrying, and where it came from. Gated on BranchManage rather than the
-   page's own reachability: handing out money is an owner's decision, not a branch manager's. *@
+@* Static server rendering, deliberately: giving an agent money is the one thing on this page
+   that must not depend on a live connection to the browser. These are ordinary form posts, so
+   they work on a weak connection, with JavaScript blocked, and after the page has been open
+   all morning. Each submission carries a token, so pressing "Record" twice records once. *@
 
 <PageTitle>Cash and float · Zazi</PageTitle>
 
-<h1>Cash and float</h1>
+<header class="page-head">
+    <div>
+        <h1>Cash and float</h1>
+        <p class="lead">
+            What each person is holding right now. Cash is notes in their hand; float is e-money
+            on their phone, counted separately for each network.
+        </p>
+    </div>
+</header>
 
-<p class="lead">
-    What each person is holding right now. Cash is notes in their hand; float is e-money on
-    their phone, counted separately for each network.
-</p>
-
-@if (_error is not null)
+@if (!string.IsNullOrWhiteSpace(Problem))
 {
-    <p class="error" role="alert">@_error</p>
+    <p class="error" role="alert">@Problem</p>
 }
-
-@if (_recorded is not null)
+else if (!string.IsNullOrWhiteSpace(Done))
 {
-    <p class="muted" role="status">@_recorded</p>
+    <p role="status">@Done</p>
 }
 
 @if (_requests.Count > 0)
 {
-    @* Agents asking for float, from the app or by SMS. Giving it here records it against them
-       in the same step, so the float given and the request cannot disagree. *@
+    @* Agents asking for float. Giving it here records it against them in the same step, so the
+       float given and the request cannot disagree. *@
     <h2>Float requests</h2>
     <ul class="requests">
         @foreach (var request in _requests)
@@ -46,23 +53,24 @@
                     <span class="sub">@request.RequestedAtUtc.ToLocalTime().ToString("d MMM HH:mm") · by @(request.Channel == "SMS" ? "SMS" : "the app") · code @request.Code</span>
                 </span>
                 <span class="rq-actions">
-                    <button type="button" class="approve" disabled="@_busy" @onclick="() => DecideAsync(request.Id, true)">Give float</button>
-                    <button type="button" class="decline" disabled="@_busy" @onclick="() => DecideAsync(request.Id, false)">Decline</button>
+                    <form method="post" @formname="@($"answer-{request.Id}")" @onsubmit="() => DecideAsync(request.Id, true)">
+                        <AntiforgeryToken />
+                        <button type="submit" class="approve">Give float</button>
+                    </form>
+                    <form method="post" @formname="@($"decline-{request.Id}")" @onsubmit="() => DecideAsync(request.Id, false)">
+                        <AntiforgeryToken />
+                        <button type="submit" class="decline">Decline</button>
+                    </form>
                 </span>
             </li>
         }
     </ul>
 }
 
-<h2>Holdings</h2>
-
-@if (_holdings is null)
+<h2>Who is holding what</h2>
+@if (_holdings.Count == 0)
 {
-    <p class="muted">Loading…</p>
-}
-else if (_holdings.Count == 0)
-{
-    <p class="muted">Nobody has been added yet. Add workers on the <a href="/team">Team</a> page.</p>
+    <p class="empty">Nobody has been added yet. Add workers on the <a href="/team">Team</a> page.</p>
 }
 else
 {
@@ -73,6 +81,8 @@ else
                     <th scope="col">Person</th>
                     <th scope="col">Branch</th>
                     <th scope="col" class="n">Cash</th>
+                    <th scope="col" class="n">Float</th>
+                    <th scope="col" class="n">Total</th>
                     <th scope="col">Float by network</th>
                 </tr>
             </thead>
@@ -80,9 +90,14 @@ else
             @foreach (var holding in _holdings)
             {
                 <tr>
-                    <td data-label="Person">@holding.AgentName</td>
+                    <td data-label="Person">
+                        @* Their ledger: what they hold, what moved today, and why. *@
+                        <a href="@($"/agents/{holding.AgentId}")">@holding.AgentName</a>
+                    </td>
                     <td data-label="Branch">@holding.BranchName</td>
                     <td class="n" data-label="Cash">@Money(holding.Cash)</td>
+                    <td class="n" data-label="Float">@Money(holding.TotalFloat)</td>
+                    <td class="n" data-label="Total"><strong>@Money(holding.Cash + holding.TotalFloat)</strong></td>
                     <td data-label="Float by network">
                         @if (holding.Floats.Count == 0)
                         {
@@ -90,17 +105,12 @@ else
                         }
                         else
                         {
-                            @* One wrapper, so the chips flow as a group. On a phone the cell is a
-                               two-column grid and each loose chip became its own grid item,
-                               spilling into the label column. *@
                             <div class="chips">
                             @foreach (var f in holding.Floats)
                             {
-                                @* Toned by sign. A negative float was shown in the same green as a
-                                   healthy one, which is the colour for "nothing to worry about". *@
                                 <span class="float-chip @(f.Amount < 0 ? "negative" : "")">
                                     <span class="net">@NetworkName(f.Network)</span>
-                                    <span class="amt">@Money(f.Amount)</span>
+                                    <span class="amt">@f.Amount.ToString("N2")</span>
                                 </span>
                             }
                             </div>
@@ -113,19 +123,21 @@ else
     </div>
 }
 
-<h2>Record cash or float given</h2>
+<h2>Give cash or float</h2>
 
-<p class="muted">
-    Enter what you handed over. Use a negative amount to record money taken back at the end of
-    a shift.
-</p>
+<EditForm Model="Give" FormName="give-float" OnValidSubmit="GiveAsync">
+    <input type="hidden" name="Give.Token" value="@Give.Token" />
 
-<EditForm Model="_entry" OnValidSubmit="RecordAsync" FormName="record-float">
+    <p class="muted">
+        Enter what you handed over. Use a negative amount to record money taken back at the end
+        of a shift.
+    </p>
+
     <p>
         <label for="agent">Person</label>
-        <InputSelect id="agent" @bind-Value="_entry.AgentId">
+        <InputSelect id="agent" @bind-Value="Give.AgentId">
             <option value="">Choose someone…</option>
-            @foreach (var holding in _holdings ?? Array.Empty<AgentHoldingsDto>())
+            @foreach (var holding in _holdings)
             {
                 <option value="@holding.AgentId">@holding.AgentName</option>
             }
@@ -133,8 +145,8 @@ else
     </p>
 
     <p>
-        <label for="network">Network</label>
-        <InputSelect id="network" @bind-Value="_entry.Network">
+        <label for="network">Network <span class="muted">(for the float)</span></label>
+        <InputSelect id="network" @bind-Value="Give.Network">
             <option value="MTN">MTN</option>
             <option value="TELECEL">Telecel</option>
             <option value="AIRTELTIGO">AirtelTigo</option>
@@ -143,38 +155,34 @@ else
 
     <p>
         <label for="cash">Cash given (GHS)</label>
-        <InputNumber id="cash" @bind-Value="_entry.Cash" step="0.01" />
+        <InputNumber id="cash" @bind-Value="Give.Cash" step="0.01" inputmode="decimal" />
     </p>
 
     <p>
         <label for="efloat">Float given (GHS)</label>
-        <InputNumber id="efloat" @bind-Value="_entry.EFloat" step="0.01" />
+        <InputNumber id="efloat" @bind-Value="Give.EFloat" step="0.01" inputmode="decimal" />
     </p>
 
     <p>
         <label for="note">Note <span class="muted">(optional)</span></label>
-        <InputText id="note" @bind-Value="_entry.Note" />
+        <InputText id="note" @bind-Value="Give.Note" />
     </p>
 
-    <button type="submit" disabled="@_busy">Record</button>
+    <button type="submit">Record</button>
 </EditForm>
 
 <h2>Low float warning</h2>
 
-<p class="muted">
-    Set the level at which an agent's float counts as low. Agents on keypad phones are told in
-    the reply to each transaction — no extra SMS — and the Today page counts who is low.
-</p>
+<EditForm Model="Warning" FormName="float-warning" OnValidSubmit="SaveWarningAsync">
 
-@if (_warningSaved is not null)
-{
-    <p class="muted" role="status">@_warningSaved</p>
-}
+    <p class="muted">
+        Set the level at which an agent's float counts as low. Agents on keypad phones are told
+        in the reply to each transaction — no extra SMS — and the Today page counts who is low.
+    </p>
 
-<EditForm Model="_warning" OnValidSubmit="SaveWarningAsync" FormName="float-warning">
     <p>
         <label for="warn-network">Network</label>
-        <InputSelect id="warn-network" @bind-Value="_warning.Network">
+        <InputSelect id="warn-network" @bind-Value="Warning.Network">
             <option value="MTN">MTN</option>
             <option value="TELECEL">Telecel</option>
             <option value="AIRTELTIGO">AirtelTigo</option>
@@ -183,85 +191,181 @@ else
 
     <p>
         <label for="warn-level">Warn when float is below (GHS)</label>
-        <InputNumber id="warn-level" @bind-Value="_warning.Level" step="1" />
+        <InputNumber id="warn-level" @bind-Value="Warning.Level" step="1" inputmode="decimal" />
     </p>
 
-    <button type="submit" disabled="@_busy">Save warning</button>
+    <button type="submit">Save warning</button>
 </EditForm>
 
-@if (_movements is not null && _movements.Count > 0)
-{
-    <h2>Recent movements for @_movementsFor</h2>
-    <div class="scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th scope="col">When</th>
-                    <th scope="col">What</th>
-                    <th scope="col">Network</th>
-                    <th scope="col" class="n">Cash</th>
-                    <th scope="col" class="n">Float</th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var m in _movements)
-            {
-                <tr>
-                    <td data-label="When">@m.At.ToLocalTime().ToString("dd MMM HH:mm")</td>
-                    <td data-label="What">@m.Description</td>
-                    <td data-label="Network">@m.Network</td>
-                    <td class="n" data-label="Cash">@Signed(m.CashDelta)</td>
-                    <td class="n" data-label="Float">@Signed(m.FloatDelta)</td>
-                </tr>
-            }
-            </tbody>
-        </table>
-    </div>
-}
-
 @code {
-    private IReadOnlyList<AgentHoldingsDto>? _holdings;
-    private IReadOnlyList<HoldingMovementDto>? _movements;
-    private string? _movementsFor;
-    private string? _error;
-    private string? _recorded;
-    private bool _busy;
+    [SupplyParameterFromQuery(Name = "done")] private string? Done { get; set; }
+    [SupplyParameterFromQuery(Name = "problem")] private string? Problem { get; set; }
 
-    private readonly Entry _entry = new();
-    private readonly Warning _warning = new();
-    private IReadOnlyList<Zazi.Application.Growth.FloatRequestDto> _requests = [];
+    [SupplyParameterFromForm(FormName = "give-float")] private GiveInput Give { get; set; } = new();
+    [SupplyParameterFromForm(FormName = "float-warning")] private WarningInput Warning { get; set; } = new();
 
-    private async Task DecideAsync(Guid requestId, bool approve)
+    private IReadOnlyList<AgentHoldingsDto> _holdings = [];
+    private IReadOnlyList<FloatRequestDto> _requests = [];
+
+    private sealed class GiveInput
     {
-        _busy = true;
-        _error = null;
-        _recorded = null;
+        public string? AgentId { get; set; }
+        public string Network { get; set; } = "MTN";
+        public decimal Cash { get; set; }
+        public decimal EFloat { get; set; }
+        public string? Note { get; set; }
+
+        /// <summary>One attempt to record, so a second press of the button records nothing new.</summary>
+        public string Token { get; set; } = Guid.NewGuid().ToString("N");
+    }
+
+    private sealed class WarningInput
+    {
+        public string Network { get; set; } = "MTN";
+        public decimal Level { get; set; } = 500m;
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
         try
         {
-            var decided = await FloatRequests.DecideAsync(CurrentUser.OrganizationId, requestId, approve, CurrentUser.UserId, "Portal");
-            _recorded = approve
-                ? $"{Money(decided.Amount)} {NetworkName(decided.Network)} float recorded for {decided.AgentName}."
-                : $"Request from {decided.AgentName} declined.";
-            await LoadAsync();
-        }
-        catch (Zazi.Application.Growth.FloatRequestRejectedException rejected)
-        {
-            _error = rejected.Message;
-            await LoadAsync();
-        }
-        catch (ArgumentException exception)
-        {
-            _error = exception.Message.Split(" (Parameter")[0];
+            var branch = CurrentUser.VisibleBranchId();
+            _holdings = await Floats.GetHoldingsAsync(CurrentUser.OrganizationId, branch);
+            _requests = await FloatRequests.PendingAsync(CurrentUser.OrganizationId, branch);
         }
         catch (Exception exception)
         {
-            _error = Fail(exception, "answering a float request", "That could not be done. Please try again.");
-        }
-        finally
-        {
-            _busy = false;
+            Log.LogError(exception, "Loading holdings failed.");
+            Problem = "Holdings could not be loaded. Please try again.";
         }
     }
+
+    private async Task GiveAsync()
+    {
+        if (!Guid.TryParse(Give.AgentId, out var agentId))
+        {
+            Back(problem: "Choose who the money was given to.");
+            return;
+        }
+
+        if (Give.Cash == 0m && Give.EFloat == 0m)
+        {
+            Back(problem: "Enter an amount of cash, float, or both.");
+            return;
+        }
+
+        // The outcome is decided first and the redirect issued after: redirecting is signalled
+        // by an exception, and a catch-all around it would report a successful save as a failure.
+        string? done = null;
+        string? problem = null;
+        try
+        {
+            await Floats.RecordFloatAsync(
+                new RecordFloatRequest(agentId, Give.Network, Give.Cash, Give.EFloat, Give.Note, Give.Token),
+                CurrentUser.OrganizationId,
+                CurrentUser.UserId);
+
+            var name = _holdings.FirstOrDefault(h => h.AgentId == agentId)?.AgentName ?? "the agent";
+            done = $"Recorded for {name}: cash {Money(Give.Cash)}, {NetworkName(Give.Network)} float {Money(Give.EFloat)}.";
+        }
+        catch (ArgumentException invalid)
+        {
+            // Validation messages are written to be read by the person who typed the values.
+            problem = invalid.Message.Split(" (Parameter")[0];
+        }
+        catch (KeyNotFoundException missing)
+        {
+            problem = missing.Message;
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Recording float failed.");
+            problem = "That could not be recorded. Nothing was saved. Please try again.";
+        }
+
+        Back(done, problem);
+    }
+
+    private async Task DecideAsync(Guid requestId, bool approve)
+    {
+        string? done = null;
+        string? problem = null;
+        try
+        {
+            var decided = await FloatRequests.DecideAsync(
+                CurrentUser.OrganizationId, requestId, approve, CurrentUser.UserId, "Portal");
+            done = approve
+                ? $"{Money(decided.Amount)} {NetworkName(decided.Network)} float recorded for {decided.AgentName}."
+                : $"Request from {decided.AgentName} declined.";
+        }
+        catch (FloatRequestRejectedException rejected)
+        {
+            problem = rejected.Message;
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Answering a float request failed.");
+            problem = "That could not be done. Please try again.";
+        }
+
+        Back(done, problem);
+    }
+
+    private async Task SaveWarningAsync()
+    {
+        if (Warning.Level <= 0m || Warning.Level > 1_000_000m)
+        {
+            Back(problem: "Enter a level above zero.");
+            return;
+        }
+
+        string? done = null;
+        string? problem = null;
+        try
+        {
+            await Alerts.SetThresholdAsync(new AlertThresholdRequest(
+                CurrentUser.OrganizationId,
+                CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId,
+                Warning.Network,
+                decimal.Round(Warning.Level, 2),
+                decimal.Round(Warning.Level / 2m, 2)));
+
+            done = $"Agents will be warned when {NetworkName(Warning.Network)} float is below {Money(Warning.Level)}.";
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Saving the float warning failed.");
+            problem = "The warning could not be saved. Please try again.";
+        }
+
+        Back(done, problem);
+    }
+
+    /// <summary>
+    /// Back to the page as a fresh request, carrying what happened. A redirect rather than a
+    /// re-render: the figures are then read after the write, and a browser refresh repeats the
+    /// reading rather than the recording.
+    /// </summary>
+    private void Back(string? done = null, string? problem = null)
+    {
+        var query = done is not null
+            ? "?done=" + Uri.EscapeDataString(done)
+            : problem is not null ? "?problem=" + Uri.EscapeDataString(problem) : string.Empty;
+        Navigation.NavigateTo("/float" + query);
+    }
+
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value).ToString("N2", CultureInfo.InvariantCulture)}" : $"₵{value.ToString("N2", CultureInfo.InvariantCulture)}";
+
+    private static string NetworkName(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        _ => network
+    };
 
     private static string NetworkKey(string network) => network.ToUpperInvariant() switch
     {
@@ -272,147 +376,4 @@ else
     {
         "MTN" => "MTN", "TELECEL" => "T", "AIRTELTIGO" => "AT", _ => "·"
     };
-    private string? _warningSaved;
-
-    private sealed class Warning
-    {
-        public string Network { get; set; } = "MTN";
-        public decimal Level { get; set; } = 500m;
-    }
-
-    /// <summary>
-    /// One level per network for the owner's scope. "Very low" is half of it, so the agent hears
-    /// the difference between "top up today" and "top up now" without a second setting.
-    /// </summary>
-    private async Task SaveWarningAsync()
-    {
-        _busy = true;
-        _error = null;
-        _warningSaved = null;
-        try
-        {
-            if (_warning.Level <= 0m || _warning.Level > 1_000_000m)
-            {
-                _error = "Enter a level above zero.";
-                return;
-            }
-
-            await Alerts.SetThresholdAsync(new Zazi.Application.AlertThresholdRequest(
-                CurrentUser.OrganizationId,
-                CurrentUser.HasOrganizationWideScope ? null : CurrentUser.BranchId,
-                _warning.Network,
-                decimal.Round(_warning.Level, 2),
-                decimal.Round(_warning.Level / 2m, 2)));
-
-            _warningSaved = $"Saved. Agents will be warned when {NetworkName(_warning.Network)} float is below {Money(_warning.Level)}.";
-        }
-        catch (Exception exception)
-        {
-            _error = Fail(exception, "saving the float warning", "The warning could not be saved. Please try again.");
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    // With the cedi sign, as every other page writes money. This one alone wrote "2,020.00".
-    private static string Money(decimal value) =>
-        value < 0 ? $"−₵{Math.Abs(value):N2}" : $"₵{value:N2}";
-
-    /// <summary>How the networks spell themselves, rather than the stored upper-case key.</summary>
-    private static string NetworkName(string network) => network.ToUpperInvariant() switch
-    {
-        "MTN" => "MTN",
-        "TELECEL" => "Telecel",
-        "AIRTELTIGO" => "AirtelTigo",
-        _ => network
-    };
-
-    // Signed, so money coming in and money going out are distinguishable at a glance rather
-    // than by reading the column header and remembering which way round it is.
-    private static string Signed(decimal value) =>
-        value == 0m ? "—" : value.ToString("+#,##0.00;-#,##0.00");
-
-    protected override Task OnInitializedAsync() => LoadAsync();
-
-    private async Task LoadAsync()
-    {
-        try
-        {
-            _holdings = await Floats.GetHoldingsAsync(
-                CurrentUser.OrganizationId,
-                CurrentUser.VisibleBranchId());
-            _requests = await FloatRequests.PendingAsync(CurrentUser.OrganizationId, CurrentUser.VisibleBranchId());
-        }
-        catch (Exception exception)
-        {
-            _error = Fail(exception, "loading holdings", "Holdings could not be loaded. Please try again.");
-        }
-    }
-
-    private async Task RecordAsync()
-    {
-        _busy = true;
-        _error = null;
-        _recorded = null;
-
-        try
-        {
-            if (!Guid.TryParse(_entry.AgentId, out var agentId))
-            {
-                _error = "Choose who the money was given to.";
-                return;
-            }
-
-            await Floats.RecordFloatAsync(
-                new RecordFloatRequest(agentId, _entry.Network, _entry.Cash, _entry.EFloat, _entry.Note),
-                CurrentUser.OrganizationId,
-                CurrentUser.UserId);
-
-            _recorded = "Recorded.";
-            _movementsFor = _holdings?.FirstOrDefault(h => h.AgentId == agentId)?.AgentName;
-            _movements = await Floats.GetMovementsAsync(CurrentUser.OrganizationId, agentId);
-
-            _entry.Cash = 0m;
-            _entry.EFloat = 0m;
-            _entry.Note = null;
-
-            await LoadAsync();
-        }
-        catch (ArgumentException exception)
-        {
-            // Validation messages are written to be read by the person who typed the values.
-            _error = exception.Message.Split(" (Parameter")[0];
-        }
-        catch (KeyNotFoundException exception)
-        {
-            _error = exception.Message;
-        }
-        catch (Exception exception)
-        {
-            _error = Fail(exception, "recording float", "That could not be recorded. Please try again.");
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    /// <summary>Logs the detail and returns what the owner should see. See Team.razor.</summary>
-    private string Fail(Exception exception, string operation, string message)
-    {
-        var reference = Guid.NewGuid().ToString("N")[..8];
-        Log.LogError(exception, "Float page: {Operation} failed. Reference {Reference}.", operation, reference);
-        return $"{message} (reference {reference})";
-    }
-
-    private sealed class Entry
-    {
-        public string? AgentId { get; set; }
-        public string Network { get; set; } = "MTN";
-        public decimal Cash { get; set; }
-        public decimal EFloat { get; set; }
-        public string? Note { get; set; }
-    }
 }
