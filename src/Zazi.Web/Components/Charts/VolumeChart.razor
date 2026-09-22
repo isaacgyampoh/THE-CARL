@@ -1,0 +1,114 @@
+@using System.Globalization
+@using Zazi.Application.Growth
+@*
+    Deposits and withdrawals, day by day. Grouped columns rather than stacked: the question is
+    what kind of day it was — a cash-out day drains cash and fills float — and that is a
+    comparison of the two, not of their sum.
+
+    Colours were chosen and checked for colour-blind readers (green in, blue out) and the
+    legend names both, so identity never rests on colour alone. Hovering a day shows its
+    figures; a table below carries every value for screen readers.
+*@
+<div class="chart-scroll">
+    <svg class="chart" viewBox="0 0 @W @H" role="img" aria-labelledby="@($"{Id}-title")">
+        <title id="@($"{Id}-title")">Deposits and withdrawals per day, last @Days.Count days</title>
+
+        <g class="grid">
+            @foreach (var tick in Ticks)
+            {
+                var y = YFor(tick);
+                <line x1="@F(Left)" x2="@F(W - Right)" y1="@F(y)" y2="@F(y)" />
+                @SvgText(Left - 8, y + 4, "end", Compact(tick))
+            }
+        </g>
+
+        @for (var i = 0; i < Days.Count; i++)
+        {
+            var day = Days[i];
+            var bandX = Left + i * Band;
+            var barX = bandX + (Band - (BarWidth * 2 + 2)) / 2;
+            <g>
+                <rect class="hit" x="@F(bandX)" y="@F(Top)" width="@F(Band)" height="@F(PlotHeight)" rx="4">
+                    <title>@day.Day.ToString("ddd d MMM", CultureInfo.InvariantCulture): cash in GHS @day.CashIn.ToString("N2", CultureInfo.InvariantCulture), cash out GHS @day.CashOut.ToString("N2", CultureInfo.InvariantCulture), @day.Transactions transactions</title>
+                </rect>
+                <path class="bar-in" d="@Bar(barX, day.CashIn)" pointer-events="none" />
+                <path class="bar-out" d="@Bar(barX + BarWidth + 2, day.CashOut)" pointer-events="none" />
+                @if (i % LabelEvery == 0 || i == Days.Count - 1)
+                {
+                    @SvgText(bandX + Band / 2, H - 6, "middle", i == Days.Count - 1 ? "Today" : day.Day.ToString("d MMM", CultureInfo.InvariantCulture))
+                }
+            </g>
+        }
+    </svg>
+</div>
+
+<table class="visually-hidden">
+    <caption>Deposits and withdrawals per day</caption>
+    <thead><tr><th scope="col">Day</th><th scope="col">Cash in (GHS)</th><th scope="col">Cash out (GHS)</th><th scope="col">Transactions</th></tr></thead>
+    <tbody>
+        @foreach (var day in Days)
+        {
+            <tr><td>@day.Day.ToString("d MMM", CultureInfo.InvariantCulture)</td><td>@day.CashIn.ToString("N2")</td><td>@day.CashOut.ToString("N2")</td><td>@day.Transactions</td></tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<DailyActivity> Days { get; set; } = [];
+    [Parameter] public string Id { get; set; } = "volume";
+
+    private const double W = 720, H = 250, Left = 52, Right = 8, Top = 10, Bottom = 28;
+    private double PlotHeight => H - Top - Bottom;
+    private double Band => (W - Left - Right) / Math.Max(1, Days.Count);
+    // Capped thin: a bar never fills its slot; the leftover is air between days.
+    private double BarWidth => Math.Min(12, (Band - 8) / 2);
+    private int LabelEvery => Days.Count > 10 ? 2 : 1;
+
+    /// <summary>
+    /// A top of scale that divides into four round steps — 0 / 1K / 2K / 3K / 4K — so every
+    /// gridline reads as a clean figure.
+    /// </summary>
+    private decimal NiceMax
+    {
+        get
+        {
+            var max = Days.Count == 0 ? 0 : Days.Max(d => Math.Max(d.CashIn, d.CashOut));
+            if (max <= 0) return 100;
+            var rough = max / 4;
+            var magnitude = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)rough)));
+            foreach (var step in new[] { 1m, 2m, 2.5m, 5m, 10m })
+            {
+                if (step * magnitude >= rough) return step * magnitude * 4;
+            }
+            return 40 * magnitude;
+        }
+    }
+
+    private IEnumerable<decimal> Ticks => Enumerable.Range(0, 5).Select(i => NiceMax * i / 4);
+
+    private double YFor(decimal value) => Top + PlotHeight - (double)(value / NiceMax) * PlotHeight;
+
+    /// <summary>A column with a 4px rounded top and a square foot on the baseline.</summary>
+    private string Bar(double x, decimal value)
+    {
+        if (value <= 0) return string.Empty;
+        var baseY = Top + PlotHeight;
+        var topY = Math.Min(YFor(value), baseY - 1);
+        var r = Math.Min(4, Math.Min(BarWidth / 2, baseY - topY));
+        var w = BarWidth;
+        return $"M{F(x)},{F(baseY)} V{F(topY + r)} Q{F(x)},{F(topY)} {F(x + r)},{F(topY)} H{F(x + w - r)} Q{F(x + w)},{F(topY)} {F(x + w)},{F(topY + r)} V{F(baseY)} Z";
+    }
+
+    /// <summary>An SVG text label. Written as markup because Razor reserves the text element.</summary>
+    private static MarkupString SvgText(double x, double y, string anchor, string value) =>
+        new($"<text class=\"tick\" x=\"{F(x)}\" y=\"{F(y)}\" text-anchor=\"{anchor}\">{System.Net.WebUtility.HtmlEncode(value)}</text>");
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string Compact(decimal v) => v switch
+    {
+        >= 1_000_000 => (v / 1_000_000).ToString("0.#", CultureInfo.InvariantCulture) + "M",
+        >= 1_000 => (v / 1_000).ToString("0.#", CultureInfo.InvariantCulture) + "K",
+        _ => v.ToString("0", CultureInfo.InvariantCulture)
+    };
+}

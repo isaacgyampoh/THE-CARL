@@ -1,0 +1,25 @@
+@*
+    Change against yesterday, signed and in words as well as colour. Up is good for trading
+    figures, so up is green; a day with nothing yesterday to compare against says so.
+*@
+@if (Before == 0 && Now == 0)
+{
+    <span class="delta flat">None yet</span>
+}
+else if (Before == 0)
+{
+    <span class="delta up">New today</span>
+}
+else
+{
+    var change = (Now - Before) / Before * 100m;
+    var rounded = Math.Round(change, 0);
+    <span class="delta @(rounded > 0 ? "up" : rounded < 0 ? "down" : "flat")" title="Compared with yesterday">
+        @(rounded > 0 ? "↑" : rounded < 0 ? "↓" : "")@Math.Abs(rounded)%<span class="visually-hidden"> compared with yesterday</span>
+    </span>
+}
+
+@code {
+    [Parameter] public decimal Now { get; set; }
+    [Parameter] public decimal Before { get; set; }
+}

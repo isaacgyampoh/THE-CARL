@@ -9,6 +9,7 @@
 @inject ITransactionService Transactions
 @inject Zazi.Application.Closing.IDayCloseService Closes
 @inject Zazi.Application.Growth.IFloatRequestService FloatRequests
+@inject Zazi.Application.Growth.IInsightsService Insights
 @inject ICurrentUserContext CurrentUser
 @inject AuthenticationStateProvider AuthState
 
@@ -32,14 +33,24 @@
         <p class="eyebrow">@DateTimeOffset.UtcNow.ToString("dddd, d MMMM")</p>
         <h1>@Greeting()@FirstName()</h1>
     </div>
-    @if (_summary is not null && !_failed)
-    {
-        @* Figures someone may act on say how old they are. *@
-        <p class="asof-chip">
-            <span class="live-dot" aria-hidden="true"></span>
-            Updated @_readAt.ToString("HH:mm") · <a href="/">Refresh</a>
-        </p>
-    }
+    <div class="page-actions">
+        @if (_summary is not null && !_failed)
+        {
+            @* Figures someone may act on say how old they are. *@
+            <p class="asof-chip">
+                <span class="live-dot" aria-hidden="true"></span>
+                Updated @_readAt.ToString("HH:mm") · <a href="/">Refresh</a>
+            </p>
+        }
+        <a class="btn btn-secondary" href="/transactions?period=Today">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+            Statement
+        </a>
+        <a class="btn btn-primary" href="/float">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Give float
+        </a>
+    </div>
 </header>
 
 @if (_failed)
@@ -54,229 +65,248 @@ else if (_summary is null)
 }
 else
 {
-    @* A dashboard that cannot say when it was read invites being trusted as live. These
-       are figures someone may act on, so the page says how old they are. *@
-    @* The question an owner opens this page to answer: is there enough money in the right
-       places? Float is held per network and an agent cannot pay out MTN money from a Telecel
-       wallet, so a single "network float" total — the old headline — could look healthy
-       while one network had run dry. Each network gets its own figure, and cash sits beside
-       them because it is the other half of every transaction. *@
-    @* The question an owner opens this page to answer: is there enough money, in the right
-       places? One total up top, then its parts. Float is held per network and an agent cannot
-       pay out MTN money from a Telecel wallet, so each network keeps its own figure — and a
-       network below zero is flagged where the number is. *@
-    <section class="balance-card" aria-labelledby="on-hand">
-        <p class="bc-label" id="on-hand">Money on hand</p>
-        <p class="bc-amount">@Cedis(TotalOnHand)</p>
-        <p class="bc-sub">Cash plus float on every network@(BranchScoped ? " in your branch" : "")</p>
+    var today = _series.Count > 0 ? _series[^1] : null;
+    var yesterday = _series.Count > 1 ? _series[^2] : null;
+    var week = _series.TakeLast(7).ToList();
+    var fortnight = _series.TakeLast(14).ToList();
+    var monthStart = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    var commissionThisMonth = _series.Where(d => d.Day >= monthStart).Sum(d => d.Commission);
+    var shortCount = _closes.Count(c => c.Status == "Short");
 
-        <ul class="bc-split">
-            <li>
-                <span class="bc-net"><i class="dot cash" aria-hidden="true"></i>Cash</span>
-                <span class="bc-val">@Cedis(CashInHand)</span>
-            </li>
-            @foreach (var network in Networks.All)
-            {
-                var amount = FloatOn(network);
-                <li class="@(amount < 0 ? "negative" : "")">
-                    <span class="bc-net"><i class="dot @NetworkKey(network)" aria-hidden="true"></i>@NetworkName(network)</span>
-                    <span class="bc-val">@Cedis(amount)</span>
-                    @if (amount < 0)
-                    {
-                        <span class="bc-note">Below zero — check entries</span>
-                    }
-                </li>
-            }
-        </ul>
-    </section>
-
-    <nav class="quick-actions" aria-label="Quick actions">
-        <a href="/float">
-            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
-            Give float or cash
-        </a>
-        <a href="/transactions">
-            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></span>
-            Find a customer
-        </a>
-        <a href="/closing">
-            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-            Day closing
-        </a>
-        <a href="/transactions?period=ThisMonth">
-            <span class="qa-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg></span>
-            Statements
-        </a>
-    </nav>
-
-    @* Only when there is something. Three rows reading "0" every day teach an owner that this
-       section is furniture, and then it is ignored on the day it matters. *@
-    @if (_summary.Discrepancies > 0 || _summary.LowFloatAlerts > 0 || _summary.BalanceVariance != 0)
+    @* Things waiting on the owner, most urgent first. Only when there is something: rows that
+       read "0" every day teach an owner to stop looking. *@
+    @if (_floatRequests > 0 || shortCount > 0 || _summary.Discrepancies > 0 || _summary.LowFloatAlerts > 0)
     {
-        <section class="callout warn" role="status">
-            <h2>Needs attention</h2>
-            <ul>
-                @if (_summary.Discrepancies > 0)
-                {
-                    <li><strong>@_summary.Discrepancies</strong> @(Plural(_summary.Discrepancies, "discrepancy", "discrepancies")) to reconcile</li>
-                }
-                @if (_summary.LowFloatAlerts > 0)
-                {
-                    <li><strong>@_summary.LowFloatAlerts</strong> low float @(Plural(_summary.LowFloatAlerts, "alert", "alerts"))</li>
-                }
-                @if (_summary.BalanceVariance != 0)
-                {
-                    <li>Balances differ from the count by <strong>@Cedis(_summary.BalanceVariance)</strong></li>
-                }
-            </ul>
-        </section>
+        <div class="alerts">
+            @if (shortCount > 0)
+            {
+                <a class="alert bad" href="/closing">
+                    <span class="alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg></span>
+                    <span class="alert-text"><strong>@shortCount @Plural(shortCount, "agent", "agents") closed short today</strong>Their count is less than what they recorded.</span>
+                    <span class="alert-go">Review →</span>
+                </a>
+            }
+            @if (_floatRequests > 0)
+            {
+                <a class="alert" href="/float">
+                    <span class="alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+                    <span class="alert-text"><strong>@_floatRequests float @Plural(_floatRequests, "request", "requests") waiting</strong>An agent without float is turning customers away.</span>
+                    <span class="alert-go">Answer →</span>
+                </a>
+            }
+            @if (_summary.Discrepancies > 0 || _summary.LowFloatAlerts > 0)
+            {
+                <a class="alert" href="/operations">
+                    <span class="alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg></span>
+                    <span class="alert-text">
+                        <strong>Needs attention</strong>
+                        @if (_summary.Discrepancies > 0) { <text>@_summary.Discrepancies @Plural(_summary.Discrepancies, "discrepancy", "discrepancies") to reconcile. </text> }
+                        @if (_summary.LowFloatAlerts > 0) { <text>@_summary.LowFloatAlerts low float @Plural(_summary.LowFloatAlerts, "alert", "alerts").</text> }
+                    </span>
+                    <span class="alert-go">Open →</span>
+                </a>
+            }
+        </div>
     }
     else
     {
-        <p class="all-clear">
-            <span aria-hidden="true">✓</span> Nothing needs attention — no discrepancies, no low
-            float alerts, and balances agree.
+        <p class="all-clear" role="status">
+            <span aria-hidden="true">✓</span> Nothing needs attention — no shortages, no float requests, no discrepancies.
         </p>
     }
 
-    @if (_floatRequests > 0)
-    {
-        @* Waiting on the owner: an agent out of float is turning customers away. *@
-        <a class="closing-strip attention-strip" href="/float">
-            <span class="cs-title">Float requests</span>
-            <span class="cs-facts"><span class="warn">@_floatRequests waiting for you</span></span>
-            <span class="cs-go" aria-hidden="true">→</span>
-        </a>
-    }
-
-    @if (_closes.Count > 0 || _notClosed.Count > 0)
-    {
-        @* End of day at a glance: who has counted up, and whether it agreed. *@
-        <a class="closing-strip" href="/closing">
-            <span class="cs-title">Closing today</span>
-            <span class="cs-facts">
-                @if (_closes.Any(c => c.Status is "Balanced" or "Baseline"))
-                {
-                    <span>@_closes.Count(c => c.Status is "Balanced" or "Baseline") balanced</span>
-                }
-                @if (_closes.Any(c => c.Status == "Short"))
-                {
-                    <span class="bad">@_closes.Count(c => c.Status == "Short") short</span>
-                }
-                @if (_closes.Any(c => c.Status == "Over"))
-                {
-                    <span class="warn">@_closes.Count(c => c.Status == "Over") over</span>
-                }
-                @if (_notClosed.Count > 0)
-                {
-                    <span class="muted">@_notClosed.Count not closed</span>
-                }
-            </span>
-            <span class="cs-go" aria-hidden="true">→</span>
-        </a>
-    }
-
-    <h2>Today's trading</h2>
-    <section class="stat-strip">
-        <div class="tile">
-            <span class="label">Transactions</span>
-            <span class="value">@TodayCount</span>
+    <section class="kpis" aria-label="Key figures">
+        <div class="kpi feature">
+            <span class="label">Money on hand</span>
+            <span class="value">@Cedis(TotalOnHand)</span>
+            <div class="foot">
+                <span class="note">Cash @Cedis(CashInHand) · float @Cedis(TotalOnHand - CashInHand)</span>
+            </div>
         </div>
-        <div class="tile">
-            <span class="label">Volume</span>
-            <span class="value">@Cedis(TodayVolume)</span>
+        <div class="kpi">
+            <span class="label">Volume today</span>
+            <span class="value">@Cedis(today?.Volume ?? 0)</span>
+            <div class="foot">
+                <span><Delta Now="today?.Volume ?? 0" Before="yesterday?.Volume ?? 0" /><span class="vs" aria-hidden="true">vs yesterday</span></span>
+                <Sparkline Values="@week.Select(d => d.Volume).ToList()" Label="Volume, last 7 days" />
+            </div>
         </div>
-        @* Split by direction because the two move money oppositely: a busy cash-out day drains
-           cash and fills float, and the owner planning tomorrow's float needs to know which
-           kind of day it was. *@
-        <div class="tile">
-            <span class="label">Cash in <small>(deposits)</small></span>
-            <span class="value">@Cedis(_cashInTotal)</span>
-            <span class="note">@_cashInCount @Plural(_cashInCount, "transaction", "transactions")</span>
+        <div class="kpi">
+            <span class="label">Transactions today</span>
+            <span class="value">@((today?.Transactions ?? 0).ToString("N0"))</span>
+            <div class="foot">
+                <span><Delta Now="today?.Transactions ?? 0" Before="yesterday?.Transactions ?? 0" /><span class="vs" aria-hidden="true">vs yesterday</span></span>
+                <Sparkline Values="@week.Select(d => (decimal)d.Transactions).ToList()" Label="Transactions, last 7 days" />
+            </div>
         </div>
-        <div class="tile">
-            <span class="label">Cash out <small>(withdrawals)</small></span>
-            <span class="value">@Cedis(_cashOutTotal)</span>
-            <span class="note">@_cashOutCount @Plural(_cashOutCount, "transaction", "transactions")</span>
+        <div class="kpi">
+            <span class="label">Commission this month</span>
+            <span class="value">@Cedis(commissionThisMonth)</span>
+            <div class="foot">
+                <span class="note">Since 1 @monthStart.ToString("MMM")</span>
+                <Sparkline Values="@week.Select(d => d.Commission).ToList()" Label="Commission, last 7 days" />
+            </div>
         </div>
     </section>
-    @if (_splitIsPartial)
-    {
-        <p class="muted small">The deposit and withdrawal split covers the latest @_scanned transactions.</p>
-    }
 
-    <h2>Who is holding what</h2>
-    @if (_holdings.Count == 0)
-    {
-        <p class="muted">Nobody holds anything yet. Add workers on the <a href="/team">Team</a> page.</p>
-    }
-    else
-    {
-        <ul class="people">
-            @foreach (var person in _holdings.OrderByDescending(h => h.Cash + h.Floats.Sum(f => f.Amount)))
-            {
-                <li>
-                    <div class="who-line">
-                        <span class="avatar" aria-hidden="true">@Initials(person.AgentName)</span>
-                        <span class="name">@person.AgentName</span>
-                        <span class="branch muted">@person.BranchName</span>
-                    </div>
-                    <div class="held">
-                        <span class="cash-figure"><span class="muted">Cash</span> @Cedis(person.Cash)</span>
-                        <span class="chips">
-                            @foreach (var f in person.Floats.OrderBy(f => f.Network))
+    <div class="grid-2">
+        <section class="panel" aria-labelledby="flow-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="flow-title">Cash in and cash out</h2>
+                    <p class="sub">Last 14 days</p>
+                </div>
+                <div class="chart-legend">
+                    <span><i class="dot in" aria-hidden="true"></i>Cash in</span>
+                    <span><i class="dot out" aria-hidden="true"></i>Cash out</span>
+                </div>
+            </div>
+            <div class="panel-body">
+                <VolumeChart Days="fortnight" />
+                @{
+                    var busiest = fortnight.OrderByDescending(d => d.Volume).FirstOrDefault();
+                }
+                <div class="chart-summary">
+                    <span>14-day volume <strong>@Cedis(fortnight.Sum(d => d.Volume))</strong></span>
+                    <span>Cash in <strong>@Cedis(fortnight.Sum(d => d.CashIn))</strong></span>
+                    <span>Cash out <strong>@Cedis(fortnight.Sum(d => d.CashOut))</strong></span>
+                    @if (busiest is not null && busiest.Volume > 0)
+                    {
+                        <span>Busiest <strong>@busiest.Day.ToString("ddd d MMM")</strong></span>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="panel" aria-labelledby="where-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="where-title">Where the money is</h2>
+                    <p class="sub">Cash, and float on each network</p>
+                </div>
+                <a href="/float">Manage →</a>
+            </div>
+            <div class="panel-body">
+                @{
+                    var places = new List<(string Key, string Name, decimal Amount)> { ("cash", "Cash", CashInHand) };
+                    places.AddRange(Networks.All.Select(n => (NetworkKey(n), NetworkName(n), FloatOn(n))));
+                    var widest = Math.Max(1m, places.Max(p => Math.Max(0m, p.Amount)));
+                }
+                @* A bar per place, each with its name and figure in text beside it: the network
+                   colours are close for some colour-blind readers, so the words carry identity. *@
+                <ul class="holdings-bars">
+                    @foreach (var place in places)
+                    {
+                        <li class="@(place.Amount < 0 ? "negative" : "")">
+                            <span class="hb-name"><i class="dot @place.Key" aria-hidden="true"></i>@place.Name</span>
+                            <span class="hb-val">@Cedis(place.Amount)</span>
+                            <span class="hb-track" aria-hidden="true">
+                                <span class="hb-fill fill-@place.Key" style="width: @(((double)(Math.Max(0m, place.Amount) / widest) * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span>
+                            </span>
+                            @if (place.Amount < 0)
                             {
-                                <span class="float-chip @(f.Amount < 0 ? "negative" : "")">
-                                    <span class="net">@NetworkName(f.Network)</span>
-                                    <span class="amt">@f.Amount.ToString("N2")</span>
+                                <span class="hb-note">Below zero — usually a transaction on the wrong network, or float given and not recorded.</span>
+                            }
+                        </li>
+                    }
+                </ul>
+                <div class="hb-total"><span class="muted">Total</span><strong>@Cedis(TotalOnHand)</strong></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="grid-2">
+        <section class="panel" aria-labelledby="agents-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="agents-title">Agents today</h2>
+                    <p class="sub">Trading, holdings and day close</p>
+                </div>
+                <a href="/team">Team →</a>
+            </div>
+            @if (_holdings.Count == 0)
+            {
+                <p class="empty">Nobody has been added yet. Add workers on the <a href="/team">Team</a> page.</p>
+            }
+            else
+            {
+                <div class="scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Agent</th>
+                                <th scope="col" class="n">Transactions</th>
+                                <th scope="col" class="n">Volume</th>
+                                <th scope="col" class="n">Cash</th>
+                                <th scope="col" class="n">Float</th>
+                                <th scope="col">Closing</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var person in _holdings.OrderByDescending(h => _agentVolume.GetValueOrDefault(h.AgentId)).ThenBy(h => h.AgentName))
+                        {
+                            var floatTotal = person.Floats.Sum(f => f.Amount);
+                            var (closeLabel, closeTone) = CloseState(person.AgentId);
+                            <tr>
+                                <td data-label="Agent">
+                                    <span class="who-cell">
+                                        <span class="avatar" aria-hidden="true">@Initials(person.AgentName)</span>
+                                        <span><span class="name">@person.AgentName</span><span class="sub">@person.BranchName</span></span>
+                                    </span>
+                                </td>
+                                <td class="n" data-label="Transactions">@_agentCount.GetValueOrDefault(person.AgentId)</td>
+                                <td class="n" data-label="Volume">@Cedis(_agentVolume.GetValueOrDefault(person.AgentId))</td>
+                                <td class="n" data-label="Cash">@Cedis(person.Cash)</td>
+                                <td class="n" data-label="Float"><span class="@(floatTotal < 0 ? "error" : "")">@Cedis(floatTotal)</span></td>
+                                <td data-label="Closing"><span class="pill @closeTone">@closeLabel</span></td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="panel" aria-labelledby="latest-title">
+            <div class="panel-head">
+                <div>
+                    <h2 id="latest-title">Latest transactions</h2>
+                    <p class="sub">@TodayCount.ToString("N0") today</p>
+                </div>
+                <a href="/transactions?period=Today">View all →</a>
+            </div>
+            @if (_latest.Count == 0)
+            {
+                <p class="empty">No transactions yet today. They appear here as agents record them.</p>
+            }
+            else
+            {
+                <ul class="feed">
+                    @foreach (var t in _latest)
+                    {
+                        var incoming = t.CashDelta >= 0;
+                        <li>
+                            <span class="net-badge @NetworkKey(t.Network)" aria-hidden="true">@NetworkShort(t.Network)</span>
+                            <span class="what">
+                                <span class="kind">@Describe(t.Type)</span>
+                                <span class="meta">
+                                    @if (t.CustomerPhoneNumber?.Any(char.IsDigit) == true)
+                                    {
+                                        @GhanaPhoneNumber.Display(t.CustomerPhoneNumber)<text> · </text>
+                                    }
+                                    @AgentName(t.AgentId) · @t.TransactionAt.ToLocalTime().ToString("HH:mm")
                                 </span>
-                            }
-                        </span>
-                    </div>
-                </li>
+                            </span>
+                            @* Signed by the cash it moved, which is what the agent's till felt. *@
+                            <span class="amount @(incoming ? "in" : "out")">@(incoming ? "+" : "−")@Cedis(t.Amount)</span>
+                        </li>
+                    }
+                </ul>
             }
-        </ul>
-        <p class="more"><a href="/float">Record cash or float given →</a></p>
-    }
+        </section>
+    </div>
 
-    <h2>Latest transactions</h2>
-    @if (_latest.Count == 0)
-    {
-        <p class="muted">No transactions yet today. They appear here as agents record them.</p>
-    }
-    else
-    {
-        <ul class="feed">
-            @foreach (var t in _latest)
-            {
-                var incoming = t.CashDelta >= 0;
-                <li>
-                    <span class="net-badge @NetworkKey(t.Network)" aria-hidden="true">@NetworkShort(t.Network)</span>
-                    <span class="what">
-                        <span class="kind">@Describe(t.Type)</span>
-                        <span class="meta">
-                            @if (t.CustomerPhoneNumber?.Any(char.IsDigit) == true)
-                            {
-                                @GhanaPhoneNumber.Display(t.CustomerPhoneNumber)<text> · </text>
-                            }
-                            @NetworkName(t.Network) · @AgentName(t.AgentId) · @t.TransactionAt.ToLocalTime().ToString("HH:mm")
-                        </span>
-                    </span>
-                    @* Signed by the cash it moved, which is what the agent's till felt. *@
-                    <span class="amount @(incoming ? "in" : "out")">
-                        @(incoming ? "+" : "−")@Cedis(t.Amount)
-                    </span>
-                </li>
-            }
-        </ul>
-    }
-
-    @if (_latest.Count > 0)
-    {
-        <p class="more"><a href="/transactions">All transactions, search and statements →</a></p>
-    }
-
-    @* Housekeeping, not news. It was two cards of its own; it is one line at the foot. *@
+    @* Housekeeping, not news. *@
     <p class="estate-line muted">
         @_summary.TotalBranches @Plural(_summary.TotalBranches, "branch", "branches") ·
         @_summary.ActiveDevices active @Plural(_summary.ActiveDevices, "phone", "phones") ·
@@ -303,6 +333,9 @@ else
     private int _floatRequests;
     private IReadOnlyList<AgentHoldingsDto> _holdings = Array.Empty<AgentHoldingsDto>();
     private List<TransactionDto> _latest = new();
+    private IReadOnlyList<Zazi.Application.Growth.DailyActivity> _series = [];
+    private readonly Dictionary<Guid, int> _agentCount = new();
+    private readonly Dictionary<Guid, decimal> _agentVolume = new();
     private decimal _cashInTotal, _cashOutTotal;
     private int _cashInCount, _cashOutCount, _scanned;
     private long _todayTotal;
@@ -327,6 +360,7 @@ else
             _closes = await Closes.ForDayAsync(organizationId, branchId, today);
             _notClosed = await Closes.NotClosedAsync(organizationId, branchId, today);
             _floatRequests = (await FloatRequests.PendingAsync(organizationId, branchId)).Count;
+            _series = await Insights.DailyAsync(organizationId, branchId, 31);
 
             // Ghana keeps UTC all year, so the UTC day is the business day.
             var dayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
@@ -346,6 +380,11 @@ else
                 foreach (var t in result.Items)
                 {
                     _scanned++;
+                    if (t.Type is TransactionType.CashIn or TransactionType.CashOut)
+                    {
+                        _agentCount[t.AgentId] = _agentCount.GetValueOrDefault(t.AgentId) + 1;
+                        _agentVolume[t.AgentId] = _agentVolume.GetValueOrDefault(t.AgentId) + t.Amount;
+                    }
                     if (t.Type == TransactionType.CashIn) { _cashInTotal += t.Amount; _cashInCount++; }
                     else if (t.Type == TransactionType.CashOut) { _cashOutTotal += t.Amount; _cashOutCount++; }
                 }
@@ -416,6 +455,24 @@ else
             1 => parts[0][..1].ToUpperInvariant(),
             _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant()
         };
+    }
+
+    /// <summary>Where an agent stands on today's close, as a label and a tone.</summary>
+    private (string Label, string Tone) CloseState(Guid agentId)
+    {
+        var close = _closes.FirstOrDefault(c => c.AgentId == agentId);
+        if (close is not null)
+        {
+            return close.Status switch
+            {
+                "Balanced" => ("Balanced", "ok"),
+                "Baseline" => ("First count", "ok"),
+                "Short" => ("Short", "bad"),
+                _ => ("Over", "warn")
+            };
+        }
+
+        return _agentCount.GetValueOrDefault(agentId) > 0 ? ("Not closed", "warn") : ("No trading", "");
     }
 
     private static string Tone(decimal amount) => amount < 0 ? "negative" : amount == 0 ? "empty" : "";

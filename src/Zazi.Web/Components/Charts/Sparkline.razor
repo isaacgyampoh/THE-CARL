@@ -1,0 +1,32 @@
+@using System.Globalization
+@*
+    A trend without axes: the last few days as a thin line in the recessive grey, today's
+    point marked. For a stat card, where the figure itself is the headline and the line only
+    says "rising" or "falling".
+*@
+@if (Values.Count >= 2)
+{
+    <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none" role="img" aria-label="@Label">
+        <polyline points="@Points" vector-effect="non-scaling-stroke" />
+        <circle cx="@X(Values.Count - 1)" cy="@Y(Values[^1])" r="3.5" />
+    </svg>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<decimal> Values { get; set; } = [];
+    [Parameter] public string Label { get; set; } = "Trend";
+
+    private decimal Max => Values.Max();
+    private decimal Min => Values.Min();
+
+    private string X(int index) => (4 + index * (80.0 / (Values.Count - 1))).ToString("0.##", CultureInfo.InvariantCulture);
+
+    private string Y(decimal value)
+    {
+        var range = Max - Min;
+        var t = range == 0 ? 0.5 : (double)((value - Min) / range);
+        return (22 - t * 18).ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private string Points => string.Join(' ', Values.Select((v, i) => $"{X(i)},{Y(v)}"));
+}

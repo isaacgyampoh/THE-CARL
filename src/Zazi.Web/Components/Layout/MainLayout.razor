@@ -11,6 +11,17 @@
         <div class="app-shell">
             <NavMenu />
             <div class="app-main">
+                @* Find a customer from any page: the question asked most at a counter. *@
+                <header class="topbar">
+                    <form method="get" action="/transactions" role="search">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+                        <label for="global-search" class="visually-hidden">Search by customer number</label>
+                        <input id="global-search" name="customer" type="search" inputmode="tel" autocomplete="off"
+                               placeholder="Search a customer number…" />
+                        <input type="hidden" name="period" value="ThisYear" />
+                    </form>
+                    <span class="today">@DateTimeOffset.UtcNow.ToString("dddd") · <strong>@DateTimeOffset.UtcNow.ToString("d MMMM yyyy")</strong></span>
+                </header>
                 <main id="content" tabindex="-1">
                     @Body
                 </main>

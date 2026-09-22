@@ -57,6 +57,28 @@ public class TeamPageTests : TestContext
             ZaziPolicies.StaffManage, ZaziPolicies.DeviceManage);
     }
 
+    // ─── Who sees what ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void ABranchManagerIsNotOfferedAddBranch()
+    {
+        // A branch manager reaches Team (StaffManage) but branches are the owner's. The form
+        // used to show regardless, because the view that hides it was rendered as a plain tag.
+        _authorization.SetPolicies(ZaziPolicies.BranchRead, ZaziPolicies.StaffManage, ZaziPolicies.DeviceManage);
+
+        var page = RenderComponent<Team>();
+
+        Assert.DoesNotContain("Add branch", page.Markup);
+        Assert.DoesNotContain("<authorizeview", page.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AnOwnerIsOfferedAddBranch()
+    {
+        var page = RenderComponent<Team>();
+        Assert.Contains("Add branch", page.Markup);
+    }
+
     // ─── Revocation takes two deliberate steps ───────────────────────────────
 
     [Fact]

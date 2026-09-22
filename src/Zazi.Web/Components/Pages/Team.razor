@@ -3,6 +3,8 @@
 @using Zazi.Application.Security
 @using Zazi.Domain
 @attribute [Authorize(Policy = ZaziPolicies.StaffManage)]
+@inject IAuthorizationService AuthorizationService
+@inject AuthenticationStateProvider AuthState
 @inject IAuthService Auth
 @inject IDeviceService Devices
 @inject IDeviceEnrollmentService Enrollment
@@ -119,7 +121,7 @@ else
 @* Gated separately from the page itself. /team requires StaffManage, which a branch manager
    holds — but creating branches is BranchManage, which they do not. Without this the page's
    own permission would quietly grant a wider one. *@
-<AuthorizeView Policy="@ZaziPolicies.BranchRead">
+<AuthorizeView Policy="@ZaziPolicies.BranchRead" Context="auth">
     <ul class="estate">
         @foreach (var branch in _branches ?? Array.Empty<BranchDto>())
         {
@@ -143,7 +145,7 @@ else
     </ul>
 </AuthorizeView>
 
-<AuthorizeView Policy="@ZaziPolicies.BranchManage">
+<AuthorizeView Policy="@ZaziPolicies.BranchManage" Context="auth">
     <p class="muted">
         A branch is a place you trade from. Every worker and every device belongs to one, and
         figures are reported per branch.
@@ -293,6 +295,16 @@ else
 
         try
         {
+            // Checked here as well as in the markup. The form was once shown to branch managers
+            // because the view that hides it was not being compiled as a component; the rule
+            // must hold even when the page around it is wrong.
+            var principal = (await AuthState.GetAuthenticationStateAsync()).User;
+            if (!(await AuthorizationService.AuthorizeAsync(principal, ZaziPolicies.BranchManage)).Succeeded)
+            {
+                _error = "Only the owner can add a branch.";
+                return;
+            }
+
             var created = await Organizations.CreateBranchAsync(
                 new CreateBranchRequest(
                     CurrentUser.OrganizationId,

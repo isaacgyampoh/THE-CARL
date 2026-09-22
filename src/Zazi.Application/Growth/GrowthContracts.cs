@@ -138,3 +138,21 @@ public interface IReportService
 
     byte[] TradingRecordPdf(TradingRecord record);
 }
+
+// ─── Dashboard insights ──────────────────────────────────────────────────────
+
+/// <summary>One business day's trading, for the dashboard's charts and comparisons.</summary>
+public sealed record DailyActivity(DateOnly Day, int Transactions, decimal CashIn, decimal CashOut, decimal Commission)
+{
+    public decimal Volume => CashIn + CashOut;
+}
+
+public interface IInsightsService
+{
+    /// <summary>
+    /// The last <paramref name="days"/> business days, oldest first, today included — every
+    /// day present, a quiet day as zeros, so a chart's gaps are real.
+    /// </summary>
+    Task<IReadOnlyList<DailyActivity>> DailyAsync(Guid organizationId, Guid? branchId, int days = 31,
+        CancellationToken cancellationToken = default);
+}

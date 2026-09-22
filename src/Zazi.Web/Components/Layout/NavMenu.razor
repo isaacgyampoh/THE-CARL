@@ -1,4 +1,6 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@inject IServiceScopeFactory Scopes
+@inject Zazi.Application.Security.ICurrentUserContext CurrentUser
 
 @* Only for someone signed in; the account pages carry their own brand panel.
 
@@ -16,10 +18,19 @@
                 <span>Zazi</span>
             </a>
 
+            @if (_business is not null)
+            {
+                <div class="business">
+                    <span class="label">Business</span>
+                    <span class="name">@_business</span>
+                </div>
+            }
+
             @* NavLink sets aria-current="page" on the active link. Match.All on "/" stops Today
                staying highlighted on every page, since every path starts with it. Icons are
                decoration beside a label, so they are hidden from assistive technology. *@
             <nav class="links" aria-label="Sections">
+                <span class="group-label">Overview</span>
                 <NavLink href="/" Match="NavLinkMatch.All">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
                     <span>Today</span>
@@ -28,6 +39,11 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h13M7 7l3-3M7 7l3 3M17 17H4m13 0l-3-3m3 3l-3 3"/></svg>
                     <span>Transactions</span>
                 </NavLink>
+                <NavLink href="/reports">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                    <span>Reports</span>
+                </NavLink>
+                <span class="group-label">Money</span>
                 <NavLink href="/float">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>
                     <span>Cash &amp; float</span>
@@ -36,21 +52,19 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>
                     <span>Closing</span>
                 </NavLink>
-                <NavLink href="/reports">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-                    <span>Reports</span>
-                </NavLink>
+                <span class="group-label">Business</span>
                 <NavLink href="/team">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
                     <span>Team</span>
                 </NavLink>
-                <NavLink href="/held">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                    <span>Held</span>
-                </NavLink>
                 <NavLink href="/settings">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
                     <span>Settings</span>
+                </NavLink>
+                <span class="group-label">Review</span>
+                <NavLink href="/held">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span>Held</span>
                 </NavLink>
                 <NavLink href="/operations">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
@@ -72,6 +86,31 @@
 </AuthorizeView>
 
 @code {
+    private string? _business;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The business the owner is looking at, named in the sidebar. Decoration, so a failure
+        // to read it leaves the name out rather than the page.
+        //
+        // Read in a scope of its own: the page renders alongside this menu and uses the
+        // request's database context at the same moment, and a context cannot serve two
+        // queries at once — sharing it failed the page, not just the menu.
+        try
+        {
+            if (CurrentUser.OrganizationId != Guid.Empty)
+            {
+                await using var scope = Scopes.CreateAsyncScope();
+                var settings = scope.ServiceProvider.GetRequiredService<Zazi.Application.Growth.IBusinessSettingsService>();
+                _business = (await settings.GetAsync(CurrentUser.OrganizationId)).Name;
+            }
+        }
+        catch (Exception)
+        {
+            _business = null;
+        }
+    }
+
     private static string Initials(string? name)
     {
         var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
