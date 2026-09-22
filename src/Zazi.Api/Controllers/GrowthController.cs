@@ -30,7 +30,7 @@ public class FloatRequestsController : ControllerBase
     [Authorize(Policy = ZaziPolicies.TransactionRecord)]
     [ProducesResponseType(typeof(FloatRequestDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<FloatRequestDto>> Request(
+    public async Task<ActionResult<FloatRequestDto>> Create(
         [FromBody] FloatRequestApiRequest request, CancellationToken cancellationToken)
     {
         try
