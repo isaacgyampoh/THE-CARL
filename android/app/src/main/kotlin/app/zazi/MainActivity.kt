@@ -70,6 +70,7 @@ import app.zazi.ui.state.EntryNavigator
 import app.zazi.ui.state.ActivityDelivery
 import app.zazi.ui.state.TransactionDetail
 import app.zazi.ui.state.ActivityItem
+import app.zazi.ui.state.Receipt
 import app.zazi.ui.state.CloseDay
 import app.zazi.ui.state.NetworkHolding
 import app.zazi.ui.state.HoldingsUiState
@@ -568,6 +569,7 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
                 AuthenticatedScreen.TRANSACTION -> {
                     val transactionId = selectedTransactionId
+                    val context = LocalContext.current
 
                     // Follows the stored row for as long as this screen is on top. Collected
                     // with lifecycle awareness so it stops while the app is backgrounded
@@ -658,7 +660,16 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                                 }
                             }
                         },
-                        onReportDismissed = { reporting = reporting.copy(failure = null) }
+                        onReportDismissed = { reporting = reporting.copy(failure = null) },
+                        // Sent from the agent's own WhatsApp or SMS: no cost to the business,
+                        // and it reaches the customer from a number they already know.
+                        onSendReceipt = { receipt ->
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, Receipt.forCustomer(receipt, state.device.branchName))
+                            }
+                            context.startActivity(Intent.createChooser(send, "Send receipt"))
+                        }
                     )
                 }
 

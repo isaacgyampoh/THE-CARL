@@ -57,6 +57,16 @@ else
             <span>@Preview</span>
         </div>
 
+        <h2>Evening email</h2>
+        <p class="muted">
+            A summary of the day at 8pm: what was traded, commission and profit this month, what
+            your agents are holding, and anything waiting on you.
+        </p>
+        <p class="check-row">
+            <InputCheckbox id="digest" @bind-Value="_model.Digest" />
+            <label for="digest">Email me the day's summary</label>
+        </p>
+
         <button type="submit" disabled="@_busy">Save settings</button>
     </EditForm>
 
@@ -95,6 +105,7 @@ else
         public string Name { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public bool Receipts { get; set; }
+        public bool Digest { get; set; } = true;
     }
 
     private string Preview =>
@@ -112,7 +123,8 @@ else
             {
                 Name = settings.Name,
                 Phone = settings.SmsPhoneNumber is { } p ? Zazi.Domain.GhanaPhoneNumber.Display(p) : null,
-                Receipts = settings.SendCustomerReceipts
+                Receipts = settings.SendCustomerReceipts,
+                Digest = settings.SendDailyDigest
             };
         }
         catch (Exception exception)
@@ -129,7 +141,8 @@ else
         _saved = null;
         try
         {
-            await BusinessSettings.SaveAsync(CurrentUser.OrganizationId, _model!.Phone, _model.Receipts, CurrentUser.UserId);
+            await BusinessSettings.SaveAsync(CurrentUser.OrganizationId, _model!.Phone, _model.Receipts, _model.Digest,
+                CurrentUser.UserId);
             _saved = "Saved.";
         }
         catch (ArgumentException invalid)

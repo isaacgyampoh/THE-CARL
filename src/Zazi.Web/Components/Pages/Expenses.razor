@@ -1,0 +1,304 @@
+@page "/expenses"
+@using System.Globalization
+@using Zazi.Application.Float
+@using Zazi.Application.Growth
+@using Zazi.Application.Security
+@using Zazi.Domain
+@attribute [Authorize(Policy = ZaziPolicies.BranchManage)]
+@inject IExpenseService ExpenseService
+@inject IFloatService Floats
+@inject ICurrentUserContext CurrentUser
+@inject NavigationManager Navigation
+@inject ILogger<Expenses> Log
+
+@* Commission says what the business earned; this says what it kept. Ordinary form posts, like
+   the other money pages: recording a cost must not depend on a live connection. *@
+
+<PageTitle>Costs and profit · Zazi</PageTitle>
+
+<header class="page-head">
+    <div>
+        <p class="eyebrow">@_from.ToString("d MMM") – @_to.ToString("d MMM yyyy")</p>
+        <h1>Costs and profit</h1>
+    </div>
+    <nav class="periods" aria-label="Period">
+        <a href="/expenses?period=month" aria-current="@(Period != "year" && Period != "week" ? "true" : null)">This month</a>
+        <a href="/expenses?period=week" aria-current="@(Period == "week" ? "true" : null)">This week</a>
+        <a href="/expenses?period=year" aria-current="@(Period == "year" ? "true" : null)">This year</a>
+    </nav>
+</header>
+
+<p class="lead">
+    Airtime, rent, transport and wages are what stand between commission and what you actually
+    keep. Record them here and the figure below is yours, not a guess.
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Problem))
+{
+    <p class="error" role="alert">@Problem</p>
+}
+else if (!string.IsNullOrWhiteSpace(Done))
+{
+    <p role="status">@Done</p>
+}
+
+@if (_profit is not null)
+{
+    <section class="kpis" aria-label="Profit">
+        <div class="kpi feature">
+            <span class="label">Profit</span>
+            <span class="value">@Money(_profit.Profit)</span>
+            <div class="foot">
+                <span class="note">
+                    @if (_profit.Commission <= 0m)
+                    {
+                        <text>No commission recorded this period</text>
+                    }
+                    else if (_profit.Profit < 0m)
+                    {
+                        <text>Costs are above commission</text>
+                    }
+                    else
+                    {
+                        <text>@_profit.Margin?.ToString("0.#")% of commission kept</text>
+                    }
+                </span>
+            </div>
+        </div>
+        <div class="kpi">
+            <span class="label">Commission earned</span>
+            <span class="value">@Money(_profit.Commission)</span>
+            <div class="foot"><span class="note">Paid by the networks</span></div>
+        </div>
+        <div class="kpi">
+            <span class="label">Costs</span>
+            <span class="value">@Money(_profit.Expenses)</span>
+            <div class="foot"><span class="note">@_expenses.Count @(_expenses.Count == 1 ? "record" : "records")</span></div>
+        </div>
+        <div class="kpi">
+            <span class="label">Biggest cost</span>
+            <span class="value">@(_profit.ByCategory.Count == 0 ? "—" : Money(_profit.ByCategory[0].Amount))</span>
+            <div class="foot"><span class="note">@(_profit.ByCategory.Count == 0 ? "Nothing recorded" : Describe(_profit.ByCategory[0].Category))</span></div>
+        </div>
+    </section>
+}
+
+<div class="grid-2">
+    <section class="panel" aria-labelledby="spend-title">
+        <div class="panel-head">
+            <div>
+                <h2 id="spend-title">What the money went on</h2>
+                <p class="sub">This period, largest first</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            @if (_profit is null || _profit.ByCategory.Count == 0)
+            {
+                <p class="muted">No costs recorded for this period yet.</p>
+            }
+            else
+            {
+                var widest = Math.Max(1m, _profit.ByCategory.Max(c => Math.Abs(c.Amount)));
+                <ul class="holdings-bars">
+                    @foreach (var line in _profit.ByCategory)
+                    {
+                        <li>
+                            <span class="hb-name">@Describe(line.Category)</span>
+                            <span class="hb-val">@Money(line.Amount)</span>
+                            <span class="hb-track" aria-hidden="true">
+                                <span class="hb-fill fill-cost" style="width: @(((double)(Math.Abs(line.Amount) / widest) * 100).ToString("0.#", CultureInfo.InvariantCulture))%"></span>
+                            </span>
+                        </li>
+                    }
+                </ul>
+                <div class="hb-total"><span class="muted">Total</span><strong>@Money(_profit.Expenses)</strong></div>
+            }
+        </div>
+    </section>
+
+    <section class="panel" aria-labelledby="add-title">
+        <div class="panel-head">
+            <div>
+                <h2 id="add-title">Record a cost</h2>
+                <p class="sub">It counts against the day you paid it</p>
+            </div>
+        </div>
+        <div class="panel-body">
+            <EditForm Model="Spend" FormName="record-expense" OnValidSubmit="RecordAsync">
+                <input type="hidden" name="Spend.Token" value="@Spend.Token" />
+                <p>
+                    <label for="category">What was it for</label>
+                    <InputSelect id="category" @bind-Value="Spend.Category">
+                        @foreach (var category in Enum.GetValues<ExpenseCategory>())
+                        {
+                            <option value="@category">@Describe(category)</option>
+                        }
+                    </InputSelect>
+                </p>
+                <p>
+                    <label for="amount">Amount (GHS)</label>
+                    <InputNumber id="amount" @bind-Value="Spend.Amount" step="0.01" inputmode="decimal" />
+                </p>
+                <p>
+                    <label for="spent-on">Date paid</label>
+                    <InputDate id="spent-on" @bind-Value="Spend.SpentOn" />
+                </p>
+                <p>
+                    <label for="who">Person <span class="muted">(optional — wages, their transport)</span></label>
+                    <InputSelect id="who" @bind-Value="Spend.AgentId">
+                        <option value="">The business</option>
+                        @foreach (var person in _people)
+                        {
+                            <option value="@person.AgentId">@person.AgentName</option>
+                        }
+                    </InputSelect>
+                </p>
+                <p>
+                    <label for="note">Note <span class="muted">(optional)</span></label>
+                    <InputText id="note" @bind-Value="Spend.Note" />
+                </p>
+                <button type="submit">Record cost</button>
+            </EditForm>
+        </div>
+    </section>
+</div>
+
+<h2>Costs recorded</h2>
+@if (_expenses.Count == 0)
+{
+    <p class="empty">Nothing recorded for this period.</p>
+}
+else
+{
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">What for</th>
+                    <th scope="col">Person</th>
+                    <th scope="col">Note</th>
+                    <th scope="col">Recorded by</th>
+                    <th scope="col" class="n">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var expense in _expenses)
+            {
+                <tr>
+                    <td data-label="Date">@expense.SpentOn.ToString("d MMM yyyy")</td>
+                    <td data-label="What for">@Describe(expense.Category)</td>
+                    <td data-label="Person">@(expense.AgentName ?? "The business")</td>
+                    <td data-label="Note">@(string.IsNullOrWhiteSpace(expense.Note) ? "—" : expense.Note)</td>
+                    <td data-label="Recorded by">@expense.RecordedBy</td>
+                    <td class="n" data-label="Amount">@Money(expense.Amount)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted small">
+        A cost recorded by mistake is corrected by recording the same thing as a negative amount,
+        so the history shows what was believed at the time.
+    </p>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "period")] private string? Period { get; set; }
+    [SupplyParameterFromQuery(Name = "done")] private string? Done { get; set; }
+    [SupplyParameterFromQuery(Name = "problem")] private string? Problem { get; set; }
+
+    [SupplyParameterFromForm(FormName = "record-expense")] private SpendInput Spend { get; set; } = new();
+
+    private ProfitSummary? _profit;
+    private IReadOnlyList<ExpenseDto> _expenses = [];
+    private IReadOnlyList<AgentHoldingsDto> _people = [];
+    private DateOnly _from;
+    private DateOnly _to;
+
+    private sealed class SpendInput
+    {
+        public ExpenseCategory Category { get; set; } = ExpenseCategory.Airtime;
+        public decimal Amount { get; set; }
+        public DateTime SpentOn { get; set; } = DateTime.UtcNow.Date;
+        public string? AgentId { get; set; }
+        public string? Note { get; set; }
+        public string Token { get; set; } = Guid.NewGuid().ToString("N");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Ghana keeps GMT all year, so the UTC date is the business date.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        (_from, _to) = Period switch
+        {
+            "week" => (today.AddDays(-6), today),
+            "year" => (new DateOnly(today.Year, 1, 1), today),
+            _ => (new DateOnly(today.Year, today.Month, 1), today)
+        };
+
+        try
+        {
+            var branch = CurrentUser.VisibleBranchId();
+            _profit = await ExpenseService.ProfitAsync(CurrentUser.OrganizationId, branch, _from, _to);
+            _expenses = await ExpenseService.ListAsync(CurrentUser.OrganizationId, branch, _from, _to);
+            _people = await Floats.GetHoldingsAsync(CurrentUser.OrganizationId, branch);
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Loading costs failed.");
+            Problem = "Costs could not be loaded. Please try again.";
+        }
+    }
+
+    private async Task RecordAsync()
+    {
+        // Decided first, redirected after: a redirect is signalled by an exception, and
+        // catching it as a failure would report a successful save as a failed one.
+        string? done = null;
+        string? problem = null;
+        try
+        {
+            Guid? agentId = Guid.TryParse(Spend.AgentId, out var parsed) ? parsed : null;
+            var recorded = await ExpenseService.RecordAsync(
+                CurrentUser.OrganizationId,
+                CurrentUser.VisibleBranchId(),
+                agentId,
+                Spend.Category,
+                Spend.Amount,
+                DateOnly.FromDateTime(Spend.SpentOn),
+                Spend.Note,
+                CurrentUser.UserId,
+                Spend.Token);
+
+            done = $"Recorded {Describe(recorded.Category).ToLowerInvariant()} of {Money(recorded.Amount)} on {recorded.SpentOn:d MMM}.";
+        }
+        catch (ExpenseRejectedException rejected)
+        {
+            problem = rejected.Message;
+        }
+        catch (Exception exception)
+        {
+            Log.LogError(exception, "Recording a cost failed.");
+            problem = "That could not be recorded. Nothing was saved. Please try again.";
+        }
+
+        var query = done is not null ? "&done=" + Uri.EscapeDataString(done)
+            : problem is not null ? "&problem=" + Uri.EscapeDataString(problem) : string.Empty;
+        Navigation.NavigateTo($"/expenses?period={Period ?? "month"}{query}");
+    }
+
+    private static string Describe(ExpenseCategory category) => category switch
+    {
+        ExpenseCategory.Airtime => "Airtime and charges",
+        ExpenseCategory.Rent => "Rent",
+        ExpenseCategory.Transport => "Transport",
+        ExpenseCategory.Wages => "Wages",
+        ExpenseCategory.Electricity => "Electricity",
+        ExpenseCategory.Equipment => "Equipment",
+        _ => "Other"
+    };
+
+    private static string Money(decimal value) =>
+        value < 0 ? $"−₵{Math.Abs(value).ToString("N2", CultureInfo.InvariantCulture)}" : $"₵{value.ToString("N2", CultureInfo.InvariantCulture)}";
+}

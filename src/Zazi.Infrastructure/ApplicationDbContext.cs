@@ -121,6 +121,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<ParsingReport> ParsingReports => Set<ParsingReport>();
     public DbSet<DayClose> DayCloses => Set<DayClose>();
     public DbSet<FloatRequest> FloatRequests => Set<FloatRequest>();
+    public DbSet<BusinessExpense> Expenses => Set<BusinessExpense>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -429,6 +430,21 @@ public class ApplicationDbContext : DbContext
             // Evidence is intentionally NOT uniquely constrained on fingerprint: every
             // observation is recorded, including duplicates, because the fact that a
             // duplicate arrived is itself auditable. Uniqueness is enforced on the ledger.
+        });
+
+        modelBuilder.Entity<BusinessExpense>(builder =>
+        {
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Amount).HasPrecision(LedgerPolicy.StoragePrecision, LedgerPolicy.StorageScale);
+            builder.Property(x => x.Currency).IsRequired().HasMaxLength(10);
+            builder.Property(x => x.Note).HasMaxLength(500);
+            builder.Property(x => x.SubmissionToken).HasMaxLength(64);
+            // "What did this month cost?" is the question; the day is how it is asked.
+            builder.HasIndex(x => new { x.OrganizationId, x.SpentOn });
+            // A repeated submission collides here rather than becoming a second cost.
+            builder.HasIndex(x => new { x.OrganizationId, x.SubmissionToken })
+                .IsUnique()
+                .HasFilter("\"SubmissionToken\" IS NOT NULL");
         });
 
         modelBuilder.Entity<FloatRequest>(builder =>

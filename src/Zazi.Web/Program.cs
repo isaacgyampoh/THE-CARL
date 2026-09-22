@@ -242,6 +242,8 @@ builder.Services.AddScoped<Zazi.Application.Growth.ICustomerReceipts, Zazi.Infra
 builder.Services.AddScoped<Zazi.Application.Growth.IFloatRequestService, Zazi.Infrastructure.Growth.FloatRequestService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IReportService, Zazi.Infrastructure.Growth.ReportService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IInsightsService, Zazi.Infrastructure.Growth.InsightsService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IExpenseService, Zazi.Infrastructure.Growth.ExpenseService>();
+builder.Services.AddScoped<Zazi.Application.Growth.IDailyDigestService, Zazi.Infrastructure.Growth.DailyDigestService>();
 Zazi.Infrastructure.Keypad.KeypadServiceCollectionExtensions.AddZaziSms(builder.Services, builder.Configuration);
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<Zazi.Application.Closing.IDayCloseService, DayCloseService>();

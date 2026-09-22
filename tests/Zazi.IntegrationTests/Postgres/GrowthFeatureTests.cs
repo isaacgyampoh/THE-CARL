@@ -318,13 +318,13 @@ public class GrowthFeatureTests : IDisposable
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
         var tenant = await TenantSeedFactory.CreateAsync(_postgres);
 
-        await ServiceAsync<IBusinessSettingsService>(s => s.SaveAsync(tenant.OrganizationId, "+233 24 400 0671", true, tenant.UserId));
+        await ServiceAsync<IBusinessSettingsService>(s => s.SaveAsync(tenant.OrganizationId, "+233 24 400 0671", true, true, tenant.UserId));
         await ServiceAsync<IBusinessSettingsService>(async s =>
         {
             var settings = await s.GetAsync(tenant.OrganizationId);
             Assert.Equal("0244000671", settings.SmsPhoneNumber);
             Assert.True(settings.SendCustomerReceipts);
-            await Assert.ThrowsAsync<ArgumentException>(() => s.SaveAsync(tenant.OrganizationId, "12345", false, tenant.UserId));
+            await Assert.ThrowsAsync<ArgumentException>(() => s.SaveAsync(tenant.OrganizationId, "12345", false, true, tenant.UserId));
         });
     }
 }

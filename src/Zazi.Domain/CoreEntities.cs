@@ -116,6 +116,13 @@ public sealed class Organization : AggregateRoot
     /// </summary>
     public bool SendCustomerReceipts { get; set; }
 
+    /// <summary>
+    /// Whether the owner gets an evening email with the day's trading. On by default: an owner
+    /// who hears nothing assumes nothing happened, and the day they need to know is the day
+    /// something went wrong.
+    /// </summary>
+    public bool SendDailyDigest { get; set; } = true;
+
     public List<Branch> Branches { get; set; } = new();
     public List<User> Users { get; set; } = new();
 }

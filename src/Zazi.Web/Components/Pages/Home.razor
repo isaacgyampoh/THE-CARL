@@ -10,6 +10,7 @@
 @inject Zazi.Application.Closing.IDayCloseService Closes
 @inject Zazi.Application.Growth.IFloatRequestService FloatRequests
 @inject Zazi.Application.Growth.IInsightsService Insights
+@inject Zazi.Application.Growth.IExpenseService Costs
 @inject ICurrentUserContext CurrentUser
 @inject AuthenticationStateProvider AuthState
 
@@ -140,10 +141,12 @@ else
             </div>
         </div>
         <div class="kpi">
-            <span class="label">Commission this month</span>
-            <span class="value">@Cedis(commissionThisMonth)</span>
+            @* Commission is what was earned; this is what was kept, which is the figure an
+               owner actually lives on. *@
+            <span class="label">Profit this month</span>
+            <span class="value">@Cedis(commissionThisMonth - _monthCosts)</span>
             <div class="foot">
-                <span class="note">Since 1 @monthStart.ToString("MMM")</span>
+                <span class="note">@Cedis(commissionThisMonth) earned · @Cedis(_monthCosts) costs</span>
                 <Sparkline Values="@week.Select(d => d.Commission).ToList()" Label="Commission, last 7 days" />
             </div>
         </div>
@@ -331,6 +334,7 @@ else
     private IReadOnlyList<Zazi.Application.Closing.DayCloseResult> _closes = [];
     private IReadOnlyList<string> _notClosed = [];
     private int _floatRequests;
+    private decimal _monthCosts;
     private IReadOnlyList<AgentHoldingsDto> _holdings = Array.Empty<AgentHoldingsDto>();
     private List<TransactionDto> _latest = new();
     private IReadOnlyList<Zazi.Application.Growth.DailyActivity> _series = [];
@@ -361,6 +365,8 @@ else
             _notClosed = await Closes.NotClosedAsync(organizationId, branchId, today);
             _floatRequests = (await FloatRequests.PendingAsync(organizationId, branchId)).Count;
             _series = await Insights.DailyAsync(organizationId, branchId, 31);
+            _monthCosts = (await Costs.ProfitAsync(organizationId, branchId,
+                new DateOnly(today.Year, today.Month, 1), today)).Expenses;
 
             // Ghana keeps UTC all year, so the UTC day is the business day.
             var dayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);

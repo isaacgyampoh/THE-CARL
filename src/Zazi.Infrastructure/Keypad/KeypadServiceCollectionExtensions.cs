@@ -108,3 +108,67 @@ public sealed class KeypadDailySummaryService : BackgroundService
         }
     }
 }
+
+/// <summary>
+/// Sends every owner their evening email, once, at the configured hour.
+/// </summary>
+/// <remarks>
+/// Ghana keeps GMT all year, so the configured UTC hour is the local hour. One instance runs
+/// the API; if that ever changes this needs a lock, or owners would be written to twice — which
+/// the send's idempotency key would catch, but the work would still be done twice.
+/// </remarks>
+public sealed class DailyDigestHostedService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopes;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+    private readonly ILogger<DailyDigestHostedService> _logger;
+
+    public DailyDigestHostedService(
+        IServiceScopeFactory scopes,
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
+        ILogger<DailyDigestHostedService> logger)
+    {
+        _scopes = scopes;
+        _configuration = configuration;
+        _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (!_configuration.GetValue("Digest:Enabled", true))
+        {
+            return;
+        }
+
+        var hour = Math.Clamp(_configuration.GetValue("Digest:HourUtc", 20), 0, 23);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var next = new DateTimeOffset(now.UtcDateTime.Date.AddHours(hour), TimeSpan.Zero);
+            if (next <= now)
+            {
+                next = next.AddDays(1);
+            }
+
+            try
+            {
+                await Task.Delay(next - now, stoppingToken);
+
+                using var scope = _scopes.CreateScope();
+                var digests = scope.ServiceProvider.GetRequiredService<Zazi.Application.Growth.IDailyDigestService>();
+                var sent = await digests.SendAllAsync(DateOnly.FromDateTime(DateTime.UtcNow), stoppingToken);
+                _logger.LogInformation("Evening summaries sent: {Count}.", sent);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                // One bad evening must not stop tomorrow's.
+                _logger.LogError(exception, "Evening summaries failed.");
+            }
+        }
+    }
+}

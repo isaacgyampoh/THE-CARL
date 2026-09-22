@@ -980,6 +980,23 @@ fun CaptureScreen(
                 modifier = Modifier.fillMaxWidth().focusRequester(amountFocus)
             )
 
+            // The amounts an agent types all day. One tap instead of four, which at a counter
+            // with someone waiting is the difference between using the app and not.
+            Spacer(Modifier.height(Spacing.snug))
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(20, 50, 100, 200, 500, 1000).forEach { amount ->
+                    FilterChip(
+                        selected = state.amountInput == amount.toString(),
+                        onClick = { onAmountChanged(amount.toString()) },
+                        enabled = !state.isSubmitting,
+                        label = { Text("₵$amount", maxLines = 1) }
+                    )
+                }
+            }
+
             // Directly under the amount, and required for cash in and cash out. It sat under
             // "Optional" below the network choice, and a ₵50 cash-out was recorded in testing
             // with no number — which is the one field that answers a customer who comes back
@@ -1138,7 +1155,9 @@ fun TransactionDetailScreen(
     onBack: () -> Unit,
     reporting: ParsingReportUiState = ParsingReportUiState(),
     onReport: (ParsingVerdict, String) -> Unit = { _, _ -> },
-    onReportDismissed: () -> Unit = {}
+    onReportDismissed: () -> Unit = {},
+    /** Hands the customer a receipt through whatever the agent already uses to message them. */
+    onSendReceipt: (TransactionDetail) -> Unit = {}
 ) {
     var reportOpen by rememberSaveable(detail?.clientTransactionId) { mutableStateOf(false) }
     Scaffold(
@@ -1197,6 +1216,18 @@ fun TransactionDetailScreen(
                     // The handle to quote to support. Shown last because it is the least
                     // meaningful to the agent and the most useful to whoever they call.
                     DetailRow("Zazi reference", detail.shortReference)
+                }
+            }
+
+            // Sent from the agent's own WhatsApp or SMS: it costs the business nothing and
+            // reaches the customer from a number they already know.
+            if (detail.customerPhone != null) {
+                Spacer(Modifier.height(Spacing.small))
+                OutlinedButton(
+                    onClick = { onSendReceipt(detail) },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = Sizing.secondaryAction)
+                ) {
+                    Text("Send the customer a receipt")
                 }
             }
 

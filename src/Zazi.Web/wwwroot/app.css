@@ -852,3 +852,4 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
 }
 @media (max-width: 640px) { main table.ledger-table td.c-icon { width: auto; } }
 .all-clear { margin: 0 0 1rem; }
+.fill-cost { background: var(--chart-telecel); }

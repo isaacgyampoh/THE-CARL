@@ -14,11 +14,12 @@ public sealed class BusinessSettingsService : IBusinessSettingsService
     {
         var org = await _db.Organizations.AsNoTracking()
             .SingleAsync(o => o.Id == organizationId, cancellationToken);
-        return new BusinessSettings(org.Name, GhanaPhoneNumber.Normalise(org.PhoneNumber), org.SendCustomerReceipts);
+        return new BusinessSettings(org.Name, GhanaPhoneNumber.Normalise(org.PhoneNumber), org.SendCustomerReceipts,
+            org.SendDailyDigest);
     }
 
-    public async Task SaveAsync(Guid organizationId, string? smsPhoneNumber, bool sendCustomerReceipts, Guid actorUserId,
-        CancellationToken cancellationToken = default)
+    public async Task SaveAsync(Guid organizationId, string? smsPhoneNumber, bool sendCustomerReceipts,
+        bool sendDailyDigest, Guid actorUserId, CancellationToken cancellationToken = default)
     {
         string? number = null;
         if (!string.IsNullOrWhiteSpace(smsPhoneNumber))
@@ -37,10 +38,15 @@ public sealed class BusinessSettingsService : IBusinessSettingsService
         {
             changes.Add(sendCustomerReceipts ? "customer receipts switched on" : "customer receipts switched off");
         }
+        if (org.SendDailyDigest != sendDailyDigest)
+        {
+            changes.Add(sendDailyDigest ? "evening email switched on" : "evening email switched off");
+        }
 
         // Stored normalised, so an owner's reply by SMS can be recognised by its number.
         org.PhoneNumber = number;
         org.SendCustomerReceipts = sendCustomerReceipts;
+        org.SendDailyDigest = sendDailyDigest;
         org.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (changes.Count > 0)

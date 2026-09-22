@@ -9,15 +9,15 @@ namespace Zazi.Application.Growth;
 /// The owner's number, normalised. Shortage alerts and float requests are texted here, and an
 /// owner answers float requests from it ("OK 4821").
 /// </param>
-public sealed record BusinessSettings(string Name, string? SmsPhoneNumber, bool SendCustomerReceipts);
+public sealed record BusinessSettings(string Name, string? SmsPhoneNumber, bool SendCustomerReceipts, bool SendDailyDigest);
 
 public interface IBusinessSettingsService
 {
     Task<BusinessSettings> GetAsync(Guid organizationId, CancellationToken cancellationToken = default);
 
     /// <exception cref="ArgumentException">The number is not a Ghanaian mobile number.</exception>
-    Task SaveAsync(Guid organizationId, string? smsPhoneNumber, bool sendCustomerReceipts, Guid actorUserId,
-        CancellationToken cancellationToken = default);
+    Task SaveAsync(Guid organizationId, string? smsPhoneNumber, bool sendCustomerReceipts, bool sendDailyDigest,
+        Guid actorUserId, CancellationToken cancellationToken = default);
 }
 
 // ─── Customer receipts ───────────────────────────────────────────────────────
@@ -155,4 +155,91 @@ public interface IInsightsService
     /// </summary>
     Task<IReadOnlyList<DailyActivity>> DailyAsync(Guid organizationId, Guid? branchId, int days = 31,
         CancellationToken cancellationToken = default);
+}
+
+// ─── Expenses and profit ─────────────────────────────────────────────────────
+
+public sealed record ExpenseDto(
+    Guid Id,
+    DateOnly SpentOn,
+    ExpenseCategory Category,
+    decimal Amount,
+    string? Note,
+    Guid? AgentId,
+    string? AgentName,
+    string RecordedBy);
+
+/// <summary>What a period earned, what it cost, and what was left.</summary>
+/// <remarks>
+/// Commission is what the networks paid the business. Expenses are what the business paid to
+/// keep trading. Profit is the difference — the figure an owner actually lives on, and the one
+/// no rival app shows them.
+/// </remarks>
+public sealed record ProfitSummary(
+    DateOnly From,
+    DateOnly To,
+    decimal Commission,
+    decimal Expenses,
+    IReadOnlyList<CategorySpend> ByCategory)
+{
+    public decimal Profit => Commission - Expenses;
+
+    /// <summary>Share of commission kept, or null when nothing was earned to keep.</summary>
+    public decimal? Margin => Commission <= 0m ? null : decimal.Round(Profit / Commission * 100m, 1);
+}
+
+public sealed record CategorySpend(ExpenseCategory Category, decimal Amount);
+
+public sealed class ExpenseRejectedException(string message) : Exception(message);
+
+public interface IExpenseService
+{
+    /// <exception cref="ExpenseRejectedException">The amount or the date is not usable.</exception>
+    Task<ExpenseDto> RecordAsync(Guid organizationId, Guid? branchId, Guid? agentId, ExpenseCategory category,
+        decimal amount, DateOnly spentOn, string? note, Guid recordedByUserId, string? submissionToken,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ExpenseDto>> ListAsync(Guid organizationId, Guid? branchId, DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    Task<ProfitSummary> ProfitAsync(Guid organizationId, Guid? branchId, DateOnly from, DateOnly to,
+        CancellationToken cancellationToken = default);
+}
+
+// ─── The evening email ───────────────────────────────────────────────────────
+
+/// <summary>A business's day, as the owner's evening email reports it.</summary>
+public sealed record DailyDigest(
+    Guid OrganizationId,
+    string BusinessName,
+    string ToAddress,
+    DateOnly Day,
+    int Transactions,
+    decimal Volume,
+    decimal CashIn,
+    decimal CashOut,
+    decimal Commission,
+    decimal MonthCommission,
+    decimal MonthExpenses,
+    int AgentsClosed,
+    int AgentsShort,
+    IReadOnlyList<string> NotClosed,
+    int FloatRequestsWaiting,
+    decimal CashHeld,
+    decimal FloatHeld)
+{
+    public decimal MonthProfit => MonthCommission - MonthExpenses;
+
+    /// <summary>Nothing traded, nothing waiting, nobody short: an email would be noise.</summary>
+    public bool WorthSending =>
+        Transactions > 0 || AgentsShort > 0 || FloatRequestsWaiting > 0 || NotClosed.Count > 0;
+}
+
+public interface IDailyDigestService
+{
+    /// <summary>Builds one business's day. Null when there is no owner address to send to.</summary>
+    Task<DailyDigest?> BuildAsync(Guid organizationId, DateOnly day, CancellationToken cancellationToken = default);
+
+    /// <summary>Sends the evening email to every business that wants one. Returns how many went.</summary>
+    Task<int> SendAllAsync(DateOnly day, CancellationToken cancellationToken = default);
 }
