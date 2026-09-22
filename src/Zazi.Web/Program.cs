@@ -395,6 +395,27 @@ if (!app.Environment.IsDevelopment())
 app.UseStaticFiles();
 
 app.UseAuthentication();
+// The framework script is served as a routed endpoint in .NET 8, not as a static file, so
+// the deny-by-default policy caught it: a visitor on the sign-in page was redirected to sign
+// in when fetching it, and the page threw a script error. It is the same public file for
+// everyone, so exactly that path is marked anonymous before authorization runs. The circuit
+// the script connects to (/_blazor) still requires a session. Covered by AnonymousAccessTests.
+app.Use((context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method)
+        && context.Request.Path.Equals("/_framework/blazor.web.js", StringComparison.Ordinal)
+        && context.GetEndpoint() is { } endpoint
+        && endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() is null)
+    {
+        context.SetEndpoint(new Endpoint(
+            endpoint.RequestDelegate,
+            new EndpointMetadataCollection(endpoint.Metadata.Append(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute())),
+            endpoint.DisplayName));
+    }
+
+    return next(context);
+});
+
 app.UseAuthorization();
 
 // After authentication, not before it. An antiforgery token is bound to the user it was

@@ -84,6 +84,36 @@ public class PortalSignInRoutingTests
     private static HttpClient NonRedirectingClient(WebApplicationFactory<portal::Program> factory) =>
         factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
+    // ─── The framework script ────────────────────────────────────────────────
+
+    [SkippableFact]
+    public async Task TheFrameworkScriptLoadsWithoutSigningIn()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        using var factory = new PortalFactory(_postgres.ConnectionString!);
+
+        // Served as a routed endpoint in .NET 8, so deny-by-default caught it: the sign-in page
+        // loaded it, got a redirect to sign in instead, and threw a script error in production.
+        var response = await NonRedirectingClient(factory).GetAsync("/_framework/blazor.web.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("javascript", response.Content.Headers.ContentType?.MediaType ?? "", StringComparison.Ordinal);
+    }
+
+    [SkippableTheory]
+    [InlineData("/")]
+    [InlineData("/float")]
+    [InlineData("/_framework/not-the-script.js")]
+    public async Task OpeningTheScriptOpensNothingElse(string path)
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        using var factory = new PortalFactory(_postgres.ConnectionString!);
+
+        var response = await NonRedirectingClient(factory).GetAsync(path);
+
+        Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
+    }
+
     // ─── The sign-in page itself ─────────────────────────────────────────────
 
     [SkippableFact]
