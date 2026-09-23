@@ -5,17 +5,26 @@
 # matters most, an API that is up while its database is unreachable, looks healthy from the
 # outside unless you ask the right endpoint.
 #
-# This asks the right endpoint, every ten minutes, from outside Render. A failure fails the
-# workflow, and GitHub emails whoever owns the repository. No account to open, nothing to pay.
+# This asks the right endpoint, from outside Render. A failure fails the workflow, and GitHub
+# emails whoever owns the repository. No account to open, nothing to pay.
+#
+# A WARNING ABOUT THE SCHEDULE. GitHub runs `schedule` on a best-effort basis: runs are delayed
+# under load and dropped outright, and this repository has seen two runs in five hours against a
+# ten-minute cron. So each run that does fire keeps checking for half an hour rather than
+# checking once and exiting — a fired run covers its whole window, instead of a single instant
+# in it. That narrows the blind spot; it does not remove it. Treat this as the free second
+# opinion it is, and point a real monitor (UptimeRobot, Better Stack, Render's own service
+# notifications) at https://api.getzazi.com/ready as the thing that actually wakes someone up.
 
 name: Uptime
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0,30 * * * *'
   workflow_dispatch:
 
-# A check that queues behind an earlier one tells you nothing new.
+# A check that queues behind an earlier one tells you nothing new. The newest run wins, which
+# also means a fresh half-hour window starts whenever GitHub gets round to firing one.
 concurrency:
   group: uptime
   cancel-in-progress: true
@@ -24,35 +33,46 @@ jobs:
   check:
     name: Production is answering
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Comfortably longer than the window below, so the loop ends on its own terms.
+    timeout-minutes: 35
 
     steps:
-      - name: The API can reach its database
+      - name: Answering, every two minutes for half an hour
         run: |
-          # /ready, not /health: a process that is up with no database answers /health happily
-          # and can serve nothing. Two attempts, because one dropped packet is not an outage.
-          for attempt in 1 2; do
-            code=$(curl -sS -o /tmp/ready.json -w '%{http_code}' --max-time 20 https://api.getzazi.com/ready || echo 000)
-            [ "$code" = "200" ] && exit 0
-            echo "attempt $attempt: /ready answered $code" >&2
-            sleep 15
-          done
-          echo "::error::api.getzazi.com/ready is not answering 200. Check the Render dashboard." >&2
-          cat /tmp/ready.json >&2 || true
-          exit 1
+          set -u
+          # 14 rounds two minutes apart covers the 30 minutes until the next scheduled run.
+          rounds=14
 
-      - name: The portal is serving its sign-in page
-        run: |
-          for attempt in 1 2; do
-            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://app.getzazi.com/sign-in || echo 000)
-            [ "$code" = "200" ] && exit 0
-            echo "attempt $attempt: /sign-in answered $code" >&2
-            sleep 15
+          # One endpoint, two attempts. A single dropped packet is not an outage; two failures
+          # fifteen seconds apart, from GitHub's network, is worth waking someone for.
+          probe() {
+            name=$1 url=$2 out=$3
+            for attempt in 1 2; do
+              code=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 "$url" || echo 000)
+              [ "$code" = "200" ] && return 0
+              echo "  $name: attempt $attempt answered $code" >&2
+              sleep 15
+            done
+            echo "::error::$name is not answering 200 ($url)." >&2
+            cat "$out" >&2 || true
+            return 1
+          }
+
+          for round in $(seq 1 "$rounds"); do
+            echo "round $round/$rounds at $(date -u +%H:%M:%SZ)"
+
+            # /ready, not /health: a process that is up with no database answers /health
+            # happily and can serve nothing.
+            probe "api.getzazi.com/ready" https://api.getzazi.com/ready /tmp/ready.json || exit 1
+            probe "app.getzazi.com/sign-in" https://app.getzazi.com/sign-in /dev/null || exit 1
+
+            [ "$round" -lt "$rounds" ] && sleep 120
           done
-          echo "::error::app.getzazi.com/sign-in is not answering 200." >&2
-          exit 1
+
+          echo "All $rounds rounds answered."
 
       - name: TLS certificates are not about to expire
+        if: always()
         run: |
           # A certificate that expires on a Sunday takes the whole product down with it.
           for host in api.getzazi.com app.getzazi.com; do

@@ -120,5 +120,24 @@ ledger is append-only by design, so it was left in place rather than deleted.
 |---|---|
 | Database closed to the internet | `ipAllowList` emptied; both services reach it on the internal host `dpg-dao1pjo473hc73b4e7vg-a`, and both stayed healthy afterwards |
 | Disk autoscaling | Enabled and confirmed by reading the database back |
-| Uptime monitoring | `.github/workflows/uptime.yml` checks `/ready`, the portal sign-in page and TLS expiry every ten minutes |
+| Uptime monitoring | `.github/workflows/uptime.yml` probes `/ready`, the portal sign-in page and TLS expiry. Verified both ways: it passes against production and fails with an error annotation against an endpoint that does not answer 200. **Read the caveat below before relying on it.** |
 | Play Store assets | Icon, feature graphic and three screenshots in `android/play-assets/`, taken from the signed build against production |
+
+## What monitoring actually guarantees
+
+GitHub runs scheduled workflows **best-effort**: they are delayed under load and dropped
+outright. Measured on this repository — a `*/10` cron produced **two runs in five hours**, not
+thirty. A monitor that silent for that long is not a monitor.
+
+Two things follow:
+
+1. The workflow now runs on the half hour and keeps probing every two minutes for thirty
+   minutes, so a run that does fire covers its whole window instead of one instant in it.
+2. **Something else has to be the alarm.** Point a real monitor — UptimeRobot's free tier,
+   Better Stack, or Render's own service notifications — at `https://api.getzazi.com/ready`.
+   That needs an account, so it is the owner's to set up; the GitHub workflow is the free
+   second opinion, not the thing that wakes someone at 3am.
+
+Render's own health check (`healthCheckPath: /ready` on both services) restarts an instance
+that stops answering. That covers a crashed process and nothing else: it will not tell a person
+anything, and it cannot restart its way out of a database that is gone.
