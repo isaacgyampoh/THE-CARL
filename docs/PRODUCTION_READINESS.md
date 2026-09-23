@@ -77,13 +77,48 @@ exhaust a small instance.
 The portal's Operations page shows the same three facts — portal build, database reachability,
 and whether the API is answering — so an incident starts with evidence rather than a guess.
 
+## The end-to-end smoke test
+
+Run against **production** on 23 September 2026 — `api.getzazi.com` and `app.getzazi.com`, not a
+staging copy. Both halves of the product, in the order a real business would meet them.
+
+**Agent, on a Pixel running the signed 2.8.0 build:**
+
+| Step | Result |
+|---|---|
+| Record a ₵75 cash-in with a customer number | Saved on the device, reference shown |
+| Reach the server | Row moved to **Sent**; dashboard read "All synced" |
+| Server ledger agrees | Holdings became cash −₵75, float +₵75, which is exactly yesterday's two cash-outs (−₵150 / +₵150) plus today's cash-in |
+
+**Owner, in the portal:**
+
+| Step | Result |
+|---|---|
+| Sign in | 302 to the dashboard; the day's figures rendered |
+| Add a worker | Appears in Team at once, active, with an activation code to give out |
+| Give them ₵500 cash and ₵1,200 MTN float | "Recorded for Kofi Mensah"; the Cash and float table showed ₵1,700 held immediately |
+| Submit the **same form twice** | Second submission changed nothing — still ₵500 / ₵1,200, one ledger line |
+| Open their ledger | Opening ₵0, "You gave them +₵500.00 / +₵1,200.00", now holding ₵500 / ₵1,200, running balances agreeing with the headline |
+
+The double-submit case is the one that matters most: it is what a worker on a slow connection
+does when a page seems not to respond, and it is the fault the owner originally reported.
+
+A business named **Zazi Smoke Test** now exists in production, holding this test data. The
+ledger is append-only by design, so it was left in place rather than deleted.
+
 ## What is still outstanding
 
 | | Why it is not done here |
 |---|---|
 | Rotate the Render API key and the database password | Both appeared in a working session transcript. Only the account owner can rotate them. |
-| Restrict the database's IP allow list | It currently accepts connections from any address (`0.0.0.0/0`). Tightening it may cut off admin tools the owner uses, so it is their call. |
-| Uptime monitoring against `/ready` | Needs an account with a monitoring provider. |
-| Storage headroom | Turn on disk autoscaling before the database passes ~700 MB. This changes billing. |
 | Play Store submission | The signed bundle is built; publishing needs the Play Console account. See [PLAY_STORE.md](PLAY_STORE.md). |
 | Paid credits | Designed, not built. See [adr/ADR-006-zazi-credits.md](adr/ADR-006-zazi-credits.md). |
+
+## Done since the first audit
+
+| | Evidence |
+|---|---|
+| Database closed to the internet | `ipAllowList` emptied; both services reach it on the internal host `dpg-dao1pjo473hc73b4e7vg-a`, and both stayed healthy afterwards |
+| Disk autoscaling | Enabled and confirmed by reading the database back |
+| Uptime monitoring | `.github/workflows/uptime.yml` checks `/ready`, the portal sign-in page and TLS expiry every ten minutes |
+| Play Store assets | Icon, feature graphic and three screenshots in `android/play-assets/`, taken from the signed build against production |
