@@ -194,5 +194,22 @@ abstract class BaseSmsParser : SmsTransactionParser {
 
         /** A further number immediately after the match, i.e. the grouping is ambiguous. */
         private val SPLIT_NUMBER_TAIL = Regex("""^\s+[0-9]""")
+
+        /**
+         * Whether a message is about money at all, however badly it reads.
+         *
+         * <p>Deliberately weaker than [AMOUNT_PATTERN], which needs a currency marker
+         * immediately followed by a figure it can trust. This asks only whether money is
+         * mentioned, so a template we cannot yet read — an amount written the other way round,
+         * a grouping too ambiguous to resolve — is still recognisably financial and can be put
+         * in front of the agent instead of being discarded as somebody's private text.</p>
+         *
+         * <p>A one-time code or a marketing blast from the same shortcode mentions no currency,
+         * which is what keeps those out.</p>
+         */
+        fun looksFinancial(normalizedBody: String): Boolean =
+            CURRENCY_MENTION.containsMatchIn(normalizedBody)
+
+        private val CURRENCY_MENTION = Regex("""GHS|GH¢|GHC|₵|CEDI""")
     }
 }

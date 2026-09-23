@@ -99,12 +99,19 @@ data class DashboardUiState(
     val isOnline: Boolean = true,
     /** What the agent is holding, once the server has been asked; null offline and unknown. */
     val holdings: HoldingsUiState? = null,
+    /**
+     * Mobile money messages that arrived but could not be read into a transaction.
+     *
+     * <p>Money that reached the agent and is nowhere in their figures. It belongs with the
+     * things that need a person, not with the sync counters — waiting does not resolve it.</p>
+     */
+    val heldCount: Int = 0,
     val isSyncing: Boolean = false
 ) {
     val unsyncedCount: Int get() = pendingCount + syncingCount + retryingCount
 
     /** Items a person must look at. Never auto-resolved and never hidden. */
-    val needsAttentionCount: Int get() = conflictCount + deadLetterCount
+    val needsAttentionCount: Int get() = conflictCount + deadLetterCount + heldCount
 
     val hasAnyActivity: Boolean
         get() = unsyncedCount > 0 || syncedTodayCount > 0 || needsAttentionCount > 0
@@ -419,6 +426,19 @@ object MoneyFormat {
         return "$sign₵${grouped(whole)}.${pesewas.toString().padStart(2, '0')}"
     }
 
+    /**
+     * The same figure with nothing added: no symbol, no grouping.
+     *
+     * <p>For putting an amount back into a text field the agent will edit. A grouped figure
+     * typed back in would have to survive the field's own parsing, and a currency symbol
+     * would have to be deleted before anything could be typed.</p>
+     */
+    fun plain(minor: Long): String {
+        val absolute = kotlin.math.abs(minor)
+        val sign = if (minor < 0) "-" else ""
+        return "$sign${absolute / 100}.${(absolute % 100).toString().padStart(2, '0')}"
+    }
+
     private fun grouped(value: Long): String =
         value.toString().reversed().chunked(3).joinToString(",").reversed()
 }
@@ -481,4 +501,20 @@ data class ParsingReportUiState(
     val sent: Boolean = false,
     /** Set when the send failed, phrased for the agent rather than quoting a status code. */
     val failure: String? = null
+)
+
+/**
+ * One mobile money message that arrived and could not be read into a transaction.
+ *
+ * <p>Presentation-ready: the screen showing these is asking a person to do what the parser
+ * could not, so every field is already in the words they will read.</p>
+ */
+data class HeldMessageUiItem(
+    val evidenceId: String,
+    val providerLabel: String,
+    val amountMinor: Long?,
+    val customerPhoneNumber: String?,
+    val arrivedAtLabel: String,
+    val reason: String?,
+    val rawMessage: String?
 )

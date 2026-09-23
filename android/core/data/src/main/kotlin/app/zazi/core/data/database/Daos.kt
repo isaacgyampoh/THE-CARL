@@ -34,6 +34,25 @@ interface EvidenceDao {
     @Query("SELECT * FROM transaction_evidence WHERE state = 'PENDING_REVIEW' ORDER BY observedAtUtcMillis DESC")
     fun observePendingReview(): Flow<List<EvidenceEntity>>
 
+    /** How many messages are waiting for the agent to say what they were. */
+    @Query("SELECT COUNT(*) FROM transaction_evidence WHERE state = 'PENDING_REVIEW'")
+    fun observePendingReviewCount(): Flow<Int>
+
+    /**
+     * Takes a held message out of the queue once the agent has dealt with it.
+     *
+     * <p>Scoped to PENDING_REVIEW in the WHERE clause so a message already settled cannot be
+     * settled twice, and returns whether anything changed.</p>
+     */
+    @Query(
+        """
+        UPDATE transaction_evidence
+        SET state = :state, outcomeReason = :reason
+        WHERE evidenceId = :evidenceId AND state = 'PENDING_REVIEW'
+        """
+    )
+    suspend fun settlePendingReview(evidenceId: String, state: String, reason: String): Int
+
     @Query("SELECT COUNT(*) FROM transaction_evidence")
     suspend fun count(): Int
 

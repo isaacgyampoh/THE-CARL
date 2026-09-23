@@ -3,10 +3,12 @@ package app.zazi
 import app.zazi.core.data.repository.StatementDownload
 import app.zazi.core.data.repository.DayCloseOutcome
 import app.zazi.core.data.repository.FloatRequestOutcome
+import app.zazi.core.data.repository.HeldMessage
 import app.zazi.core.data.network.FloatRequestInfo
 import app.zazi.ui.FloatRequestDialog
 import app.zazi.core.data.network.DayCloseResponse
 import app.zazi.ui.CloseDayScreen
+import app.zazi.ui.HeldMessagesScreen
 import androidx.core.content.FileProvider
 import android.content.Intent
 import app.zazi.core.data.database.RecentTransactionRow
@@ -73,6 +75,7 @@ import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.Receipt
 import app.zazi.ui.state.CloseDay
 import app.zazi.ui.state.NetworkHolding
+import app.zazi.ui.state.HeldMessageUiItem
 import app.zazi.ui.state.HoldingsUiState
 import app.zazi.ui.state.RemoteActivity
 import app.zazi.core.data.network.RemoteTransaction
@@ -83,6 +86,9 @@ import app.zazi.ui.viewmodel.DashboardViewModel
 import app.zazi.ui.viewmodel.EnrolmentViewModel
 import app.zazi.ui.theme.ZaziTheme
 import app.zazi.ui.viewmodel.LoginViewModel
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -186,7 +192,7 @@ private val LaunchStateSaver = listSaver<LaunchState, Boolean>(
 )
 
 /** Screen currently shown within the authenticated part of the app. */
-private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION, CLOSE_DAY }
+private enum class AuthenticatedScreen { DASHBOARD, CAPTURE, TRANSACTION, CLOSE_DAY, HELD }
 
 @Composable
 private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
@@ -267,6 +273,7 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     .observeDetail(clientTransactionId)
                     .map { row -> row?.toDetail() }
             },
+            heldCount = { container.dashboardRepository.observeHeldCount().first() },
             holdings = {
                 container.balancesRepository.mine()?.let { balances ->
                     HoldingsUiState(
@@ -516,7 +523,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         // prompt before any explanation is how people learn to decline.
                         onRequestSmsPermission = {
                             permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
-                        }
+                        },
+                        onReviewHeld = { screen = AuthenticatedScreen.HELD }
                     )
                     if (floatOpen) {
                         FloatRequestDialog(
@@ -542,6 +550,34 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                             onDismiss = { floatOpen = false }
                         )
                     }
+                }
+
+                AuthenticatedScreen.HELD -> {
+                    BackHandler { screen = AuthenticatedScreen.DASHBOARD }
+                    val held by container.dashboardRepository.observeHeld()
+                        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+                    HeldMessagesScreen(
+                        items = held.map { it.toUiItem() },
+                        onRecord = { item ->
+                            // Settled first, then the form is opened with what was read from
+                            // the message. Settling after the form would leave it in the queue
+                            // if the agent backed out of a transaction they had already saved.
+                            scope.launch {
+                                container.dashboardRepository.settleHeld(item.evidenceId, recorded = true)
+                                dashboardViewModel.refresh(isOnline)
+                            }
+                            captureViewModel.prefillFrom(item)
+                            screen = AuthenticatedScreen.CAPTURE
+                        },
+                        onDismiss = { item ->
+                            scope.launch {
+                                container.dashboardRepository.settleHeld(item.evidenceId, recorded = false)
+                                dashboardViewModel.refresh(isOnline)
+                            }
+                        },
+                        onBack = { screen = AuthenticatedScreen.DASHBOARD }
+                    )
                 }
 
                 AuthenticatedScreen.CLOSE_DAY -> {
@@ -816,4 +852,27 @@ private fun RecentTransactionRow.toActivityItem(): ActivityItem = ActivityItem(
     capturedAutomatically = sourceType == "SMS",
     delivery = ActivityDelivery.fromOutboxState(outboxState),
     customerPhone = customerPhoneNumber
+)
+
+/**
+ * A held message in the words the agent will read.
+ *
+ * <p>The stored reason is a developer's sentence about evidence quality. What a person needs
+ * to know is simpler: this arrived, we could not tell what it was, it is not in your
+ * figures.</p>
+ */
+private fun HeldMessage.toUiItem(): HeldMessageUiItem = HeldMessageUiItem(
+    evidenceId = evidenceId,
+    providerLabel = when (provider.uppercase()) {
+        "MTN" -> "MTN"
+        "TELECEL" -> "Telecel"
+        "AIRTELTIGO" -> "AirtelTigo"
+        else -> "Mobile money"
+    },
+    amountMinor = amountMinor,
+    customerPhoneNumber = customerPhoneNumber,
+    arrivedAtLabel = "Arrived " + DateTimeFormatter.ofPattern("d MMM, HH:mm")
+        .format(Instant.ofEpochMilli(observedAtUtcMillis).atZone(ZoneId.systemDefault())),
+    reason = reason,
+    rawMessage = rawMessage
 )

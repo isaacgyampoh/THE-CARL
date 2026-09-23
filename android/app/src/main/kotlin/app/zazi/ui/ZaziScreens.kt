@@ -240,7 +240,9 @@ fun DashboardScreen(
      * True when this session began with an activation code. Changes what signing out costs,
      * and therefore what the confirmation is allowed to say.
      */
-    isActivationOnly: Boolean = false
+    isActivationOnly: Boolean = false,
+    /** Opens the list of mobile money messages that could not be read into a transaction. */
+    onReviewHeld: () -> Unit = {}
 ) {
     // Signing out is destructive for a code-activated worker in a way it is not for an
     // account holder: there is nothing to sign back into, and getting the phone working again
@@ -323,7 +325,7 @@ fun DashboardScreen(
 
             Spacer(Modifier.height(Spacing.medium))
 
-            DeliverySummary(state = state, onSyncNow = onSyncNow)
+            DeliverySummary(state = state, onSyncNow = onSyncNow, onReviewHeld = onReviewHeld)
 
             Spacer(Modifier.height(Spacing.section))
 
@@ -567,7 +569,11 @@ private fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit, m
  * and four rows reading "0" all day taught an agent to stop looking at this panel.</p>
  */
 @Composable
-private fun DeliverySummary(state: DashboardUiState, onSyncNow: () -> Unit) {
+private fun DeliverySummary(
+    state: DashboardUiState,
+    onSyncNow: () -> Unit,
+    onReviewHeld: () -> Unit
+) {
     ZaziPanel {
         Column(Modifier.padding(Spacing.large)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -608,6 +614,25 @@ private fun DeliverySummary(state: DashboardUiState, onSyncNow: () -> Unit) {
                     text = "${state.needsAttentionCount} need review",
                     tone = StatusTone.Attention
                 )
+            }
+
+            // Money that arrived and is in none of the figures above. Said in those terms
+            // rather than as a count of "evidence": the agent does not care what the parser
+            // managed, they care that a deposit is missing from their day.
+            if (state.heldCount > 0) {
+                Spacer(Modifier.height(Spacing.small))
+                Text(
+                    if (state.heldCount == 1) {
+                        "1 mobile money message could not be read. It is not in your figures yet."
+                    } else {
+                        "${state.heldCount} mobile money messages could not be read. " +
+                            "They are not in your figures yet."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(Spacing.tight))
+                TextButton(onClick = onReviewHeld) { Text("Record them") }
             }
         }
     }

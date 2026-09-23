@@ -16,6 +16,7 @@ import app.zazi.core.domain.model.EvidenceSourceType
 import app.zazi.core.domain.model.EvidenceState
 import app.zazi.core.domain.model.Provider
 import app.zazi.core.domain.model.TransactionType
+import app.zazi.core.domain.parser.BaseSmsParser
 import app.zazi.core.domain.parser.SmsParserRegistry
 import app.zazi.core.domain.sync.OutboxState
 import java.math.BigDecimal
@@ -104,8 +105,19 @@ class CaptureRepository(
         // Keyed on what the parser could make of the message, not on which parser ran. A
         // provider's own shortcode also sends one-time codes and marketing, so selecting the
         // MTN parser says nothing about whether this particular text is financial.
-        if (parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null) {
-            return CaptureOutcome.Ignored("Not a recognisable transaction message.")
+        //
+        // The exception is a message that a real provider claimed AND that mentions money: a
+        // template we cannot read yet. Discarding those is how an agent's deposit disappears
+        // with nothing on screen to say so — there is no row, no warning, and, because
+        // reporting a mistake hangs off a transaction, no way to tell us either. It is kept as
+        // evidence so it reaches the agent, who can record it by hand in seconds.
+        val unreadable = parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null
+        if (unreadable) {
+            val fromAProvider = parsed.provider != Provider.UNKNOWN
+            val aboutMoney = BaseSmsParser.looksFinancial(BaseSmsParser.normalize(request.body))
+            if (!fromAProvider || !aboutMoney) {
+                return CaptureOutcome.Ignored("Not a recognisable transaction message.")
+            }
         }
 
         // Two independent gates, both already owned elsewhere: evidence quality is the

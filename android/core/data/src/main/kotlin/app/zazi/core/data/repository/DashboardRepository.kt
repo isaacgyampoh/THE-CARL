@@ -4,6 +4,7 @@ import app.zazi.core.data.database.RecentTransactionRow
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.database.ZaziDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /** Local movement totals for a window, in minor units. */
 data class DailyTotals(val cashMinor: Long, val floatMinor: Long)
@@ -81,6 +82,38 @@ class DashboardRepository(private val database: ZaziDatabase) {
     ): Flow<List<RecentTransactionRow>> =
         database.localTransactionDao().observeBetweenWithDelivery(fromUtcMillis, toUtcMillis, limit)
 
+    /**
+     * Mobile money messages this device could not turn into a transaction on its own.
+     *
+     * <p>They were stored rather than discarded precisely so a person sees them. Until this
+     * was observed anywhere, they sat in the table and the agent's money simply never
+     * appeared — which is indistinguishable, at the counter, from the app not working.</p>
+     */
+    fun observeHeldCount(): Flow<Int> = database.evidenceDao().observePendingReviewCount()
+
+    fun observeHeld(): Flow<List<HeldMessage>> =
+        database.evidenceDao().observePendingReview().map { rows ->
+            rows.map { row ->
+                HeldMessage(
+                    evidenceId = row.evidenceId,
+                    provider = row.provider,
+                    amountMinor = row.amountMinor,
+                    customerPhoneNumber = row.customerPhoneNumber,
+                    observedAtUtcMillis = row.observedAtUtcMillis,
+                    reason = row.outcomeReason,
+                    rawMessage = row.rawMessage
+                )
+            }
+        }
+
+    /** Marks a held message dealt with, once the agent has recorded it or dismissed it. */
+    suspend fun settleHeld(evidenceId: String, recorded: Boolean): Boolean =
+        database.evidenceDao().settlePendingReview(
+            evidenceId = evidenceId,
+            state = if (recorded) "ACCEPTED" else "REJECTED",
+            reason = if (recorded) "Recorded by the agent." else "Dismissed by the agent."
+        ) > 0
+
     /** Everything known about one transaction, including why it is stuck. */
     suspend fun findDetail(clientTransactionId: String): TransactionDetailRow? =
         database.localTransactionDao().findDetail(clientTransactionId)
@@ -105,3 +138,19 @@ class DashboardRepository(private val database: ZaziDatabase) {
         const val DEFAULT_RECENT = 25
     }
 }
+
+/**
+ * A mobile money message that arrived but could not be recorded without a person.
+ *
+ * <p>Carries the raw text deliberately: the agent decides what it was by reading it, and the
+ * whole point of surfacing these is that the app could not.</p>
+ */
+data class HeldMessage(
+    val evidenceId: String,
+    val provider: String,
+    val amountMinor: Long?,
+    val customerPhoneNumber: String?,
+    val observedAtUtcMillis: Long,
+    val reason: String?,
+    val rawMessage: String?
+)

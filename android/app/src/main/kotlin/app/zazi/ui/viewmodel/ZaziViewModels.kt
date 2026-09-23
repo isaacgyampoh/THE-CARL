@@ -25,7 +25,9 @@ import app.zazi.ui.state.CaptureProvider
 import app.zazi.ui.state.CaptureTransactionType
 import app.zazi.ui.state.CaptureUiState
 import app.zazi.ui.state.DashboardUiState
+import app.zazi.ui.state.HeldMessageUiItem
 import app.zazi.ui.state.HoldingsUiState
+import app.zazi.ui.state.MoneyFormat
 import app.zazi.ui.state.EnrolmentError
 import app.zazi.ui.state.EnrolmentUiState
 import app.zazi.ui.state.LoginError
@@ -208,7 +210,12 @@ class DashboardViewModel(
      * What the owner has given this agent, from the server. Defaulted to nothing so existing
      * callers and tests are unaffected, and absent rather than zero when it cannot be read.
      */
-    private val holdings: suspend () -> HoldingsUiState? = { null }
+    private val holdings: suspend () -> HoldingsUiState? = { null },
+    /**
+     * How many mobile money messages arrived that could not be read into a transaction.
+     * Defaulted to none so existing callers and tests are unaffected.
+     */
+    private val heldCount: suspend () -> Int = { 0 }
 ) {
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
@@ -288,6 +295,11 @@ class DashboardViewModel(
             // Absent rather than zero when the server cannot be reached: a made-up holding is
             // worse than none, and the agent knows what "—" means.
             holdings = runCatching { holdings() }.getOrNull(),
+            // Counted with the things needing a person. A failure to read it must not be
+            // reported as "none held", which would hide exactly what this exists to show —
+            // so an unreadable count is treated as nothing rather than guessed at, and the
+            // list behind it is the authority.
+            heldCount = runCatching { heldCount() }.getOrDefault(0),
             isSyncing = outboxRepository.countByState(OutboxState.SYNCING) > 0
         )
     }
@@ -335,6 +347,22 @@ class CaptureViewModel(
 
     fun dismissConfirmation() {
         _state.value = _state.value.copy(lastResult = null)
+    }
+
+    /**
+     * Starts the form from a message the app could not read on its own.
+     *
+     * <p>Fills in only what was actually recovered from the text. The direction is left for
+     * the agent: not knowing it is why the message was held, and guessing it here would put a
+     * default in front of someone in a hurry and invert their balances.</p>
+     */
+    fun prefillFrom(item: HeldMessageUiItem) {
+        _state.value = CaptureUiState(
+            amountInput = item.amountMinor?.let { MoneyFormat.plain(it) }.orEmpty(),
+            customerPhone = item.customerPhoneNumber.orEmpty(),
+            provider = CaptureProvider.entries.firstOrNull { it.name == item.providerLabel.uppercase() }
+                ?: CaptureUiState().provider
+        )
     }
 
     /**
