@@ -73,6 +73,13 @@ android {
                 storePassword = project.findProperty("zaziKeystorePassword") as String?
                 keyAlias = project.findProperty("zaziKeyAlias") as String?
                 keyPassword = project.findProperty("zaziKeyPassword") as String?
+
+                // v1 is off because nothing below API 24 can install this app anyway. v3 is
+                // on so the upload key can be rotated later without abandoning the app; the
+                // default leaves only v2, which cannot carry proof of rotation.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

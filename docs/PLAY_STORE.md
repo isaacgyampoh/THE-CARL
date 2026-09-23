@@ -17,6 +17,18 @@ Signing properties live in `~/.gradle/gradle.properties` and the keystore outsid
 repository. Neither is ever committed. **If the upload key is lost, the app cannot be updated
 again** — keep a copy somewhere you will still have in five years.
 
+The bundle is signed v2 **and v3**. v3 is what carries proof of rotation, so the upload key can
+be replaced later without abandoning the app; v1 is off because nothing below API 24 can install
+this app anyway. Check any build before uploading it:
+
+```bash
+apksigner verify -v --print-certs app/build/outputs/apk/release/app-release.apk
+```
+
+The release certificate is `CN=Zazi, OU=Production, O=Zazi, L=Accra, ST=Greater Accra, C=GH`,
+SHA-256 `2587a167 8ca90793 afe36a7c 75511550 16f5b492 939f0b81 151f71c2 0bf6dcfd`. If a build
+ever shows a different fingerprint, it was signed with the wrong key and Play will reject it.
+
 | Field | Value |
 |---|---|
 | Package | `app.zazi` |
@@ -62,9 +74,19 @@ again** — keep a copy somewhere you will still have in five years.
 > Zazi records mobile money; it does not move it. You keep using MTN, Telecel and AirtelTigo as
 > you do now.
 
-**Assets still to produce** (not code, so they are not in this repository):
-icon 512×512, feature graphic 1024×500, at least two phone screenshots. The screenshots taken
-during testing (`Today`, `Record transaction`, `Close the day`) are suitable sources.
+**Assets**, in `android/play-assets/`:
+
+| File | What it is |
+|---|---|
+| `icon-512.png` | App icon, 512×512 |
+| `feature-1024x500.png` | Feature graphic |
+| `screenshots/1-today.png` | The agent's day: balances, quick actions, activity |
+| `screenshots/2-record.png` | Recording a transaction |
+| `screenshots/3-close-day.png` | Counting cash and float at closing |
+
+The screenshots are real captures from the signed 2.8.0 build running against production, not
+mock-ups. `icon.html` and `feature.html` are the sources the two graphics were rendered from;
+re-render them if the brand changes.
 
 ## Data safety answers
 
@@ -109,6 +131,10 @@ Password: (create one; rotate after review)
 
 Agent app: open, tap "I have an activation code", enter: (issue a fresh code on the Team page)
 ```
+
+The **Zazi Smoke Test** business already holds usable data — a worker holding ₵500 cash and
+₵1,200 MTN float, with the ledger behind it — so it can seed the reviewer account rather than
+building one from nothing. Give the reviewer their own login, not the owner's.
 
 Say plainly: "Zazi records mobile money transactions for agent businesses. It does not move
 money and is not a payment app. The SMS permission reads mobile money confirmations on the
