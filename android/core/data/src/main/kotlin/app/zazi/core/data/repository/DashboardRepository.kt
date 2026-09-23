@@ -3,6 +3,8 @@ package app.zazi.core.data.repository
 import app.zazi.core.data.database.RecentTransactionRow
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.database.ZaziDatabase
+import app.zazi.core.domain.parser.BaseSmsParser
+import app.zazi.core.domain.parser.MessageClassifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -113,6 +115,37 @@ class DashboardRepository(private val database: ZaziDatabase) {
             state = if (recorded) "ACCEPTED" else "REJECTED",
             reason = if (recorded) "Recorded by the agent." else "Dismissed by the agent."
         ) > 0
+
+    /**
+     * Re-checks messages already waiting against the current rules.
+     *
+     * <p>The queue was filled by older rules, so it holds loan offers and campaign notices
+     * that today's classifier would never have kept. Clearing those out matters more than it
+     * sounds: an agent who opens the queue and finds marketing stops opening the queue, and
+     * then the real transaction sitting underneath it is never recorded either.</p>
+     *
+     * <p>Only ever <b>removes</b> non-transactions. Nothing is promoted into the ledger by a
+     * re-scan — a message that now looks like a transaction is still the agent's to confirm,
+     * because posting money on the strength of a rule change nobody watched happen is exactly
+     * the kind of thing that must not be automatic.</p>
+     *
+     * @return how many were removed as marketing.
+     */
+    suspend fun rescanHeld(): Int {
+        var removed = 0
+        database.evidenceDao().findByState("PENDING_REVIEW").forEach { row ->
+            val body = row.rawMessage ?: return@forEach
+            if (MessageClassifier.isNotATransaction(BaseSmsParser.normalize(body))) {
+                val settled = database.evidenceDao().settlePendingReview(
+                    evidenceId = row.evidenceId,
+                    state = "REJECTED",
+                    reason = "Marketing, an offer or a notice — not a transaction."
+                )
+                if (settled > 0) removed++
+            }
+        }
+        return removed
+    }
 
     /** Everything known about one transaction, including why it is stuck. */
     suspend fun findDetail(clientTransactionId: String): TransactionDetailRow? =

@@ -17,6 +17,7 @@ import app.zazi.core.domain.model.EvidenceState
 import app.zazi.core.domain.model.Provider
 import app.zazi.core.domain.model.TransactionType
 import app.zazi.core.domain.parser.BaseSmsParser
+import app.zazi.core.domain.parser.MessageClassifier
 import app.zazi.core.domain.parser.SmsParserRegistry
 import app.zazi.core.domain.sync.OutboxState
 import java.math.BigDecimal
@@ -113,11 +114,12 @@ class CaptureRepository(
         // evidence so it reaches the agent, who can record it by hand in seconds.
         val normalized = BaseSmsParser.normalize(request.body)
 
-        // Advertising from the network's own shortcode, whatever figures it quotes. Checked
-        // before anything else: a promotion is not a transaction even when a parser managed to
-        // read an amount out of "GHS 1.4 MILLION in prizes".
-        if (BaseSmsParser.looksPromotional(normalized)) {
-            return CaptureOutcome.Ignored("Promotional message, not a transaction.")
+        // Zazi detects transactions, not messages. A network's shortcode carries loan offers,
+        // campaign notices and prize draws that quote figures in cedis, and every one of them
+        // looks financial to a currency test. Checked before anything else, and the criteria
+        // live in MessageClassifier so they can be read without reading a parser.
+        if (MessageClassifier.isNotATransaction(normalized)) {
+            return CaptureOutcome.Ignored("Marketing, an offer or a notice — not a transaction.")
         }
 
         val unreadable = parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null
@@ -146,10 +148,12 @@ class CaptureRepository(
             // read if it will not normalise, rather than dropped — a number is evidence.
             customerPhoneNumber = GhanaPhoneNumber.normalise(parsed.customerPhoneNumber)
                 ?: parsed.customerPhoneNumber,
-            // An SMS carries no trustworthy send time, so the moment the handset saw it is
-            // the honest answer. It is also what the fingerprint uses, so a redelivery of
-            // the same message must reuse it — see the duplicate check below.
-            occurredAtUtcMillis = request.receivedAtUtcMillis,
+            // The provider's own stamp where the message carries one — "completed at
+            // 2026-09-22 23:21:53" — because that is when the money actually moved and what a
+            // customer disputing it will quote. Otherwise the moment the handset saw it, which
+            // is the only other honest answer. It is also what the fingerprint uses, so a
+            // redelivery of the same message must reuse it — see the duplicate check below.
+            occurredAtUtcMillis = parsed.occurredAtUtcMillis ?: request.receivedAtUtcMillis,
             parserName = parsed.parserName,
             parserVersion = parsed.parserVersion,
             confidence = parsed.confidence,

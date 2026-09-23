@@ -36,11 +36,12 @@ class MtnSmsParser : BaseSmsParser() {
             transactionType = type,
             amount = amount,
             reference = reference,
-            customerPhoneNumber = extractPhone(normalizedBody),
+            customerPhoneNumber = extractCounterparty(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
             confidence = confidenceFor(type, amount, reference),
             parserName = parserName,
-            parserVersion = parserVersion
+            parserVersion = parserVersion,
+            occurredAtUtcMillis = extractTimestamp(normalizedBody)
         )
     }
 
@@ -89,11 +90,12 @@ class TelecelSmsParser : BaseSmsParser() {
             transactionType = type,
             amount = amount,
             reference = reference,
-            customerPhoneNumber = extractPhone(normalizedBody),
+            customerPhoneNumber = extractCounterparty(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
             confidence = confidenceFor(type, amount, reference),
             parserName = parserName,
-            parserVersion = parserVersion
+            parserVersion = parserVersion,
+            occurredAtUtcMillis = extractTimestamp(normalizedBody)
         )
     }
 
@@ -141,11 +143,12 @@ class AirtelTigoSmsParser : BaseSmsParser() {
             transactionType = type,
             amount = amount,
             reference = reference,
-            customerPhoneNumber = extractPhone(normalizedBody),
+            customerPhoneNumber = extractCounterparty(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
             confidence = confidenceFor(type, amount, reference),
             parserName = parserName,
-            parserVersion = parserVersion
+            parserVersion = parserVersion,
+            occurredAtUtcMillis = extractTimestamp(normalizedBody)
         )
     }
 
@@ -192,12 +195,13 @@ class GenericSmsParser : BaseSmsParser() {
         transactionType = TransactionType.UNKNOWN,
         amount = extractAmount(normalizedBody),
         reference = extractReference(normalizedBody),
-        customerPhoneNumber = extractPhone(normalizedBody),
+        customerPhoneNumber = extractCounterparty(normalizedBody),
         balanceAfter = null,
         // Never high enough to auto-post: an unknown template must reach a person.
         confidence = 0.20,
         parserName = parserName,
-        parserVersion = parserVersion
+        parserVersion = parserVersion,
+        occurredAtUtcMillis = extractTimestamp(normalizedBody)
     )
 }
 

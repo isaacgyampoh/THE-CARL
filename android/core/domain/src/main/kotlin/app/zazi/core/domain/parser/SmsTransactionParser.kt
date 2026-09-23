@@ -17,7 +17,16 @@ data class ParsedSms(
     val balanceAfter: BigDecimal? = null,
     val confidence: Double,
     val parserName: String,
-    val parserVersion: String
+    val parserVersion: String,
+    /**
+     * When the provider says it happened, if the message states it.
+     *
+     * <p>Null for the templates that do not. An SMS otherwise carries no trustworthy send
+     * time, so the handset's arrival time is the fallback — but where the provider does stamp
+     * the message, that is the time the transaction actually took place, and it is what a
+     * customer disputing it will quote.</p>
+     */
+    val occurredAtUtcMillis: Long? = null
 ) {
     /**
      * A parser result is usable only with a known type, a positive amount, and enough
@@ -145,6 +154,43 @@ abstract class BaseSmsParser : SmsTransactionParser {
     protected fun extractPhone(body: String): String? =
         PHONE_PATTERN.find(body)?.value?.replace(" ", "")
 
+    /**
+     * Who the money moved to or from.
+     *
+     * <p>MTN's payment confirmations name a person rather than giving a number — "from AARON
+     * AMPEM LARTEY" — so a parser that only looks for digits finds no counterparty at all and
+     * the message fails the transaction test on a field that was there all along.</p>
+     *
+     * <p>The number is preferred when the message carries one, because it is what a customer
+     * at the counter will quote back. The name is the fallback, never a fabricated number.</p>
+     */
+    protected fun extractCounterparty(body: String): String? {
+        extractPhone(body)?.let { return it }
+        val name = COUNTERPARTY_NAME.find(body)?.groupValues?.get(1)?.trim() ?: return null
+        // Two characters is not a name; it is the tail of a word the pattern over-reached into.
+        return name.takeIf { it.length >= 3 }
+    }
+
+    /**
+     * The time the provider stamped on the message, in epoch milliseconds.
+     *
+     * <p>Ghana keeps GMT all year, so the stated local time is UTC and no zone conversion is
+     * involved. Returns null rather than guessing when the message carries no stamp.</p>
+     */
+    protected fun extractTimestamp(body: String): Long? {
+        val match = TIMESTAMP_PATTERN.find(body) ?: return null
+        return runCatching {
+            java.time.LocalDateTime.of(
+                match.groupValues[1].toInt(),
+                match.groupValues[2].toInt(),
+                match.groupValues[3].toInt(),
+                match.groupValues[4].toInt(),
+                match.groupValues[5].toInt(),
+                match.groupValues[6].toInt()
+            ).toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        }.getOrNull()
+    }
+
     protected fun extractBalance(body: String): BigDecimal? {
         val match = BALANCE_PATTERN.find(body) ?: return null
         return match.groupValues[1].replace(",", "").toBigDecimalOrNull()
@@ -183,11 +229,37 @@ abstract class BaseSmsParser : SmsTransactionParser {
         private val BALANCE_PATTERN =
             Regex("""BALANCE[^0-9]{0,20}?([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
 
+        /**
+         * A person named as the other side of the transaction.
+         *
+         * <p>Bounded by the labels MTN puts after the name, so it cannot run on into the rest
+         * of the message. Letters, spaces, apostrophes and hyphens only — a name never
+         * contains a digit, and admitting digits would swallow the balance that follows.</p>
+         */
+        private val COUNTERPARTY_NAME = Regex(
+            """(?:\bFROM|\bTO)\s+([A-Z][A-Z'\- ]{2,40}?)\s*""" +
+                """(?=CURRENT BALANCE|AVAILABLE BALANCE|REFERENCE|TRANSACTION ID|TXN|\.|,|${'$'})"""
+        )
+
         private val REFERENCE_PATTERN =
             Regex("""(?:REF|REFERENCE|TRANSACTION ID|TXN ID|TRANS\. ID)[:.\s]*([A-Z0-9][A-Z0-9.-]{3,39}?)(?=[\s,]|${'$'})""")
 
+        /**
+         * A Ghanaian number, and only when the whole run of digits is one.
+         *
+         * <p>The boundaries are the point. Without them this matched inside any long number:
+         * MTN's transaction id 90079732268 contains "0079732268", which is a 0 followed by
+         * nine digits, so every payment confirmation was recorded against a customer number
+         * invented from the middle of its own reference. A wrong number on a transaction is
+         * worse than no number — it is what an agent reads back to a customer disputing a
+         * payment, and it would have matched nothing and blamed nobody.</p>
+         */
+        /** "completed at 2026-09-22 23:21:53", as MTN stamps a completed payment. */
+        private val TIMESTAMP_PATTERN =
+            Regex("""(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})""")
+
         private val PHONE_PATTERN =
-            Regex("""(?:\+?233|0)\d{9}""")
+            Regex("""(?<![0-9])(?:\+?233|0)\d{9}(?![0-9])""")
 
         /** How far back to look for a balance label before a currency figure. */
         private const val BALANCE_LOOKBEHIND = 24

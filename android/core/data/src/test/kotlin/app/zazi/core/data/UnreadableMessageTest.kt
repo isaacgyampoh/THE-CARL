@@ -2,6 +2,7 @@ package app.zazi.core.data
 
 import app.zazi.core.data.capture.CaptureOutcome
 import app.zazi.core.data.capture.SmsCaptureRequest
+import app.zazi.core.data.database.EvidenceEntity
 import app.zazi.core.data.database.ZaziDatabase
 import app.zazi.core.data.repository.CaptureRepository
 import app.zazi.core.data.repository.DashboardRepository
@@ -165,6 +166,46 @@ class UnreadableMessageTest {
         assertThat(outcome).isNotInstanceOf(CaptureOutcome.Ignored::class.java)
     }
 
+    @Test
+    fun `a rescan clears marketing the old rules had kept`() = runTest {
+        // Seeded the way the old rules would have: straight into the queue, no classifier.
+        val offer = "Good evening. You are qualified for up to GHS 1000. Dial *170# today."
+        database.evidenceDao().insert(
+            heldEvidence(evidenceId = "offer-1", body = offer)
+        )
+        database.evidenceDao().insert(
+            heldEvidence(
+                evidenceId = "real-1",
+                body = "Payment received for GHS 65.00 from SOLOMON OPARE Current Balance: " +
+                    "GHS 1339.37. Transaction ID: 90075281288."
+            )
+        )
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(2)
+
+        assertThat(dashboard.rescanHeld()).isEqualTo(1)
+
+        // The offer is gone; the payment is untouched and still the agent's to confirm.
+        val remaining = dashboard.observeHeld().first().single()
+        assertThat(remaining.evidenceId).isEqualTo("real-1")
+    }
+
+    @Test
+    fun `a rescan never promotes anything into the ledger`() = runTest {
+        database.evidenceDao().insert(
+            heldEvidence(
+                evidenceId = "real-2",
+                body = "Payment made for GHS 295.00 to AARON AMPEM LARTEY Current Balance: " +
+                    "GHS 1042.16. Transaction ID: 90078777179."
+            )
+        )
+
+        dashboard.rescanHeld()
+
+        // Still waiting for a person. A rule change is not a reason to post money.
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(1)
+        assertThat(database.localTransactionDao().count()).isEqualTo(0)
+    }
+
     // ─── Settling one ────────────────────────────────────────────────────────
 
     @Test
@@ -194,4 +235,31 @@ class UnreadableMessageTest {
         assertThat(dashboard.settleHeld(held.evidenceId, recorded = false)).isTrue()
         assertThat(dashboard.observeHeldCount().first()).isEqualTo(0)
     }
+
+    /** An evidence row in the state the old rules left behind: held, with its text. */
+    private fun heldEvidence(evidenceId: String, body: String) = EvidenceEntity(
+        evidenceId = evidenceId,
+        localTransactionId = null,
+        sourceType = "ANDROID_SMS",
+        provider = "MTN",
+        senderIdentity = "MTN MoMo",
+        transactionType = "UNKNOWN",
+        amountMinor = null,
+        currency = "GHS",
+        reference = null,
+        customerPhoneNumber = null,
+        occurredAtUtcMillis = clock,
+        observedAtUtcMillis = clock,
+        fingerprint = "fp-$evidenceId",
+        fingerprintVersion = "v1",
+        parserName = "MtnSmsParser",
+        parserVersion = "mtn-v1",
+        confidence = 0.3,
+        state = "PENDING_REVIEW",
+        outcomeReason = "'UNKNOWN' requires review before it can be posted.",
+        rawMessage = body,
+        rawMessagePurgedAtUtcMillis = null,
+        deviceId = "44444444-4444-4444-4444-444444444444",
+        createdAtUtcMillis = clock
+    )
 }

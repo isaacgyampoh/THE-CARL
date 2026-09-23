@@ -559,6 +559,14 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     val held by container.dashboardRepository.observeHeld()
                         .collectAsStateWithLifecycle(initialValue = emptyList())
 
+                    // Runs once on opening, against whatever rules ship today. The queue was
+                    // filled by older ones and holds marketing they would have kept; an agent
+                    // who opens this and finds loan offers stops opening it.
+                    LaunchedEffect(Unit) {
+                        container.dashboardRepository.rescanHeld()
+                        dashboardViewModel.refresh(isOnline)
+                    }
+
                     HeldMessagesScreen(
                         items = held.map { it.toUiItem() },
                         onRecord = { item ->
