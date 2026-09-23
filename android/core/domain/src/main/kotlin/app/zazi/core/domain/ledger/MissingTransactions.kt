@@ -30,7 +30,9 @@ object MissingTransactions {
     data class Gap(
         val amountMinor: Long,
         val afterUtcMillis: Long,
-        val beforeUtcMillis: Long
+        val beforeUtcMillis: Long,
+        /** The network whose balance proves this, so the agent knows which phone to check. */
+        val network: String
     )
 
     /**
@@ -43,7 +45,16 @@ object MissingTransactions {
     data class Seen(
         val atUtcMillis: Long,
         val floatDeltaMinor: Long,
-        val balanceAfterMinor: Long?
+        val balanceAfterMinor: Long?,
+        /**
+         * Which network's balance this is.
+         *
+         * <p>Every network keeps its own running total, and most Ghanaian agents run more
+         * than one till on a single phone. Comparing an MTN balance against the Telecel
+         * message that happened to arrive next is not a check, it is noise: every pair would
+         * disagree and the app would report a missing transaction between each of them.</p>
+         */
+        val network: String
     )
 
     /**
@@ -57,7 +68,13 @@ object MissingTransactions {
      * stated explicitly so that a later change to rounding cannot silently start reporting a
      * gap on every transaction.</p>
      */
-    fun find(seen: List<Seen>): List<Gap> {
+    fun find(seen: List<Seen>): List<Gap> =
+        // One network at a time. A balance is only evidence about the till it belongs to.
+        seen.groupBy { it.network }
+            .flatMap { (network, theirs) -> findWithinOneNetwork(network, theirs) }
+            .sortedBy { it.afterUtcMillis }
+
+    private fun findWithinOneNetwork(network: String, seen: List<Seen>): List<Gap> {
         val gaps = mutableListOf<Gap>()
 
         seen.zipWithNext { earlier, later ->
@@ -75,7 +92,8 @@ object MissingTransactions {
                     // is visible in their own provider's message, which they still have.
                     amountMinor = kotlin.math.abs(unexplained),
                     afterUtcMillis = earlier.atUtcMillis,
-                    beforeUtcMillis = later.atUtcMillis
+                    beforeUtcMillis = later.atUtcMillis,
+                    network = network
                 )
             }
         }

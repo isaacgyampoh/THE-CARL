@@ -60,7 +60,7 @@ class DatabaseMigrationInstrumentedTest {
     }
 
     @Test
-    fun migratingToVersionThreeKeepsRecordedMoneyAndAddsTheProviderBalance() {
+    fun migratingToTheLatestVersionKeepsRecordedMoneyAndAddsTheNewColumns() {
         val name = "migration-2-3-test.db"
 
         helper.createDatabase(name, 2).use { database ->
@@ -81,7 +81,7 @@ class DatabaseMigrationInstrumentedTest {
             )
         }
 
-        val migrated = helper.runMigrationsAndValidate(name, 3, true, *ZaziDatabaseMigrations.ALL)
+        val migrated = helper.runMigrationsAndValidate(name, 4, true, *ZaziDatabaseMigrations.ALL)
 
         // The money is untouched. This is the property that matters: a column added to a
         // table holding unsynced financial records must not disturb a single figure.
@@ -96,8 +96,14 @@ class DatabaseMigrationInstrumentedTest {
             assertThat(cursor.isNull(2)).isTrue()
         }
 
-        migrated.query("SELECT balanceAfterMinor FROM transaction_evidence").use { cursor ->
-            assertThat(cursor.count).isEqualTo(0)
+        migrated.query("SELECT balanceAfterMinor, customerName FROM transaction_evidence")
+            .use { cursor -> assertThat(cursor.count).isEqualTo(0) }
+
+        // The name column arrives empty for work captured before it existed — "not known",
+        // never an empty string, which a blank search would match against every row.
+        migrated.query("SELECT customerName FROM local_transactions").use { cursor ->
+            assertThat(cursor.moveToFirst()).isTrue()
+            assertThat(cursor.isNull(0)).isTrue()
         }
     }
 }

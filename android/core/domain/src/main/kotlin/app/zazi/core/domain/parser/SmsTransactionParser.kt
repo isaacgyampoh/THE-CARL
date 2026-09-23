@@ -14,6 +14,15 @@ data class ParsedSms(
     val amount: BigDecimal?,
     val reference: String?,
     val customerPhoneNumber: String?,
+    /**
+     * The counterparty's registered name, as the network confirmed it.
+     *
+     * <p>The name that appears on an agent's screen when they dial a number to send money,
+     * and the thing a customer coming back to dispute a transaction actually remembers —
+     * they saw their own name confirmed, and often cannot recall which number was used.
+     * Separate from the number so either can be searched.</p>
+     */
+    val customerName: String? = null,
     val balanceAfter: BigDecimal? = null,
     val confidence: Double,
     val parserName: String,
@@ -164,8 +173,16 @@ abstract class BaseSmsParser : SmsTransactionParser {
      * <p>The number is preferred when the message carries one, because it is what a customer
      * at the counter will quote back. The name is the fallback, never a fabricated number.</p>
      */
-    protected fun extractCounterparty(body: String): String? {
-        extractPhone(body)?.let { return it }
+    protected fun extractCounterparty(body: String): String? = extractPhone(body)
+
+    /**
+     * The counterparty's registered name, where the network states one.
+     *
+     * <p>Never a substitute for the number — both are recorded when both are there, and a
+     * message carrying only a name still produces a usable transaction rather than being
+     * rejected for a field the network did not send.</p>
+     */
+    protected fun extractName(body: String): String? {
         val name = COUNTERPARTY_NAME.find(body)?.groupValues?.get(1)?.trim() ?: return null
         // Two characters is not a name; it is the tail of a word the pattern over-reached into.
         return name.takeIf { it.length >= 3 }

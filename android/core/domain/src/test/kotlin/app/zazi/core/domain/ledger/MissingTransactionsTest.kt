@@ -12,8 +12,8 @@ import org.junit.Test
  */
 class MissingTransactionsTest {
 
-    private fun seen(at: Long, floatDelta: Long, balance: Long?) =
-        MissingTransactions.Seen(at, floatDelta, balance)
+    private fun seen(at: Long, floatDelta: Long, balance: Long?, network: String = "MTN") =
+        MissingTransactions.Seen(at, floatDelta, balance, network)
 
     @Test
     fun `a day whose balances agree has no gaps`() {
@@ -75,6 +75,54 @@ class MissingTransactionsTest {
     fun `a single transaction cannot be checked against anything`() {
         assertThat(MissingTransactions.find(listOf(seen(1, 0, 100_000)))).isEmpty()
         assertThat(MissingTransactions.find(emptyList())).isEmpty()
+    }
+
+    @Test
+    fun `two networks on one phone are checked separately, not against each other`() {
+        // Most Ghanaian agents run more than one till on one handset, so the messages
+        // interleave. Each network's balance is its own running total — comparing an MTN
+        // balance against the Telecel message that happened to arrive next would report a
+        // missing transaction between every single pair, all day, on a phone losing nothing.
+        val day = listOf(
+            seen(at = 1, floatDelta = -5_000, balance = 100_000, network = "MTN"),
+            seen(at = 2, floatDelta = -2_000, balance = 50_000, network = "TELECEL"),
+            seen(at = 3, floatDelta = -5_000, balance = 95_000, network = "MTN"),
+            seen(at = 4, floatDelta = -2_000, balance = 48_000, network = "TELECEL")
+        )
+
+        assertThat(MissingTransactions.find(day)).isEmpty()
+    }
+
+    @Test
+    fun `a gap names the network whose balance proves it`() {
+        val day = listOf(
+            seen(at = 1, floatDelta = 0, balance = 100_000, network = "MTN"),
+            seen(at = 2, floatDelta = 0, balance = 50_000, network = "TELECEL"),
+            // Telecel lost GHS 120.00 between its own two messages; MTN is intact.
+            seen(at = 3, floatDelta = 0, balance = 100_000, network = "MTN"),
+            seen(at = 4, floatDelta = 0, balance = 38_000, network = "TELECEL")
+        )
+
+        val gap = MissingTransactions.find(day).single()
+
+        assertThat(gap.network).isEqualTo("TELECEL")
+        assertThat(gap.amountMinor).isEqualTo(12_000)
+    }
+
+    @Test
+    fun `gaps across networks are still reported oldest first`() {
+        val day = listOf(
+            seen(at = 10, floatDelta = 0, balance = 100_000, network = "MTN"),
+            seen(at = 20, floatDelta = 0, balance = 50_000, network = "TELECEL"),
+            seen(at = 30, floatDelta = 0, balance = 90_000, network = "MTN"),
+            seen(at = 40, floatDelta = 0, balance = 45_000, network = "TELECEL")
+        )
+
+        val gaps = MissingTransactions.find(day)
+
+        assertThat(gaps).hasSize(2)
+        assertThat(gaps[0].network).isEqualTo("MTN")
+        assertThat(gaps[1].network).isEqualTo("TELECEL")
     }
 
     @Test

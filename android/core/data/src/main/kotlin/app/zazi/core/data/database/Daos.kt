@@ -178,6 +178,7 @@ interface LocalTransactionDao {
         FROM local_transactions t
         LEFT JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
         WHERE t.customerPhoneNumber LIKE '%' || :digits || '%'
+           OR UPPER(t.customerName) LIKE '%' || UPPER(:digits) || '%'
         ORDER BY t.transactionAtUtcMillis DESC
         LIMIT :limit
         """
@@ -315,7 +316,7 @@ interface LocalTransactionDao {
      */
     @Query(
         """
-        SELECT transactionAtUtcMillis, floatDeltaMinor, balanceAfterMinor
+        SELECT transactionAtUtcMillis, floatDeltaMinor, balanceAfterMinor, provider
         FROM local_transactions
         WHERE transactionAtUtcMillis >= :fromUtcMillis
           AND transactionAtUtcMillis < :toUtcMillis

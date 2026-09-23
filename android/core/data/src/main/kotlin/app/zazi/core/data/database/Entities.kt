@@ -89,6 +89,16 @@ data class EvidenceEntity(
      */
     val balanceAfterMinor: Long? = null,
 
+    /**
+     * The counterparty's registered name, as the network confirmed it.
+     *
+     * <p>Null where the message did not state one. Recorded beside the number rather than
+     * instead of it: a customer querying a transaction remembers their name was confirmed on
+     * the agent's screen far more reliably than they remember the number.</p>
+     */
+    val customerName: String? = null,
+
+
     val createdAtUtcMillis: Long
 )
 
@@ -164,6 +174,16 @@ data class LocalTransactionEntity(
      * a message was missed, and say exactly how much it was for.</p>
      */
     val balanceAfterMinor: Long? = null,
+
+    /**
+     * The counterparty's registered name, as the network confirmed it.
+     *
+     * <p>Null where the message did not state one. Recorded beside the number rather than
+     * instead of it: a customer querying a transaction remembers their name was confirmed on
+     * the agent's screen far more reliably than they remember the number.</p>
+     */
+    val customerName: String? = null,
+
 
     val notes: String?,
     val createdAtUtcMillis: Long
@@ -333,5 +353,7 @@ data class ReportableMessageRow(
 data class BalancePoint(
     val transactionAtUtcMillis: Long,
     val floatDeltaMinor: Long,
-    val balanceAfterMinor: Long?
+    val balanceAfterMinor: Long?,
+    /** Each network runs its own balance, so each is checked on its own. */
+    val provider: String
 )

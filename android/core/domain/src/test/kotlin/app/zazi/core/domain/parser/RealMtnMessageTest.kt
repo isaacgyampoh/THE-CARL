@@ -29,7 +29,10 @@ class RealMtnMessageTest {
             normalizedBody = normalized,
             hasAmount = parsed.amount != null,
             hasReference = !parsed.reference.isNullOrBlank(),
-            hasCounterparty = !parsed.customerPhoneNumber.isNullOrBlank()
+            // Either identifies the person. Requiring the number would reject every MTN
+            // payment message, which names people instead of numbering them.
+            hasCounterparty = !parsed.customerPhoneNumber.isNullOrBlank() ||
+                !parsed.customerName.isNullOrBlank()
         )
     }
 
@@ -68,11 +71,25 @@ class RealMtnMessageTest {
     }
 
     @Test
-    fun `the counterparty is a name, because MTN does not put a number in these`() {
-        // The parser looked only for digits, found none, and reported no counterparty — so a
-        // transaction failed the "has a counterparty" test on a field that was always there.
-        assertThat(parse(paymentReceived).customerPhoneNumber).isEqualTo("AARON AMPEM LARTEY")
-        assertThat(parse(paymentReceivedSmall).customerPhoneNumber).isEqualTo("SOLOMON OPARE")
+    fun `the registered name is captured, because that is what a customer remembers`() {
+        // The name the network confirms on the agent's screen when they dial the number. A
+        // customer coming back to query a transaction saw their own name; they frequently
+        // cannot say which number was used.
+        assertThat(parse(paymentReceived).customerName).isEqualTo("AARON AMPEM LARTEY")
+        assertThat(parse(paymentReceivedSmall).customerName).isEqualTo("SOLOMON OPARE")
+    }
+
+    @Test
+    fun `name and number are separate fields, and a missing one blocks nothing`() {
+        // Both when both are stated.
+        val withBoth = "Payment received for GHS 40.00 from 0241234567 Current Balance: " +
+            "GHS 100.00. Transaction ID: 90079732268."
+        assertThat(parse(withBoth).customerPhoneNumber).isEqualTo("0241234567")
+
+        // And a message carrying only a name still produces a usable transaction, rather
+        // than being rejected over a field the network never sent.
+        assertThat(parse(paymentReceived).customerPhoneNumber).isNull()
+        assertThat(parse(paymentReceived).customerName).isNotNull()
     }
 
     @Test
@@ -128,7 +145,9 @@ class RealMtnMessageTest {
         // nine digits — so the number pattern matched inside it and every payment was filed
         // against a customer who does not exist. An agent reads that number back to whoever
         // is disputing the payment, so a wrong one is worse than a blank.
-        assertThat(parse(paymentReceived).customerPhoneNumber).doesNotContain("0079732268")
+        // No number at all is the right answer for this message: MTN named a person. What
+        // must never happen is a number conjured out of the reference.
+        assertThat(parse(paymentReceived).customerPhoneNumber).isNull()
 
         // A real number in the same message is still found.
         val withNumber = "Payment received for GHS 40.00 from 0241234567 Current Balance: " +

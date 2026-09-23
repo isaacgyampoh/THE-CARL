@@ -164,6 +164,7 @@ class CaptureRepository(
             // not work out for itself, and therefore the only one that can catch it missing
             // a transaction entirely.
             balanceAfterMinor = parsed.balanceAfter?.let(MinorUnits::fromDecimal),
+            customerName = parsed.customerName,
             rawMessage = request.body,
             sessionId = request.sessionId,
             notes = null
@@ -185,6 +186,7 @@ class CaptureRepository(
         parserVersion: String,
         confidence: Double,
         balanceAfterMinor: Long? = null,
+        customerName: String? = null,
         evidenceQualityAllowsPosting: Boolean,
         rawMessage: String?,
         sessionId: String?,
@@ -256,6 +258,7 @@ class CaptureRepository(
             parserVersion = parserVersion,
             confidence = confidence,
             balanceAfterMinor = balanceAfterMinor,
+            customerName = customerName,
             state = if (postable) EvidenceState.ACCEPTED.name else EvidenceState.PENDING_REVIEW.name,
             outcomeReason = if (postable) null else heldReason(transactionType, amountMinor, typeAllowsPosting),
             rawMessage = rawMessage,
@@ -304,6 +307,7 @@ class CaptureRepository(
             cashDeltaMinor = MinorUnits.fromDecimal(movement.cashDelta),
             floatDeltaMinor = MinorUnits.fromDecimal(movement.floatDelta),
             balanceAfterMinor = balanceAfterMinor,
+            customerName = customerName,
             notes = notes,
             createdAtUtcMillis = timestamp
         )

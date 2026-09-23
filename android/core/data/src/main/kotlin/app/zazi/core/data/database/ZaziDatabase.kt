@@ -39,7 +39,7 @@ abstract class ZaziDatabase : RoomDatabase() {
     abstract fun telemetryDao(): TelemetryDao
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         const val DATABASE_NAME = "zazi.db"
 
         /**
@@ -147,5 +147,21 @@ object ZaziDatabaseMigrations {
         }
     }
 
-    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * Records the counterparty's registered name beside their number.
+     *
+     * <p>The name the network confirms on the agent's screen when they dial a number. A
+     * customer coming back to query a transaction remembers seeing their own name; they
+     * frequently cannot say which number was used. Additive and nullable, so rows captured
+     * before this keep "not known" rather than an empty name that would match a blank search.</p>
+     */
+    private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE local_transactions ADD COLUMN customerName TEXT")
+            db.execSQL("ALTER TABLE transaction_evidence ADD COLUMN customerName TEXT")
+        }
+    }
+
+    val ALL: Array<androidx.room.migration.Migration> =
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

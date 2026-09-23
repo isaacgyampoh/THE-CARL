@@ -58,8 +58,20 @@ class DashboardRepository(private val database: ZaziDatabase) {
      * the number, for "the one ending 3456".</p>
      */
     suspend fun searchByCustomer(query: String, limit: Int = 200): List<RecentTransactionRow> {
-        val digits = query.filter { it.isDigit() }
-        if (digits.length < 3) return emptyList()
+        val typed = query.trim()
+        val digits = typed.filter { it.isDigit() }
+
+        // Letters mean they are looking for a person, not a number. A customer querying a
+        // transaction remembers seeing their name confirmed on the agent's screen far more
+        // reliably than they remember which number they used.
+        if (digits.length < 3) {
+            return if (typed.length >= 3) {
+                database.localTransactionDao().searchByCustomer(typed, limit)
+            } else {
+                emptyList()
+            }
+        }
+
         val key = if (digits.length >= 9) digits.takeLast(9) else digits
         return database.localTransactionDao().searchByCustomer(key, limit)
     }
@@ -165,7 +177,8 @@ class DashboardRepository(private val database: ZaziDatabase) {
                 MissingTransactions.Seen(
                     atUtcMillis = it.transactionAtUtcMillis,
                     floatDeltaMinor = it.floatDeltaMinor,
-                    balanceAfterMinor = it.balanceAfterMinor
+                    balanceAfterMinor = it.balanceAfterMinor,
+                    network = it.provider
                 )
             }
         return MissingTransactions.find(trail)

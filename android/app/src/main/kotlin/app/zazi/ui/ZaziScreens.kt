@@ -674,7 +674,7 @@ private fun ActivitySection(
     OutlinedTextField(
         value = query,
         onValueChange = onSearchChanged,
-        placeholder = { Text("Search by customer number") },
+        placeholder = { Text("Search by name or number") },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = if (query.isNotEmpty()) {
             {
