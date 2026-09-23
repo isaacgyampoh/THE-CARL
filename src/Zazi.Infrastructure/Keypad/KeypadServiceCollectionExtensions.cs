@@ -50,8 +50,14 @@ public static class KeypadServiceCollectionExtensions
 /// Texts each keypad agent who traded today a summary of their day, once, at the configured hour.
 /// </summary>
 /// <remarks>
-/// Ghana keeps GMT all year, so the configured UTC hour is the local hour. One instance runs the
-/// API; if that ever changes this needs a lock, or agents would get the summary twice.
+/// <para>Ghana keeps GMT all year, so the configured UTC hour is the local hour. One instance
+/// runs the API; if that ever changes this needs a lock, or agents would get the summary
+/// twice.</para>
+/// <para><b>Deliberately does not catch up after a restart</b>, unlike the email digest beside
+/// it. Nothing records that an agent has already been texted today, so a catch-up would re-text
+/// everyone who traded, on every restart after the hour — which costs money and teaches people
+/// to ignore the message. A missed evening is the lesser harm. Giving this the same catch-up
+/// means first recording what was sent, per agent per day.</para>
 /// </remarks>
 public sealed class KeypadDailySummaryService : BackgroundService
 {
@@ -142,23 +148,32 @@ public sealed class DailyDigestHostedService : BackgroundService
 
         var hour = Math.Clamp(_configuration.GetValue("Digest:HourUtc", 20), 0, 23);
 
+        // A deploy or a restart at the wrong minute would otherwise lose a whole evening: the
+        // loop would compute tomorrow's hour and nothing would ever go back for today. So the
+        // first thing this does is catch up. Sending is idempotent per business per day — the
+        // key travels to the provider — so a catch-up after a send that already happened costs
+        // a request and delivers nothing.
+        var caughtUp = false;
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var now = DateTimeOffset.UtcNow;
-            var next = new DateTimeOffset(now.UtcDateTime.Date.AddHours(hour), TimeSpan.Zero);
-            if (next <= now)
-            {
-                next = next.AddDays(1);
-            }
+            var todayAt = new DateTimeOffset(now.UtcDateTime.Date.AddHours(hour), TimeSpan.Zero);
 
             try
             {
-                await Task.Delay(next - now, stoppingToken);
+                if (!caughtUp)
+                {
+                    caughtUp = true;
+                    if (now >= todayAt)
+                    {
+                        await SendAsync(DateOnly.FromDateTime(now.UtcDateTime), "caught up", stoppingToken);
+                    }
+                }
 
-                using var scope = _scopes.CreateScope();
-                var digests = scope.ServiceProvider.GetRequiredService<Zazi.Application.Growth.IDailyDigestService>();
-                var sent = await digests.SendAllAsync(DateOnly.FromDateTime(DateTime.UtcNow), stoppingToken);
-                _logger.LogInformation("Evening summaries sent: {Count}.", sent);
+                var next = todayAt <= now ? todayAt.AddDays(1) : todayAt;
+                await Task.Delay(next - now, stoppingToken);
+                await SendAsync(DateOnly.FromDateTime(DateTime.UtcNow), "sent", stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -168,7 +183,26 @@ public sealed class DailyDigestHostedService : BackgroundService
             {
                 // One bad evening must not stop tomorrow's.
                 _logger.LogError(exception, "Evening summaries failed.");
+
+                // Without this the loop would spin: a failure before the delay leaves the
+                // clock where it was, and the next pass would fail again immediately.
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
             }
         }
+    }
+
+    private async Task SendAsync(DateOnly day, string what, CancellationToken cancellationToken)
+    {
+        using var scope = _scopes.CreateScope();
+        var digests = scope.ServiceProvider.GetRequiredService<Zazi.Application.Growth.IDailyDigestService>();
+        var sent = await digests.SendAllAsync(day, cancellationToken);
+        _logger.LogInformation("Evening summaries {What}: {Count} for {Day}.", what, sent, day);
     }
 }
