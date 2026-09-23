@@ -44,6 +44,7 @@ import app.zazi.ui.design.StatusTone
 import app.zazi.ui.design.ZaziPanel
 import app.zazi.ui.design.ZaziPrimaryButton
 import app.zazi.ui.state.CloseDay
+import app.zazi.ui.state.MissingMessage
 import app.zazi.ui.state.MoneyFormat
 
 /**
@@ -58,6 +59,14 @@ fun CloseDayScreen(
     /** The day's recorded movement, as the dashboard has it. Null while it is not yet known. */
     todayCashMinor: Long?,
     todayFloatMinor: Long?,
+    /**
+     * Transactions the provider's own balances prove happened but this phone never saw.
+     *
+     * <p>Shown before the count is submitted, not after. An agent who knows a message went
+     * missing can go and find it; one who is told only that they are short goes looking
+     * through their pockets.</p>
+     */
+    missing: List<MissingMessage> = emptyList(),
     isOnline: Boolean,
     busy: Boolean,
     error: String?,
@@ -165,6 +174,44 @@ fun CloseDayScreen(
             error?.let {
                 Spacer(Modifier.height(Spacing.medium))
                 ErrorNotice(it)
+            }
+
+            // Named before anything is counted. This is the one discrepancy the phone can
+            // explain by itself, and an agent who knows a message is missing can go and find
+            // it instead of counting their drawer three times.
+            if (missing.isNotEmpty()) {
+                Spacer(Modifier.height(Spacing.section))
+                Text(
+                    if (missing.size == 1) "A transaction is missing" else "Transactions are missing",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(Spacing.small))
+                ZaziPanel {
+                    Column(Modifier.padding(Spacing.medium)) {
+                        missing.forEachIndexed { index, gap ->
+                            if (index > 0) Spacer(Modifier.height(Spacing.small))
+                            Text(
+                                MoneyFormat.format(gap.amountMinor),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "between ${gap.afterLabel} and ${gap.beforeLabel}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(Spacing.small))
+                Text(
+                    "Your network's own balance says this money moved, but it never reached " +
+                        "this phone — the message may not have arrived. Find it in your " +
+                        "messages and record it before you close, or your count will not agree.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             // What the count is about to be compared against. The same two figures the agent

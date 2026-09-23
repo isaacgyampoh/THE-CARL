@@ -160,6 +160,10 @@ class CaptureRepository(
             parserVersion = parsed.parserVersion,
             confidence = parsed.confidence,
             evidenceQualityAllowsPosting = qualityAllowsPosting,
+            // The provider's own running total. The one figure in the message the app did
+            // not work out for itself, and therefore the only one that can catch it missing
+            // a transaction entirely.
+            balanceAfterMinor = parsed.balanceAfter?.let(MinorUnits::fromDecimal),
             rawMessage = request.body,
             sessionId = request.sessionId,
             notes = null
@@ -180,6 +184,7 @@ class CaptureRepository(
         parserName: String,
         parserVersion: String,
         confidence: Double,
+        balanceAfterMinor: Long? = null,
         evidenceQualityAllowsPosting: Boolean,
         rawMessage: String?,
         sessionId: String?,
@@ -250,6 +255,7 @@ class CaptureRepository(
             parserName = parserName,
             parserVersion = parserVersion,
             confidence = confidence,
+            balanceAfterMinor = balanceAfterMinor,
             state = if (postable) EvidenceState.ACCEPTED.name else EvidenceState.PENDING_REVIEW.name,
             outcomeReason = if (postable) null else heldReason(transactionType, amountMinor, typeAllowsPosting),
             rawMessage = rawMessage,
@@ -297,6 +303,7 @@ class CaptureRepository(
             // Direction comes from LedgerProjection, never from the caller.
             cashDeltaMinor = MinorUnits.fromDecimal(movement.cashDelta),
             floatDeltaMinor = MinorUnits.fromDecimal(movement.floatDelta),
+            balanceAfterMinor = balanceAfterMinor,
             notes = notes,
             createdAtUtcMillis = timestamp
         )

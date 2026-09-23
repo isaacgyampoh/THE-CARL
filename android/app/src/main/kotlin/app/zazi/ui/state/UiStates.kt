@@ -528,3 +528,16 @@ data class HeldMessageUiItem(
     val reason: String?,
     val rawMessage: String?
 )
+
+/**
+ * A transaction the provider's balances prove happened, which this phone never recorded.
+ *
+ * <p>Times are already formatted: the screen's job is to say "between 11:27 and 11:42", and
+ * working that out from epoch milliseconds in a composable is how a clock ends up rendering
+ * in the wrong zone on somebody's phone.</p>
+ */
+data class MissingMessage(
+    val amountMinor: Long,
+    val afterLabel: String,
+    val beforeLabel: String
+)

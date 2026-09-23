@@ -78,6 +78,17 @@ data class EvidenceEntity(
 
     val rawMessagePurgedAtUtcMillis: Long?,
     val deviceId: String?,
+
+    /**
+     * The balance the provider stated after this transaction, in minor units.
+     *
+     * <p>Null when the message did not state one. Stored because it is the only independent
+     * check the phone has: a provider's running balance is arithmetic the app did not do, so
+     * two consecutive figures that disagree by more than the transactions between them prove
+     * a message was missed, and say exactly how much it was for.</p>
+     */
+    val balanceAfterMinor: Long? = null,
+
     val createdAtUtcMillis: Long
 )
 
@@ -143,6 +154,16 @@ data class LocalTransactionEntity(
      */
     val cashDeltaMinor: Long,
     val floatDeltaMinor: Long,
+
+    /**
+     * The balance the provider stated after this transaction, in minor units.
+     *
+     * <p>Null when the message did not state one. Stored because it is the only independent
+     * check the phone has: a provider's running balance is arithmetic the app did not do, so
+     * two consecutive figures that disagree by more than the transactions between them prove
+     * a message was missed, and say exactly how much it was for.</p>
+     */
+    val balanceAfterMinor: Long? = null,
 
     val notes: String?,
     val createdAtUtcMillis: Long
@@ -300,4 +321,17 @@ data class ReportableMessageRow(
     val provider: String,
     val transactionType: String,
     val amountMinor: Long
+)
+
+/**
+ * One point on the provider's running balance, for checking a day's arithmetic.
+ *
+ * <p>A projection rather than the whole row: finding a missed message needs three numbers and
+ * nothing else, and selecting the rest would pull an agent's customer numbers and references
+ * into a calculation that has no use for them.</p>
+ */
+data class BalancePoint(
+    val transactionAtUtcMillis: Long,
+    val floatDeltaMinor: Long,
+    val balanceAfterMinor: Long?
 )

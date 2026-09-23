@@ -3,6 +3,7 @@ package app.zazi.core.data.repository
 import app.zazi.core.data.database.RecentTransactionRow
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.database.ZaziDatabase
+import app.zazi.core.domain.ledger.MissingTransactions
 import app.zazi.core.domain.parser.BaseSmsParser
 import app.zazi.core.domain.parser.MessageClassifier
 import kotlinx.coroutines.flow.Flow
@@ -145,6 +146,29 @@ class DashboardRepository(private val database: ZaziDatabase) {
             }
         }
         return removed
+    }
+
+    /**
+     * Transactions the provider's balances prove happened but this phone never saw.
+     *
+     * <p>Answers the question an agent actually has at closing time. "You are short ₵200" is
+     * not something anybody can act on; "a transaction of ₵200 is missing between 11:27 and
+     * 11:42" is, because they still have the provider's own message on the phone.</p>
+     */
+    suspend fun missingBetween(
+        fromUtcMillis: Long,
+        toUtcMillis: Long
+    ): List<MissingTransactions.Gap> {
+        val trail = database.localTransactionDao()
+            .balanceTrailBetween(fromUtcMillis, toUtcMillis)
+            .map {
+                MissingTransactions.Seen(
+                    atUtcMillis = it.transactionAtUtcMillis,
+                    floatDeltaMinor = it.floatDeltaMinor,
+                    balanceAfterMinor = it.balanceAfterMinor
+                )
+            }
+        return MissingTransactions.find(trail)
     }
 
     /** Everything known about one transaction, including why it is stuck. */

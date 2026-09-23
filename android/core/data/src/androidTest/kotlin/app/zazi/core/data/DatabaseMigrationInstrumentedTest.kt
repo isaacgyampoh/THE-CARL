@@ -12,7 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The v1 to v2 migration, against a real SQLite file.
+ * Every migration, against a real SQLite file.
  *
  * <p>The property that matters is not that the new table appears — it is that an agent's
  * existing work is still there afterwards. A migration that silently dropped the outbox would
@@ -56,6 +56,48 @@ class DatabaseMigrationInstrumentedTest {
         migrated.query("SELECT COUNT(*) FROM telemetry_events").use { cursor ->
             assertThat(cursor.moveToFirst()).isTrue()
             assertThat(cursor.getInt(0)).isEqualTo(0)
+        }
+    }
+
+    @Test
+    fun migratingToVersionThreeKeepsRecordedMoneyAndAddsTheProviderBalance() {
+        val name = "migration-2-3-test.db"
+
+        helper.createDatabase(name, 2).use { database ->
+            // A transaction recorded before the upgrade, with real money on it.
+            database.execSQL(
+                """
+                INSERT INTO local_transactions (
+                    clientTransactionId, branchId, deviceId, provider, transactionType,
+                    amountMinor, currency, transactionAtUtcMillis, deviceRecordedAtUtcMillis,
+                    sourceType, parserVersion, fingerprint, cashDeltaMinor, floatDeltaMinor,
+                    createdAtUtcMillis
+                ) VALUES (
+                    'CTX-BEFORE-BALANCES', 'branch', 'device', 'MTN', 'CASH_IN',
+                    29500, 'GHS', 1000, 1000, 'ANDROID_SMS', 'mtn-v1', 'fp-1', 29500, -29500,
+                    1000
+                )
+                """.trimIndent()
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(name, 3, true, *ZaziDatabaseMigrations.ALL)
+
+        // The money is untouched. This is the property that matters: a column added to a
+        // table holding unsynced financial records must not disturb a single figure.
+        migrated.query(
+            "SELECT amountMinor, cashDeltaMinor, balanceAfterMinor FROM local_transactions"
+        ).use { cursor ->
+            assertThat(cursor.moveToFirst()).isTrue()
+            assertThat(cursor.getInt(0)).isEqualTo(29500)
+            assertThat(cursor.getInt(1)).isEqualTo(29500)
+            // Nullable and null for rows captured before the column existed — "not known",
+            // which the gap detector skips rather than reading as a balance of zero.
+            assertThat(cursor.isNull(2)).isTrue()
+        }
+
+        migrated.query("SELECT balanceAfterMinor FROM transaction_evidence").use { cursor ->
+            assertThat(cursor.count).isEqualTo(0)
         }
     }
 }

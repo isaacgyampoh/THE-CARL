@@ -75,7 +75,9 @@ import app.zazi.ui.state.ActivityItem
 import app.zazi.ui.state.Receipt
 import app.zazi.ui.state.CloseDay
 import app.zazi.ui.state.NetworkHolding
+import app.zazi.core.domain.ledger.MissingTransactions
 import app.zazi.ui.state.HeldMessageUiItem
+import app.zazi.ui.state.MissingMessage
 import app.zazi.ui.state.HoldingsUiState
 import app.zazi.ui.state.RemoteActivity
 import app.zazi.core.data.network.RemoteTransaction
@@ -597,7 +599,20 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
                 AuthenticatedScreen.CLOSE_DAY -> {
                     BackHandler { screen = AuthenticatedScreen.DASHBOARD }
+
+                    // Worked out when the screen opens rather than held in dashboard state:
+                    // it is a question only asked at closing time, and asking it on every
+                    // dashboard refresh would walk the day's transactions all day long.
+                    var missing by remember { mutableStateOf<List<MissingMessage>>(emptyList()) }
+                    LaunchedEffect(Unit) {
+                        val dayStart = startOfDayUtcMillis()
+                        missing = container.dashboardRepository
+                            .missingBetween(dayStart, dayStart + DAY_MILLIS)
+                            .map { it.toMissingMessage() }
+                    }
+
                     CloseDayScreen(
+                        missing = missing,
                         unsentCount = dashboardState.pendingCount + dashboardState.syncingCount +
                             dashboardState.retryingCount,
                         todayCashMinor = dashboardState.todayCashMinor,
@@ -904,3 +919,16 @@ private fun HeldMessage.toUiItem(): HeldMessageUiItem = HeldMessageUiItem(
     reason = reason,
     rawMessage = rawMessage
 )
+
+/** A gap in the provider's balances, in the words and the clock the agent reads. */
+private fun MissingTransactions.Gap.toMissingMessage(): MissingMessage {
+    val clock = DateTimeFormatter.ofPattern("HH:mm")
+    fun at(millis: Long) =
+        clock.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+
+    return MissingMessage(
+        amountMinor = amountMinor,
+        afterLabel = at(afterUtcMillis),
+        beforeLabel = at(beforeUtcMillis)
+    )
+}

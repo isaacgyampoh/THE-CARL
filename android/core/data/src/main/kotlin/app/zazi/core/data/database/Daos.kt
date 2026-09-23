@@ -306,6 +306,24 @@ interface LocalTransactionDao {
     )
     suspend fun countSyncedBetween(fromUtcMillis: Long, toUtcMillis: Long): Int
 
+    /**
+     * A window's transactions in the order they happened, with the provider's stated balance.
+     *
+     * <p>Ascending, unlike every other query here, because checking a running balance means
+     * walking forwards through the day. Reversing a descending list in Kotlin would work and
+     * would also be the kind of thing somebody later removes as redundant.</p>
+     */
+    @Query(
+        """
+        SELECT transactionAtUtcMillis, floatDeltaMinor, balanceAfterMinor
+        FROM local_transactions
+        WHERE transactionAtUtcMillis >= :fromUtcMillis
+          AND transactionAtUtcMillis < :toUtcMillis
+        ORDER BY transactionAtUtcMillis ASC
+        """
+    )
+    suspend fun balanceTrailBetween(fromUtcMillis: Long, toUtcMillis: Long): List<BalancePoint>
+
     /** Records the authoritative server identity once it is known. */
     @Query("UPDATE local_transactions SET serverTransactionId = :serverTransactionId WHERE clientTransactionId = :clientTransactionId")
     suspend fun setServerTransactionId(clientTransactionId: String, serverTransactionId: String)

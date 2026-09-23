@@ -39,7 +39,7 @@ abstract class ZaziDatabase : RoomDatabase() {
     abstract fun telemetryDao(): TelemetryDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val DATABASE_NAME = "zazi.db"
 
         /**
@@ -131,5 +131,21 @@ object ZaziDatabaseMigrations {
         }
     }
 
-    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2)
+    /**
+     * Records the balance the provider stated after each transaction.
+     *
+     * <p>Additive and nullable, so every row already stored keeps its value of "not known"
+     * and nothing has to be recomputed. The column is what makes a missed message findable:
+     * MTN states a running balance on every confirmation, so if two consecutive messages
+     * disagree by more than the transactions between them, one went missing — and the
+     * difference is exactly how much it was for.</p>
+     */
+    private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE local_transactions ADD COLUMN balanceAfterMinor INTEGER")
+            db.execSQL("ALTER TABLE transaction_evidence ADD COLUMN balanceAfterMinor INTEGER")
+        }
+    }
+
+    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }
