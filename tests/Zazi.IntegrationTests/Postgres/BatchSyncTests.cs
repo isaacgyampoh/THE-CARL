@@ -622,6 +622,61 @@ public class BatchSyncTests : IDisposable
         public string? Notes { get; init; }
     }
 
+    [SkippableFact]
+    public async Task TheSameNetworkTransactionArrivingTwiceIsCountedOnce()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+
+        // One real transaction, reaching Zazi by two roads: read from the agent's handset,
+        // and also forwarded from the keypad phone on the same counter. Different client ids
+        // and different evidence, so neither the client id nor the fingerprint joins them up
+        // — only the id the network itself issued does.
+        var captured = Item(tenant, amount: 295m, reference: "90079732268") with
+        {
+            SourceType = EvidenceSourceType.AndroidSms,
+            ParserVersion = "mtn-v1"
+        };
+        var forwarded = Item(tenant, amount: 295m, reference: "90079732268") with
+        {
+            SourceType = EvidenceSourceType.AndroidSms,
+            ParserVersion = "mtn-v1",
+            DeviceReceivedAt = DateTimeOffset.UtcNow
+        };
+
+        var first = await PostAsync(tenant, [captured]);
+        Assert.Equal(SyncItemStatus.Accepted, first.Results[0].Status);
+
+        var second = await PostAsync(tenant, [forwarded]);
+
+        // Reported as a duplicate, not rejected and not accepted a second time: the handset
+        // marks it settled and stops retrying, and the day's takings hold it once.
+        Assert.Equal(SyncItemStatus.Duplicate, second.Results[0].Status);
+
+        // Pointed at the row that already exists, which is what tells the handset the money
+        // is safely recorded rather than merely refused. Only the network id can make that
+        // link: the two submissions share no client id and no fingerprint.
+        Assert.Equal(first.Results[0].TransactionId, second.Results[0].TransactionId);
+        await AssertLedgerRowCountAsync(tenant, 1);
+    }
+
+    [SkippableFact]
+    public async Task TwoAgentsTypingTheSameReferenceByHandAreBothKept()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await SeedAsync();
+
+        // MTN's own messages carry "Reference: 1" and "Reference: X", and an agent typing a
+        // reference by hand will reuse something just as short. Refusing the second as a
+        // duplicate would lose real money, so the constraint covers captured rows only.
+        var first = await PostAsync(tenant, [Item(tenant, amount: 40m, reference: "1")]);
+        var second = await PostAsync(tenant, [Item(tenant, amount: 90m, reference: "1")]);
+
+        Assert.Equal(SyncItemStatus.Accepted, first.Results[0].Status);
+        Assert.Equal(SyncItemStatus.Accepted, second.Results[0].Status);
+        await AssertLedgerRowCountAsync(tenant, 2);
+    }
+
     private static SyncTransactionApiItemDto Item(
         TenantSeed tenant,
         decimal amount = 100m,

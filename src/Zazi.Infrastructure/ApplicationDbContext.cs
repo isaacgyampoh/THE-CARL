@@ -376,6 +376,23 @@ public class ApplicationDbContext : DbContext
                 .HasDatabaseName("UX_Transactions_Organization_ReversesTransactionId")
                 .HasFilter("\"ReversesTransactionId\" IS NOT NULL");
 
+            // 3. The network's own transaction id, for the routes the fingerprint cannot
+            //    join up. Two captures of one SMS share a fingerprint and are caught above;
+            //    the same transaction reaching Zazi by different roads — read from the
+            //    handset and also forwarded from a keypad phone — does not, and would be
+            //    counted twice in a day's takings.
+            //
+            //    Scoped to the network because each runs its own sequence, and confined to
+            //    automatically captured rows because only those carry an id the network
+            //    issued. Manual entries are deliberately excluded: MTN's own messages carry
+            //    "Reference: 1" and "Reference: X", an agent typing a reference by hand will
+            //    reuse something just as short, and a constraint that rejects a real
+            //    transaction for that is worse than the duplicate it prevents.
+            builder.HasIndex(x => new { x.OrganizationId, x.Network, x.ProviderReference })
+                .IsUnique()
+                .HasDatabaseName("UX_Transactions_Organization_Network_ProviderReference")
+                .HasFilter("\"ProviderReference\" IS NOT NULL AND \"Source\" = 1");
+
             builder.HasIndex(x => new { x.OrganizationId, x.ProviderReference });
             builder.HasIndex(x => new { x.OrganizationId, x.BranchId, x.TransactionAtUtc });
 

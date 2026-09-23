@@ -365,6 +365,29 @@ public sealed class SyncTransactionService : ISyncTransactionService
                 return DuplicateOf(winner, clientId);
             }
 
+            // The same real transaction arriving by a second road. Two captures of one SMS
+            // share a fingerprint and never reach here; a transaction read from the handset
+            // and also forwarded from a keypad phone does not, and the network's own id is
+            // the only thing that identifies them as one event. Resolved as a duplicate so
+            // the client stops retrying and the day's takings count it once.
+            if (IsConstraintViolation(exception, "UX_Transactions_Organization_Network_ProviderReference")
+                && item.TransactionReference is { Length: > 0 } reference)
+            {
+                var alreadyRecordedId = await _dbContext.Transactions.AsNoTracking()
+                    .Where(t => t.OrganizationId == caller.OrganizationId
+                        && t.Network == item.Provider
+                        && t.ProviderReference == reference)
+                    .Select(t => (Guid?)t.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                if (alreadyRecordedId is { } recordedId)
+                {
+                    // Not matched on the client id: this handset has never seen that row, so
+                    // it is the same money arriving from somewhere else rather than a replay.
+                    return DuplicateOf(new ExistingTransaction(recordedId, MatchedOnClientId: false), clientId);
+                }
+            }
+
             // A reversal that lost the race: another reversal for the same original
             // committed first. Refusing the second is what stops money being created.
             if (item.ReversesTransactionId is { } racedOriginalId
