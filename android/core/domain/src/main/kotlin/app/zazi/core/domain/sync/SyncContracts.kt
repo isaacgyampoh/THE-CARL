@@ -34,7 +34,15 @@ data class SyncTransactionRequestItem(
     val adjustmentCashDelta: String? = null,
     val adjustmentFloatDelta: String? = null,
     val correctionReason: String? = null,
-    val notes: String? = null
+    val notes: String? = null,
+    /**
+     * The counterparty's registered name, where the network stated one.
+     *
+     * <p>Last in the list to match the server's contract, which appends rather than inserts:
+     * a parameter added to the middle of a positional record shifts every call site, and the
+     * compiler only notices where the types differ.</p>
+     */
+    val customerName: String? = null
 )
 
 @Serializable

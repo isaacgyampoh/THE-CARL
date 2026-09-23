@@ -301,6 +301,7 @@ public class ApplicationDbContext : DbContext
             builder.Property(x => x.Network).IsRequired().HasMaxLength(80);
             builder.Property(x => x.ProviderReference).HasMaxLength(200);
             builder.Property(x => x.CustomerPhoneNumber).HasMaxLength(30);
+            builder.Property(x => x.CustomerName).HasMaxLength(120);
             builder.Property(x => x.Notes).HasMaxLength(1000);
 
             // "What did this number do?" — asked at the counter when a customer disputes a

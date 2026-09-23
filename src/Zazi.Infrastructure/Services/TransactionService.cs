@@ -176,10 +176,21 @@ public class TransactionService : ITransactionService
             else
             {
                 var digits = new string(query.CustomerPhone.Where(char.IsAsciiDigit).ToArray());
-                filtered = digits.Length >= 3
-                    ? filtered.Where(x => x.CustomerPhoneNumber != null && x.CustomerPhoneNumber.Contains(digits))
-                    // Fewer than three digits matches half the book; refuse to guess.
-                    : filtered.Where(_ => false);
+                if (digits.Length >= 3)
+                {
+                    filtered = filtered.Where(x => x.CustomerPhoneNumber != null && x.CustomerPhoneNumber.Contains(digits));
+                }
+                else
+                {
+                    // Letters mean they are looking for a person. The network confirms a name
+                    // on the agent's screen when they dial, and a customer returning to query
+                    // a transaction remembers that far better than the number they used.
+                    var name = query.CustomerPhone.Trim();
+                    filtered = name.Length >= 3
+                        ? filtered.Where(x => x.CustomerName != null && EF.Functions.ILike(x.CustomerName, $"%{name}%"))
+                        // Two characters match half the book; refuse to guess.
+                        : filtered.Where(_ => false);
+                }
             }
         }
 
@@ -302,5 +313,6 @@ public class TransactionService : ITransactionService
         x.CashDelta,
         x.FloatDelta,
         x.ClientTransactionId,
-        x.Notes);
+        x.Notes,
+        x.CustomerName);
 }

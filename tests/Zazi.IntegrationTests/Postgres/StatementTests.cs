@@ -46,7 +46,8 @@ public class StatementTests : IDisposable
         string? customer,
         DateTimeOffset at,
         Guid? agentId = null,
-        string network = "MTN")
+        string network = "MTN",
+        string? customerName = null)
     {
         var (cash, eMoney) = type switch
         {
@@ -66,6 +67,7 @@ public class StatementTests : IDisposable
             CashDelta = cash,
             FloatDelta = eMoney,
             CustomerPhoneNumber = customer,
+            CustomerName = customerName,
             TransactionAtUtc = at,
             ClientTransactionId = Guid.NewGuid().ToString("N")
         };
@@ -149,6 +151,77 @@ public class StatementTests : IDisposable
 
         Assert.Equal(2, page.TotalCount);
         Assert.DoesNotContain(page.Items, t => t.Amount == 999m);
+    }
+
+    [SkippableFact]
+    public async Task ACustomersNameFindsThemWhenTheNetworkGaveNoNumber()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+
+        // How MTN actually writes a payment: a registered name and no number at all. The
+        // customer comes back and says their name — which is what they saw confirmed on the
+        // agent's screen — and could not previously be found on the portal at all.
+        await RecordAsync(tenant, TransactionType.CashIn, 295m, null, Today(11, 42),
+            customerName: "AARON AMPEM LARTEY");
+        await RecordAsync(tenant, TransactionType.CashOut, 65m, null, Today(10, 32),
+            customerName: "SOLOMON OPARE");
+
+        await using var db = _postgres.CreateContext();
+        var service = new TransactionService(db, new LedgerService(db));
+
+        var found = await service.GetTransactionsAsync(
+            new TransactionQuery(tenant.OrganizationId, null, 1, 50, CustomerPhone: "aaron"));
+
+        // Case-insensitive and partial: nobody types a name in capitals the way MTN sends it.
+        var only = Assert.Single(found.Items);
+        Assert.Equal(295m, only.Amount);
+        Assert.Equal("AARON AMPEM LARTEY", only.CustomerName);
+    }
+
+    [SkippableFact]
+    public async Task TwoLettersAreNotEnoughToSearchOn()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+        await RecordAsync(tenant, TransactionType.CashIn, 295m, null, Today(11, 42),
+            customerName: "AARON AMPEM LARTEY");
+
+        await using var db = _postgres.CreateContext();
+        var service = new TransactionService(db, new LedgerService(db));
+
+        // "AA" matches half the book. Returning everything in answer to a half-typed name
+        // reads as a broken filter, and the agent stops trusting the search.
+        var found = await service.GetTransactionsAsync(
+            new TransactionQuery(tenant.OrganizationId, null, 1, 50, CustomerPhone: "aa"));
+
+        Assert.Equal(0, found.TotalCount);
+    }
+
+    [SkippableFact]
+    public async Task ANumberSearchStillBeatsANameSearch()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+
+        await RecordAsync(tenant, TransactionType.CashOut, 50m, "0244123456", Today(11, 50),
+            customerName: "AARON AMPEM LARTEY");
+        await RecordAsync(tenant, TransactionType.CashIn, 80m, null, Today(10, 0),
+            customerName: "AARON AMPEM LARTEY");
+
+        await using var db = _postgres.CreateContext();
+        var service = new TransactionService(db, new LedgerService(db));
+
+        // Digits are still read as a number, not as part of a name, so the one transaction
+        // that carries that number is the answer rather than everything the person did.
+        var byNumber = await service.GetTransactionsAsync(
+            new TransactionQuery(tenant.OrganizationId, null, 1, 50, CustomerPhone: "0244123456"));
+        Assert.Equal(1, byNumber.TotalCount);
+
+        // And the name finds both, which is the point of storing it.
+        var byName = await service.GetTransactionsAsync(
+            new TransactionQuery(tenant.OrganizationId, null, 1, 50, CustomerPhone: "lartey"));
+        Assert.Equal(2, byName.TotalCount);
     }
 
     [SkippableFact]

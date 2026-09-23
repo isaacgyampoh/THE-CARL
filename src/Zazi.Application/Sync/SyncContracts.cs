@@ -117,7 +117,17 @@ public sealed record SyncTransactionItem(
     decimal? AdjustmentCashDelta = null,
     decimal? AdjustmentFloatDelta = null,
     string? CorrectionReason = null,
-    string? Notes = null);
+    string? Notes = null,
+    /// <summary>
+    /// The counterparty's registered name, where the network stated one.
+    /// </summary>
+    /// <remarks>
+    /// Added at the end of the list on purpose. Every call site of a positional record shifts
+    /// when a parameter is inserted into the middle of it, and the compiler only catches that
+    /// where the types happen to differ — the rest would compile and silently write a
+    /// customer's name into a reference field.
+    /// </remarks>
+    string? CustomerName = null);
 
 /// <summary>A batch of transactions captured offline.</summary>
 public sealed record SyncTransactionsRequest(IReadOnlyList<SyncTransactionItem> Transactions);

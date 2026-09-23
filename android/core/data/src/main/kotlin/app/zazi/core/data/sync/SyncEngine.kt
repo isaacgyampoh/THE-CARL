@@ -227,7 +227,8 @@ class SyncEngine(
             evidenceFingerprint = transaction.fingerprint,
             parserVersion = transaction.parserVersion,
             sourceType = EvidenceSourceType.valueOf(transaction.sourceType).wireValue,
-            notes = transaction.notes
+            notes = transaction.notes,
+            customerName = transaction.customerName
         )
         // No organizationId: tenancy comes from the access token. There is no field for it.
     }

@@ -24,9 +24,9 @@
    be about last week, and "no results today" is the wrong answer to "did this number come
    here". *@
 <form method="get" action="/transactions" class="search-row">
-    <label for="customer" class="visually-hidden">Customer number</label>
+    <label for="customer" class="visually-hidden">Customer name or number</label>
     <input id="customer" name="customer" type="search" inputmode="tel"
-           placeholder="Search by customer number" value="@Customer" autocomplete="off" />
+           placeholder="Search by name or number" value="@Customer" autocomplete="off" />
     <button type="submit">Search</button>
 </form>
 
@@ -186,6 +186,18 @@ else if (_page is not null)
                             {
                                 @* A link, so one click shows everything that customer did. *@
                                 <a class="customer" href="@Link(customer: t.CustomerPhoneNumber)">@GhanaPhoneNumber.Display(t.CustomerPhoneNumber)</a>
+                                @* The name the network confirmed, under the number. It is what
+                                   a customer querying a transaction actually remembers. *@
+                                @if (!string.IsNullOrWhiteSpace(t.CustomerName))
+                                {
+                                    <span class="customer-name">@t.CustomerName</span>
+                                }
+                            }
+                            else if (!string.IsNullOrWhiteSpace(t.CustomerName))
+                            {
+                                @* Networks name a person rather than numbering them on some
+                                   templates, so a name alone still identifies the customer. *@
+                                <a class="customer" href="@Link(customer: t.CustomerName)">@t.CustomerName</a>
                             }
                             else if (t.Type is TransactionType.CashIn or TransactionType.CashOut)
                             {

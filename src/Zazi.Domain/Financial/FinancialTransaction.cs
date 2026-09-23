@@ -48,6 +48,18 @@ public sealed class FinancialTransaction : AggregateRoot
     public decimal FloatDelta { get; set; }
 
     public string? CustomerPhoneNumber { get; set; }
+
+    /// <summary>
+    /// The counterparty's registered name, as the network confirmed it.
+    /// </summary>
+    /// <remarks>
+    /// The name that appears on an agent's screen when they dial a number to send money, and
+    /// the thing a customer returning to query a transaction actually remembers — they saw
+    /// their own name confirmed and frequently cannot say which number was used. Recorded
+    /// beside the number, never instead of it.
+    /// </remarks>
+    public string? CustomerName { get; set; }
+
     public string? ProviderReference { get; set; }
 
     /// <summary>Provider-reported event time.</summary>

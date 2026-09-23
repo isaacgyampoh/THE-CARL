@@ -862,3 +862,8 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
 .legal p { margin: .6rem 0; }
 .auth-legal { margin: 1.25rem 0 0; font-size: .85rem; color: var(--on-navy-muted); }
 .auth-legal a { color: var(--on-navy); }
+
+/* The network's confirmed name, under the number it belongs to. Quieter than the number,
+   which stays the primary identifier — the name is what the customer remembers, the number
+   is what reconciles. */
+.customer-name { display: block; color: var(--muted); font-size: .82rem; margin-top: .1rem; }

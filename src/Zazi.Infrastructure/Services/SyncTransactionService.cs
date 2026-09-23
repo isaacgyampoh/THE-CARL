@@ -439,6 +439,7 @@ public sealed class SyncTransactionService : ISyncTransactionService
             Amount = item.Amount,
             Currency = currency,
             CustomerPhoneNumber = GhanaPhoneNumber.NormaliseOrKeep(item.CustomerPhone),
+            CustomerName = item.CustomerName,
             ProviderReference = item.TransactionReference,
             TransactionAtUtc = item.TransactionTimestamp,
             AcceptedAtUtc = serverReceivedAt,

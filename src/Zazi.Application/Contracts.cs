@@ -112,7 +112,9 @@ public record TransactionDto(
     decimal CashDelta,
     decimal FloatDelta,
     string? ClientTransactionId,
-    string? Notes);
+    string? Notes,
+    /// <summary>The counterparty's registered name, where the network stated one.</summary>
+    string? CustomerName = null);
 
 public record CreateDeviceRequest(
     Guid OrganizationId,
