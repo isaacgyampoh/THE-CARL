@@ -1,0 +1,48 @@
+@page "/support"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+@* Public: somebody locked out cannot sign in to ask for help. *@
+
+<PageTitle>Support · Zazi</PageTitle>
+
+<div class="legal">
+    <h1>Support</h1>
+    <p class="lead">
+        Something wrong, or a question? Write to us and we will answer. Tell us what you were
+        doing and we can usually see the rest ourselves.
+    </p>
+
+    <h2>Write to us</h2>
+    <p>
+        <a class="btn btn-primary" href="mailto:support@getzazi.com">support@getzazi.com</a>
+    </p>
+
+    <h2>What helps us fix it quickly</h2>
+    <ul>
+        <li>Your business name.</li>
+        <li>What you were doing when it happened, and what you expected instead.</li>
+        <li>The time it happened, roughly.</li>
+        <li>For a transaction: the customer's number, or the reference shown on the transaction.</li>
+        <li>For the app: the version, shown at the bottom of the phone's dashboard.</li>
+    </ul>
+    <p class="muted">
+        Never send us your password. We will never ask for it, and we do not need it to help you.
+    </p>
+
+    <h2>Common things</h2>
+    <ul>
+        <li><strong>An agent cannot sign in.</strong> Activation codes are used once and expire. Issue a fresh one on the Team page.</li>
+        <li><strong>A transaction is missing.</strong> If the phone was offline it will send when there is signal. The agent's screen says what is still waiting.</li>
+        <li><strong>A balance looks wrong.</strong> Open the agent from Cash &amp; float: every figure there is explained by the ledger below it.</li>
+        <li><strong>An amount was recorded incorrectly.</strong> Nothing is deleted. Record a correction, which stays visible beside the original.</li>
+    </ul>
+
+    <h2>Reporting something serious</h2>
+    <p>
+        Suspected fraud, a security problem, or money that does not add up: write to
+        <a href="mailto:support@getzazi.com">support@getzazi.com</a> with "urgent" in the subject.
+    </p>
+
+    <p><a href="/privacy">How we handle your data</a></p>
+</div>

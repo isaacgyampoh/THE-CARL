@@ -65,7 +65,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
     if (!string.IsNullOrWhiteSpace(connectionString))
     {
-        options.UseNpgsql(connectionString);
+        // The handsets' service, so it takes the larger share of a small database's
+        // connections — still far below what the instance allows for both services together.
+        options.UseNpgsql(DatabaseConnection.WithPoolCeiling(connectionString, maximumPoolSize: 20));
         return;
     }
 
@@ -401,7 +403,16 @@ app.UseAuthorization();
 
 // Liveness: the process is up. Deliberately cheap and dependency-free, so a database blip
 // does not cause an orchestrator to kill an otherwise healthy instance.
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
+// Liveness, plus which build is answering. An incident starts with "what is actually
+// deployed?", and an operator who has to guess is already behind. Nothing here is a secret:
+// a version and a commit say what the code is, not how to get into it.
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    version = BuildInfo.Version,
+    commit = BuildInfo.Commit,
+    environment = app.Environment.EnvironmentName
+})).AllowAnonymous();
 
 // Readiness, as distinct from the liveness probe above: an instance whose database is
 // unreachable can answer nothing, and a load balancer needs to stop sending it traffic.

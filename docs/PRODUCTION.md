@@ -1,5 +1,14 @@
 # Deploying Zazi to production
 
+> **Zazi's production today runs on Render**, not on a server of our own: two Docker services
+> (`zazi-api`, `zazi-web`) and a managed PostgreSQL, all in Frankfurt, defined by `render.yaml`
+> and described in [RENDER.md](RENDER.md). Capacity, backups and the restore drill are in
+> [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
+>
+> This document remains the guide for running Zazi on **a server you control** — which is where
+> it will move if hosting costs or data residency ever require it. Nothing below is obsolete;
+> it is simply a different deployment target from the one in use.
+
 `PILOT.md` covers running the stack on a laptop for a small trial. This covers a real
 deployment: a server you control, a domain name, and TLS.
 

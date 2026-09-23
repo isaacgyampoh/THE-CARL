@@ -43,7 +43,10 @@ if (string.IsNullOrWhiteSpace(connectionString))
         "database as the API and will not start against an in-memory substitute.");
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
+// Owners are far fewer than handsets, so the portal holds the smaller share of the database's
+// connections. Both ceilings together stay inside what the managed instance allows.
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseNpgsql(DatabaseConnection.WithPoolCeiling(connectionString, maximumPoolSize: 10)));
 
 // ─── Data protection ─────────────────────────────────────────────────────────
 // Data Protection encrypts the authentication cookie and the antiforgery tokens. Without a
@@ -198,6 +201,8 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
+// For the Operations page to ask the API whether it is answering, and nothing else.
+builder.Services.AddHttpClient();
 
 // ─── Application services ────────────────────────────────────────────────────
 // Bound and validated at startup rather than discovered on the first sign-in. IAuthService
@@ -394,6 +399,32 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
+// The portal renders markup, so its policy is stricter than "don't be framed": scripts and
+// styles come from the site itself and the two font hosts, and nothing may frame it. The
+// API's policy is stricter still because it returns no markup at all.
+//
+// 'unsafe-inline' for styles only: Blazor writes inline style attributes while rendering, and
+// there is no inline script — the framework script is a file, and CSP blocks anything else.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "img-src 'self' data:; " +
+        // The live connection the interactive pages use, and nothing else.
+        "connect-src 'self' ws: wss:; " +
+        "form-action 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'";
+    headers.Remove("X-Powered-By");
+    await next();
+});
+
 app.UseStaticFiles();
 
 app.UseAuthentication();
@@ -470,6 +501,10 @@ app.AssertAnonymouslyReachable(
     // for — and the redirect would look like ordinary sign-in traffic in the logs.
     "/forgot-password",
     "/reset-password",
+    // Google Play requires a privacy policy anyone can open, and somebody locked out cannot
+    // sign in to ask for help.
+    "/privacy",
+    "/support",
     app.Services.GetRequiredService<IOptions<ExceptionHandlerOptions>>()
         .Value.ExceptionHandlingPath.Value ?? "/error");
 

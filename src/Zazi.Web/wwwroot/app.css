@@ -853,3 +853,12 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
 @media (max-width: 640px) { main table.ledger-table td.c-icon { width: auto; } }
 .all-clear { margin: 0 0 1rem; }
 .fill-cost { background: var(--chart-telecel); }
+
+/* ─── Legal and support pages ───────────────────────────────────────────── */
+.legal { max-width: 44rem; margin: 0 auto; padding-bottom: 2rem; }
+.legal h2 { margin-top: 2rem; font-size: 1.05rem; }
+.legal ul { padding-left: 1.15rem; }
+.legal li { margin: .3rem 0; }
+.legal p { margin: .6rem 0; }
+.auth-legal { margin: 1.25rem 0 0; font-size: .85rem; color: var(--on-navy-muted); }
+.auth-legal a { color: var(--on-navy); }

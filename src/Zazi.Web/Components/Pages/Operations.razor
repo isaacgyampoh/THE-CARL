@@ -4,10 +4,50 @@
 @attribute [Authorize(Policy = ZaziPolicies.OrganizationRead)]
 @inject IObservabilityService Observability
 @inject ICurrentUserContext CurrentUser
+@inject IHttpClientFactory HttpClients
+@inject IConfiguration Configuration
 
 <PageTitle>Operations · Zazi</PageTitle>
 
 <h1>Operations</h1>
+
+@* What is actually running, and whether its parts are answering. An incident starts here:
+   the build, the database, and the API the handsets talk to. *@
+<section class="panel" aria-labelledby="system-title">
+    <div class="panel-head">
+        <div>
+            <h2 id="system-title">System</h2>
+            <p class="sub">Checked when this page was opened</p>
+        </div>
+        <span class="pill @(_systemHealthy ? "ok" : "bad")">@(_systemHealthy ? "All answering" : "Check needed")</span>
+    </div>
+    <div class="panel-body flush">
+        <div class="scroll">
+            <table>
+                <thead>
+                    <tr><th scope="col">Part</th><th scope="col">State</th><th scope="col">Detail</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td data-label="Part">Portal</td>
+                        <td data-label="State"><span class="pill ok">Running</span></td>
+                        <td data-label="Detail">@Zazi.Application.BuildInfo.Version · commit @Zazi.Application.BuildInfo.Commit</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Part">Database</td>
+                        <td data-label="State"><span class="pill @(_databaseUp ? "ok" : "bad")">@(_databaseUp ? "Reachable" : "Unreachable")</span></td>
+                        <td data-label="Detail">@(_databaseUp ? "Answered a query for this page" : "The portal could not read from it")</td>
+                    </tr>
+                    <tr>
+                        <td data-label="Part">API (the handsets)</td>
+                        <td data-label="State"><span class="pill @(_apiState == "healthy" ? "ok" : _apiState == "unknown" ? "warn" : "bad")">@ApiStateLabel</span></td>
+                        <td data-label="Detail">@_apiDetail</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
 
 @if (_failed)
 {
@@ -141,6 +181,62 @@ else
 }
 
 @code {
+    private bool _databaseUp;
+    private string _apiState = "unknown";
+    private string _apiDetail = "Not checked";
+
+    private bool _systemHealthy => _databaseUp && _apiState == "healthy";
+
+    private string ApiStateLabel => _apiState switch
+    {
+        "healthy" => "Answering",
+        "unknown" => "Not checked",
+        _ => "Not answering"
+    };
+
+    /// <summary>
+    /// Asks the API the same question a load balancer does. Failure here is information, not
+    /// an error: the portal keeps working when the API is down, and the owner should be told
+    /// which half is unwell.
+    /// </summary>
+    private async Task CheckSystemAsync()
+    {
+        _databaseUp = _health is not null;
+
+        var apiUrl = Configuration["Api:PublicBaseUrl"];
+        if (string.IsNullOrWhiteSpace(apiUrl))
+        {
+            _apiState = "unknown";
+            _apiDetail = "No API address configured for this portal";
+            return;
+        }
+
+        try
+        {
+            using var client = HttpClients.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(5);
+            using var response = await client.GetAsync($"{apiUrl.TrimEnd('/')}/health");
+            if (!response.IsSuccessStatusCode)
+            {
+                _apiState = "down";
+                _apiDetail = $"Answered {(int)response.StatusCode}";
+                return;
+            }
+
+            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = document.RootElement;
+            _apiState = "healthy";
+            _apiDetail = root.TryGetProperty("version", out var version) && root.TryGetProperty("commit", out var commit)
+                ? $"{version.GetString()} · commit {commit.GetString()}"
+                : "Answering";
+        }
+        catch (Exception)
+        {
+            _apiState = "down";
+            _apiDetail = "No answer inside five seconds";
+        }
+    }
+
     private SystemHealthDto? _health;
     private IReadOnlyList<ErrorGroupDto> _errorGroups = Array.Empty<ErrorGroupDto>();
     private IReadOnlyList<DeviceHealthDto> _devices = Array.Empty<DeviceHealthDto>();
@@ -169,6 +265,10 @@ else
             // that silently shows "no errors" when it cannot read is worse than a blank one.
             _failed = true;
         }
+
+        // Outside the try: whether the rest of the page loaded is itself the signal for the
+        // database row, and a failure to reach the API must not blank the page.
+        await CheckSystemAsync();
     }
 
     private static string SeverityClass(string severity) => severity switch

@@ -6,17 +6,19 @@ plugins {
 
 android {
     namespace = "app.zazi"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.zazi"
         minSdk = 26
-        targetSdk = 35
+        // Android 16. Google Play refuses new apps and updates below this since 31 August 2026,
+        // so this is what "publishable" means rather than a preference.
+        targetSdk = 36
         // The release this build actually is. It had stayed at the first-commit values while
         // the product was verified and reported as v2, which is the kind of drift that ends
         // with two different builds claiming the same version in a support conversation.
-        versionCode = 10
-        versionName = "2.7.0"
+        versionCode = 11
+        versionName = "2.8.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a

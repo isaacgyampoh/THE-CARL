@@ -1,0 +1,95 @@
+@page "/privacy"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+@* Public, and it must be: Google Play requires a privacy policy reachable without signing in,
+   and so does anyone deciding whether to trust Zazi with their takings. Every statement here
+   was checked against what the code actually does. *@
+
+<PageTitle>Privacy · Zazi</PageTitle>
+
+<div class="legal">
+    <h1>Privacy</h1>
+    <p class="lead">
+        Zazi records mobile money transactions for agent businesses in Ghana. This page says what
+        we hold, why, and what you can ask us to do with it. Last updated @DateTime.UtcNow.ToString("d MMMM yyyy").
+    </p>
+
+    <h2>What we hold</h2>
+    <ul>
+        <li><strong>Your business.</strong> Its name, the email address and phone number you sign up with, and your settings.</li>
+        <li><strong>The people in it.</strong> Names of owners and workers, and email addresses where they have one.</li>
+        <li><strong>Transactions.</strong> Amount, type, network, time, the customer's mobile number, the network's reference, and any note. This is the record the product exists to keep.</li>
+        <li><strong>Money positions.</strong> Cash and float given to each agent, balances, day-end counts, float requests, and business costs you record.</li>
+        <li><strong>Phones.</strong> An identifier the app generates for the handset, its name, model type, Android version, and the app version. Keypad phones are identified by their number.</li>
+        <li><strong>An audit trail.</strong> Who did what and when — sign-ins, allocations, revocations, day closes — so money can be accounted for.</li>
+    </ul>
+
+    <h2>Mobile money messages on the phone</h2>
+    <p>
+        With your permission, the Android app reads the mobile money confirmations your network
+        sends to the handset, so a transaction is recorded without anyone typing it. The message
+        is read <strong>on the phone</strong>: what leaves it is the result — amount, type,
+        network, customer number, time and reference — not your inbox.
+    </p>
+    <p>
+        One exception, and it is yours to choose: if a message was read incorrectly and the agent
+        taps <em>report a mistake</em>, that single message is sent to us so the fault can be
+        fixed. Nothing else is sent, and the app works without the permission at all — transactions
+        are then typed in by hand.
+    </p>
+
+    <h2>What we never do</h2>
+    <ul>
+        <li>We do not sell your data, and we do not share it for advertising.</li>
+        <li>We carry no advertising and no third-party tracking or analytics.</li>
+        <li>We do not read your personal messages: only mobile money confirmations are parsed, and only on the phone.</li>
+        <li>We do not move money. Zazi records what your networks did; it is not a payment service.</li>
+    </ul>
+
+    <h2>Who else is involved</h2>
+    <ul>
+        <li><strong>Render</strong> hosts the service and its database, in Frankfurt, Germany.</li>
+        <li><strong>Resend</strong> delivers our email: sign-up confirmation, password reset, and the evening summary if you have it switched on.</li>
+        <li><strong>An SMS provider</strong> carries messages to and from keypad phones, and customer receipts, where your business has switched those on.</li>
+        <li><strong>Google Play</strong> distributes the Android app.</li>
+    </ul>
+    <p>Each is used to run the service and is given only what that requires.</p>
+
+    <h2>Keeping it safe</h2>
+    <ul>
+        <li>Everything travels over HTTPS.</li>
+        <li>Passwords are stored as salted hashes, never in a readable form.</li>
+        <li>The app keeps its session in Android's encrypted storage, and its local database is encrypted on the phone.</li>
+        <li>A business can only ever see its own data; that rule is enforced on the server, not in the screen.</li>
+        <li>Recorded transactions cannot be edited or deleted — a correction is a new, visible entry. That is what makes the ledger worth trusting.</li>
+    </ul>
+
+    <h2>How long we keep it</h2>
+    <p>
+        We keep your business's records for as long as the business uses Zazi, because a ledger
+        with holes in it is not a ledger. Ask us to close your account and we will delete your
+        business's data within 30 days, apart from anything we must keep by law. You can download
+        your transactions as a statement at any time, in PDF or for Excel.
+    </p>
+
+    <h2>Your choices</h2>
+    <ul>
+        <li>Ask for a copy of your data, or for it to be corrected or deleted.</li>
+        <li>Switch customer receipts and the evening email on or off in Settings.</li>
+        <li>Refuse or withdraw the message-reading permission on the phone, in Android settings.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>Zazi is for businesses. It is not intended for anyone under 18.</p>
+
+    <h2>Asking us</h2>
+    <p>
+        Write to <a href="mailto:support@getzazi.com">support@getzazi.com</a> and say what you
+        need. We answer privacy requests within 30 days.
+    </p>
+
+    <p class="muted small">
+        If this page ever changes in a way that matters, we will say so here and date it.
+    </p>
+</div>

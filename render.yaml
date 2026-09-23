@@ -70,6 +70,10 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
+      # So the Operations page can ask the API whether it is answering, and show which build
+      # is deployed. Public address, not a secret.
+      - key: Api__PublicBaseUrl
+        value: https://api.getzazi.com
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: Zazi__BehindTlsProxy
