@@ -55,6 +55,9 @@ import app.zazi.ui.state.MoneyFormat
 fun CloseDayScreen(
     /** Transactions on this phone not yet delivered; the server cannot count what it has not seen. */
     unsentCount: Int,
+    /** The day's recorded movement, as the dashboard has it. Null while it is not yet known. */
+    todayCashMinor: Long?,
+    todayFloatMinor: Long?,
     isOnline: Boolean,
     busy: Boolean,
     error: String?,
@@ -164,8 +167,52 @@ fun CloseDayScreen(
                 ErrorNotice(it)
             }
 
+            // What the count is about to be compared against. The same two figures the agent
+            // just left on the dashboard, repeated here so closing is not done blind — and so
+            // an agent who recorded nothing today sees that before they count anything.
+            if (todayCashMinor != null && todayFloatMinor != null) {
+                Spacer(Modifier.height(Spacing.section))
+                Text(
+                    "What you recorded today",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(Spacing.small))
+                ZaziPanel {
+                    Column(Modifier.padding(Spacing.medium)) {
+                        RecordedLine("Cash movement", todayCashMinor)
+                        Spacer(Modifier.height(Spacing.small))
+                        RecordedLine("Float movement", todayFloatMinor)
+                    }
+                }
+                Spacer(Modifier.height(Spacing.small))
+                Text(
+                    "Zazi works out the difference once you close. Nothing here changes what you count.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(Modifier.height(Spacing.large))
         }
+    }
+}
+
+/** One of the day's two movement figures, signed, so direction reads without a legend. */
+@Composable
+private fun RecordedLine(label: String, minor: Long) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            (if (minor > 0) "+" else "") + MoneyFormat.format(minor),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

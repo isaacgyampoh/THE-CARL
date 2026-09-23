@@ -267,6 +267,26 @@ interface LocalTransactionDao {
     )
     suspend fun sumFloatDeltaMinor(fromUtcMillis: Long, toUtcMillis: Long): Long
 
+    /**
+     * How many of the window's transactions have reached the server.
+     *
+     * <p>Counted over the transaction's own time, joined to its outbox row, so the figure
+     * agrees with the list below it. Counting synced outbox rows instead would answer "how
+     * many has this handset ever sent", which on a day with one transaction reads as a
+     * number the agent cannot find anywhere on the screen.</p>
+     */
+    @Query(
+        """
+        SELECT COUNT(*)
+        FROM local_transactions t
+        JOIN outbox_items o ON o.clientTransactionId = t.clientTransactionId
+        WHERE t.transactionAtUtcMillis >= :fromUtcMillis
+          AND t.transactionAtUtcMillis < :toUtcMillis
+          AND o.state = 'SYNCED'
+        """
+    )
+    suspend fun countSyncedBetween(fromUtcMillis: Long, toUtcMillis: Long): Int
+
     /** Records the authoritative server identity once it is known. */
     @Query("UPDATE local_transactions SET serverTransactionId = :serverTransactionId WHERE clientTransactionId = :clientTransactionId")
     suspend fun setServerTransactionId(clientTransactionId: String, serverTransactionId: String)

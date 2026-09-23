@@ -3,7 +3,6 @@ package app.zazi.core.data.repository
 import app.zazi.core.data.database.RecentTransactionRow
 import app.zazi.core.data.database.TransactionDetailRow
 import app.zazi.core.data.database.ZaziDatabase
-import app.zazi.core.domain.sync.OutboxState
 import kotlinx.coroutines.flow.Flow
 
 /** Local movement totals for a window, in minor units. */
@@ -33,8 +32,9 @@ class DashboardRepository(private val database: ZaziDatabase) {
         floatMinor = database.localTransactionDao().sumFloatDeltaMinor(fromUtcMillis, toUtcMillis)
     )
 
-    suspend fun syncedCount(): Int =
-        database.outboxDao().countByState(OutboxState.SYNCED.name)
+    /** How many of the window's transactions are already on the server. */
+    suspend fun syncedCount(fromUtcMillis: Long, toUtcMillis: Long): Int =
+        database.localTransactionDao().countSyncedBetween(fromUtcMillis, toUtcMillis)
 
     /**
      * What this device has recorded, most recent first.

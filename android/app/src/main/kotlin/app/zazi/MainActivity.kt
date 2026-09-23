@@ -230,7 +230,10 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 )
                 (totals.cashMinor + elsewhereCash) to (totals.floatMinor + elsewhereFloat)
             },
-            syncedTodayCount = { container.dashboardRepository.syncedCount() },
+            syncedTodayCount = {
+                val dayStart = startOfDayUtcMillis()
+                container.dashboardRepository.syncedCount(dayStart, dayStart + DAY_MILLIS)
+            },
             recentActivity = { filter ->
                 // Mapped here rather than in the repository so the persistence projection
                 // stays a persistence concern and the screen gets a model in its own terms.
@@ -547,6 +550,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     CloseDayScreen(
                         unsentCount = dashboardState.pendingCount + dashboardState.syncingCount +
                             dashboardState.retryingCount,
+                        todayCashMinor = dashboardState.todayCashMinor,
+                        todayFloatMinor = dashboardState.todayFloatMinor,
                         isOnline = isOnline,
                         busy = closeBusy,
                         error = closeError,
