@@ -1,5 +1,6 @@
 package app.zazi.core.domain.parser
 
+import app.zazi.core.domain.model.TransactionType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -164,6 +165,40 @@ class RealMtnMessageTest {
 
         assertThat(parse(airtime).reference).isEqualTo("90057627058")
         assertThat(parse(airtime).amount?.toPlainString()).isEqualTo("20.00")
+    }
+
+    // ─── Only what a vendor is paid for ──────────────────────────────────────
+
+    @Test
+    fun `buying airtime is not the work a vendor is paid for`() {
+        // Verbatim, and a genuine payment by every other test: an amount, a completed action,
+        // a transaction id and a counterparty. It is the agent topping up their own phone,
+        // and counting it as trading puts their phone bill in the day's takings.
+        val airtime = "Your payment of GHS 20.00 to MTN AIRTIME has been completed at " +
+            "2026-09-22 23:21:53. Your new balance: GHS 1274.37. Financial Transaction Id: " +
+            "90057627058."
+
+        assertThat(classify(airtime)).isEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
+    }
+
+    @Test
+    fun `trading and earnings post by themselves, nothing else does`() {
+        // A vendor's whole job is a customer putting cash into a wallet or taking it out.
+        // Deposit is cash-in; withdrawal is cash-out. Commission is not a customer's
+        // transaction but it is the vendor's earnings, and holding each one for review would
+        // bury the queue and leave the profit figures permanently short.
+        listOf(
+            TransactionType.CASH_IN,
+            TransactionType.CASH_OUT,
+            TransactionType.COMMISSION
+        ).forEach { assertThat(MessageClassifier.postsAutomatically(it)).isTrue() }
+
+        listOf(
+            TransactionType.TRANSFER,
+            TransactionType.REVERSAL,
+            TransactionType.ADJUSTMENT,
+            TransactionType.UNKNOWN
+        ).forEach { assertThat(MessageClassifier.postsAutomatically(it)).isFalse() }
     }
 
     // ─── The direction is still the vendor's to state ────────────────────────

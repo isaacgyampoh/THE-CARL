@@ -106,6 +106,16 @@ data class DashboardUiState(
      * things that need a person, not with the sync counters — waiting does not resolve it.</p>
      */
     val heldCount: Int = 0,
+    /**
+     * Whether this phone is recording transactions by itself.
+     *
+     * <p>True only when the server permits SMS capture for this device <b>and</b> Android has
+     * granted the permission — both, because either one alone means no message reaches the
+     * app. While it is true nothing may be entered by hand: a transaction the phone already
+     * recorded, typed in again beside it, is two records of one payment and nobody can say
+     * afterwards which was real.</p>
+     */
+    val isAutomaticCapture: Boolean = false,
     val isSyncing: Boolean = false
 ) {
     val unsyncedCount: Int get() = pendingCount + syncingCount + retryingCount

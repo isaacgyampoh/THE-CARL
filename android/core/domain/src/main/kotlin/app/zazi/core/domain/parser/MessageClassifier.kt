@@ -1,5 +1,7 @@
 package app.zazi.core.domain.parser
 
+import app.zazi.core.domain.model.TransactionType
+
 /**
  * Whether a message is a mobile money transaction at all.
  *
@@ -57,8 +59,38 @@ object MessageClassifier {
         "CONGRATULATIONS, YOU", "/DAY",
 
         // Airtime and data marketing.
-        "BUNDLE", "DATA OFFER", "RECHARGE AND GET", "FREE SMS", "MEGABYTES"
+        "DATA OFFER", "RECHARGE AND GET", "FREE SMS", "MEGABYTES"
     )
+
+    /**
+     * Money the agent spent on themselves, not a customer's transaction.
+     *
+     * <p>Buying airtime or a data bundle moves the float and is a real payment, so every test
+     * above says transaction — but it is not the work a mobile money vendor is paid for, and
+     * counting it as trading would put the agent's own phone bill in the day's takings.
+     * Excluded until the product covers an agent's own spending properly.</p>
+     */
+    private val OWN_SPENDING = listOf(
+        "AIRTIME", "TO MTN AIRTIME", "BUNDLE", "DATA PACKAGE", "MASHUP"
+    )
+
+    /**
+     * What may reach the ledger without a person looking at it.
+     *
+     * <p>A vendor's whole job is a customer putting cash into a wallet or taking it out.
+     * "Deposit" and "cash in" are one movement; "withdrawal" and "cash out" are the same
+     * movement the other way. Commission is not a customer's transaction but it is the
+     * vendor's earnings, credited by the network on its own — holding each one for review
+     * would bury the queue and leave the profit figures permanently short.</p>
+     *
+     * <p>Everything else waits for a person. A transfer's effect on an agent's books is not
+     * derivable from the message; a reversal needs the transaction it reverses; an airtime
+     * top-up is the agent's own spending and is rejected before this is reached.</p>
+     */
+    fun postsAutomatically(type: TransactionType): Boolean = when (type) {
+        TransactionType.CASH_IN, TransactionType.CASH_OUT, TransactionType.COMMISSION -> true
+        else -> false
+    }
 
     /** A completed movement of money, stated in the past. An offer has none of these. */
     private val COMPLETED_ACTION = listOf(
@@ -87,6 +119,11 @@ object MessageClassifier {
             return Verdict.NOT_A_TRANSACTION
         }
 
+        // Real money, but the agent's own spending rather than a customer's transaction.
+        if (OWN_SPENDING.any { normalizedBody.contains(it) }) {
+            return Verdict.NOT_A_TRANSACTION
+        }
+
         val statesACompletedAction = COMPLETED_ACTION.any { normalizedBody.contains(it) }
 
         // A balance reminder with nothing else is not a transaction. Checked after the
@@ -102,7 +139,13 @@ object MessageClassifier {
         }
     }
 
-    /** Whether this message is definitively not a transaction, before anything is parsed. */
+    /**
+     * Whether this message is definitively not a vendor's transaction, before parsing.
+     *
+     * <p>Covers both marketing and the agent's own spending: an airtime top-up is real money
+     * and still nothing to do with the trade the vendor is paid for.</p>
+     */
     fun isNotATransaction(normalizedBody: String): Boolean =
-        NOT_TRANSACTIONAL.any { normalizedBody.contains(it) }
+        NOT_TRANSACTIONAL.any { normalizedBody.contains(it) } ||
+            OWN_SPENDING.any { normalizedBody.contains(it) }
 }

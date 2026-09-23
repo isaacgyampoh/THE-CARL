@@ -131,10 +131,12 @@ class CaptureRepository(
             }
         }
 
-        // Two independent gates, both already owned elsewhere: evidence quality is the
-        // parser's verdict, and whether the *type* may post without review is
-        // LedgerProjection's. A reversal with perfect confidence still must not post.
-        val qualityAllowsPosting = parsed.isUsable
+        // Three gates now. Evidence quality is the parser's verdict, whether the type may
+        // post at all is LedgerProjection's, and whether it is work a vendor is paid for is
+        // MessageClassifier's — an airtime top-up is a real payment the agent made to
+        // themselves, and posting it would put their phone bill in the day's takings.
+        val qualityAllowsPosting = parsed.isUsable &&
+            MessageClassifier.postsAutomatically(parsed.transactionType)
 
         return record(
             sourceType = EvidenceSourceType.ANDROID_SMS,

@@ -292,7 +292,12 @@ fun DashboardScreen(
         },
         bottomBar = {
             AnchoredActionBar {
-                ZaziPrimaryButton(text = "Record transaction", onClick = onCapture)
+                if (state.isAutomaticCapture) {
+                    // The day's one deliberate action when the phone is recording for them.
+                    ZaziPrimaryButton(text = "Close the day", onClick = onCloseDay)
+                } else {
+                    ZaziPrimaryButton(text = "Record transaction", onClick = onCapture)
+                }
             }
         }
     ) { insets ->
@@ -305,12 +310,16 @@ fun DashboardScreen(
         ) {
             Spacer(Modifier.height(Spacing.medium))
 
+            // With automatic capture running, the phone is the record. Recording by hand
+            // beside it produces a second version of the same transaction, and no agent can
+            // later say which of the two was real — so the option is not offered at all.
             QuickActions(
                 onCashIn = { onQuickCapture(CaptureTransactionType.CASH_IN) },
                 onCashOut = { onQuickCapture(CaptureTransactionType.CASH_OUT) },
                 onFloat = onRequestFloat,
                 onCloseDay = onCloseDay,
-                onStatement = { statementOpen = true }
+                onStatement = { statementOpen = true },
+                manualRecordingAllowed = !state.isAutomaticCapture
             )
 
             if (statementBusy || statementError != null) {
@@ -365,7 +374,9 @@ fun DashboardScreen(
                     smsPermissionGranted ->
                         CaptureModeRow(
                             "Automatic capture is on",
-                            "Mobile-money alerts are recorded as they arrive."
+                            "Every transaction on this phone is recorded as it happens. " +
+                                "Nothing is entered by hand — at the end of the day, count " +
+                                "your cash and Zazi checks it against what it recorded."
                         )
 
                     else -> SmsPermissionPanel(onRequestSmsPermission)
@@ -527,11 +538,16 @@ private fun QuickActions(
     onCashOut: () -> Unit,
     onFloat: () -> Unit,
     onCloseDay: () -> Unit,
-    onStatement: () -> Unit
+    onStatement: () -> Unit,
+    /** False while automatic capture is running, when nothing may be entered by hand. */
+    manualRecordingAllowed: Boolean
 ) {
     Row(Modifier.fillMaxWidth()) {
-        QuickAction(Icons.Filled.KeyboardArrowDown, "Cash in", onCashIn, Modifier.weight(1f))
-        QuickAction(Icons.Filled.KeyboardArrowUp, "Cash out", onCashOut, Modifier.weight(1f))
+        if (manualRecordingAllowed) {
+            QuickAction(Icons.Filled.KeyboardArrowDown, "Cash in", onCashIn, Modifier.weight(1f))
+            QuickAction(Icons.Filled.KeyboardArrowUp, "Cash out", onCashOut, Modifier.weight(1f))
+        }
+        // Asking for float and reading a statement record nothing, so both stay in either mode.
         QuickAction(Icons.Filled.Add, "Float", onFloat, Modifier.weight(1f))
         QuickAction(Icons.Filled.CheckCircle, "Close day", onCloseDay, Modifier.weight(1f))
         QuickAction(Icons.Filled.DateRange, "Statement", onStatement, Modifier.weight(1f))

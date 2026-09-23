@@ -445,14 +445,20 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
             LaunchedEffect(screen, isOnline) { dashboardViewModel.refresh(isOnline) }
 
+            val dashboardState by dashboardViewModel.state.collectAsState()
+            val context = LocalContext.current
+
+            var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermission()) }
+
+            // Both halves, because either one alone means no message reaches the app: the
+            // server decides whether this kind of device may capture at all, Android decides
+            // whether this installation was allowed to. While this is true the phone is the
+            // record and nothing may be typed in beside it.
+            val automaticCapture =
+                dashboardState.device?.canAttemptSmsCapture == true && smsPermissionGranted
+
             when (screen) {
                 AuthenticatedScreen.DASHBOARD -> {
-                    val dashboardState by dashboardViewModel.state.collectAsState()
-                    val context = LocalContext.current
-
-                    var smsPermissionGranted by remember {
-                        mutableStateOf(context.hasSmsPermission())
-                    }
 
                     val permissionLauncher = rememberLauncherForActivityResult(
                         ActivityResultContracts.RequestPermission()
@@ -463,7 +469,7 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     }
 
                     DashboardScreen(
-                        state = dashboardState,
+                        state = dashboardState.copy(isAutomaticCapture = automaticCapture),
                         onCapture = { screen = AuthenticatedScreen.CAPTURE },
                         onFilterChanged = { filter ->
                             scope.launch { dashboardViewModel.onFilterChanged(filter, isOnline) }
@@ -590,7 +596,6 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 }
 
                 AuthenticatedScreen.CLOSE_DAY -> {
-                    val dashboardState by dashboardViewModel.state.collectAsState()
                     BackHandler { screen = AuthenticatedScreen.DASHBOARD }
                     CloseDayScreen(
                         unsentCount = dashboardState.pendingCount + dashboardState.syncingCount +
@@ -723,7 +728,12 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     )
                 }
 
-                AuthenticatedScreen.CAPTURE -> {
+                // Enforced on the route, not only by hiding the buttons. A restored back
+                // stack, a deep link or a future caller must not be able to reach a form that
+                // would write a second version of a transaction the phone already recorded.
+                AuthenticatedScreen.CAPTURE -> if (automaticCapture) {
+                    LaunchedEffect(Unit) { screen = AuthenticatedScreen.DASHBOARD }
+                } else {
                     val captureState by captureViewModel.state.collectAsState()
 
                     // Without this, back from capture leaves the application entirely rather
