@@ -111,10 +111,19 @@ class CaptureRepository(
         // with nothing on screen to say so — there is no row, no warning, and, because
         // reporting a mistake hangs off a transaction, no way to tell us either. It is kept as
         // evidence so it reaches the agent, who can record it by hand in seconds.
+        val normalized = BaseSmsParser.normalize(request.body)
+
+        // Advertising from the network's own shortcode, whatever figures it quotes. Checked
+        // before anything else: a promotion is not a transaction even when a parser managed to
+        // read an amount out of "GHS 1.4 MILLION in prizes".
+        if (BaseSmsParser.looksPromotional(normalized)) {
+            return CaptureOutcome.Ignored("Promotional message, not a transaction.")
+        }
+
         val unreadable = parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null
         if (unreadable) {
             val fromAProvider = parsed.provider != Provider.UNKNOWN
-            val aboutMoney = BaseSmsParser.looksFinancial(BaseSmsParser.normalize(request.body))
+            val aboutMoney = BaseSmsParser.looksFinancial(normalized)
             if (!fromAProvider || !aboutMoney) {
                 return CaptureOutcome.Ignored("Not a recognisable transaction message.")
             }

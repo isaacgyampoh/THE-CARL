@@ -301,6 +301,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
     // current. openedWith is the snapshot the row was tapped with, used only as the stream's
     // initial value so the screen never flashes empty before Room's first emission.
     var selectedTransactionId by remember { mutableStateOf<String?>(null) }
+    // The held message a capture was started from, settled only once that capture is saved.
+    var recordingHeldEvidenceId by remember { mutableStateOf<String?>(null) }
     var openedWith by remember { mutableStateOf<TransactionDetail?>(null) }
     var isRetrying by remember { mutableStateOf(false) }
     var statementBusy by remember { mutableStateOf(false) }
@@ -560,13 +562,12 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     HeldMessagesScreen(
                         items = held.map { it.toUiItem() },
                         onRecord = { item ->
-                            // Settled first, then the form is opened with what was read from
-                            // the message. Settling after the form would leave it in the queue
-                            // if the agent backed out of a transaction they had already saved.
-                            scope.launch {
-                                container.dashboardRepository.settleHeld(item.evidenceId, recorded = true)
-                                dashboardViewModel.refresh(isOnline)
-                            }
+                            // Remembered, not settled. Settling here would take the message out
+                            // of the queue the moment the form opened, so an agent who changed
+                            // their mind, or was interrupted, would lose the only record that
+                            // the money ever arrived. It is settled once the transaction is
+                            // actually saved, below.
+                            recordingHeldEvidenceId = item.evidenceId
                             captureViewModel.prefillFrom(item)
                             screen = AuthenticatedScreen.CAPTURE
                         },
@@ -722,6 +723,8 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                     // recording a transaction would be dropped onto the home screen.
                     BackHandler {
                         captureViewModel.dismissConfirmation()
+                        // Nothing was saved, so the held message stays in the queue.
+                        recordingHeldEvidenceId = null
                         screen = AuthenticatedScreen.DASHBOARD
                     }
 
@@ -735,6 +738,13 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         onSubmit = {
                             scope.launch {
                                 if (captureViewModel.submit(isOnline)) {
+                                    // The transaction exists now, so the message that prompted
+                                    // it can leave the queue. Only now: until this line the
+                                    // agent could still have walked away with nothing saved.
+                                    recordingHeldEvidenceId?.let { evidenceId ->
+                                        container.dashboardRepository.settleHeld(evidenceId, recorded = true)
+                                        recordingHeldEvidenceId = null
+                                    }
                                     // Best-effort. The transaction is already committed to
                                     // the outbox, so a failed enqueue cannot lose it.
                                     application.scheduleSync()

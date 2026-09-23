@@ -211,5 +211,23 @@ abstract class BaseSmsParser : SmsTransactionParser {
             CURRENCY_MENTION.containsMatchIn(normalizedBody)
 
         private val CURRENCY_MENTION = Regex("""GHS|GH¢|GHC|₵|CEDI""")
+
+        /**
+         * Whether a message is advertising rather than a transaction.
+         *
+         * <p>A network's own shortcode sends promotions, and they quote figures — "GHS 1.4
+         * MILLION in prizes" reads as financial to any currency test. Without this, every
+         * promotional blast lands in the agent's review queue quoting an amount, and a queue
+         * full of things that are not transactions is one nobody reads.</p>
+         *
+         * <p>Keyed only on wording that a real transaction message never carries. Notably
+         * <i>not</i> "download" or "click here": MTN appends both to genuine payment
+         * confirmations, so matching those would discard real money.</p>
+         */
+        fun looksPromotional(normalizedBody: String): Boolean =
+            PROMOTIONAL.containsMatchIn(normalizedBody)
+
+        private val PROMOTIONAL =
+            Regex("""PROMO|PRIZE|GRAND PRIZE|SEND STOP TO|TO EXIT|JACKPOT|CONGRATULATIONS, YOU""")
     }
 }

@@ -134,6 +134,37 @@ class UnreadableMessageTest {
         assertThat(outcome).isInstanceOf(CaptureOutcome.Ignored::class.java)
     }
 
+    @Test
+    fun `a promotion quoting millions is not a transaction`() = runTest {
+        // Verbatim from a real handset. It quotes three figures in cedis, so every currency
+        // test says financial; the parser even read "GHS 1.4 MILLION" as ₵1.40. A review queue
+        // filling with these is a queue the agent stops opening.
+        val outcome = arrive(
+            sender = "MTN",
+            body = "Y'ello! 233533547740, GHS 1.4 MILLION in prizes including a GHS 500 000 " +
+                "CASH Grand Prize is waiting in the MTN Swipe & Win Promo. Dial *5030# for " +
+                "FREE. 1st day free,  then GHS 1.5/day. To exit  send STOP to 5030."
+        )
+
+        assertThat(outcome).isInstanceOf(CaptureOutcome.Ignored::class.java)
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(0)
+    }
+
+    @Test
+    fun `a real payment that mentions downloading the app is still a transaction`() = runTest {
+        // Also verbatim. MTN appends "Download the MoMo App ... Click here:" to genuine
+        // confirmations, so a promotion filter keyed on those words would discard real money.
+        val outcome = arrive(
+            sender = "MTN MoMo",
+            body = "Payment made for GHS 295.00 to AARON AMPEM LARTEY Current Balance: GHS " +
+                "1042.16 . Available Balance: GHS 1042.16. Reference: X. Transaction ID: " +
+                "90078777179. Fee charged: GHS2.21 Tax charged: 0. Download the MoMo App " +
+                "for a Faster & Easier Experience. Click here: https://mtnmymomo.onelink.me/X"
+        )
+
+        assertThat(outcome).isNotInstanceOf(CaptureOutcome.Ignored::class.java)
+    }
+
     // ─── Settling one ────────────────────────────────────────────────────────
 
     @Test
