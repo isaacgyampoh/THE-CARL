@@ -194,13 +194,15 @@ main { padding: 1.1rem 1rem 3rem; }
 .nav button.link { color: #fff; font-size: .86rem; font-weight: 600; text-decoration: none; background: none; border: 0; cursor: pointer; font-family: inherit; padding: 0; }
 .nav button.link:hover { color: var(--gold); }
 
+/* Wraps rather than scrolls. A single scrolling row put Closing, Team, Settings, Held and
+   Operations off the right edge of a phone with nothing to say they were there, and cut the
+   last visible label mid-word so it read as a rendering fault. An owner checking the business
+   from the road is the main way this portal gets used, so every destination is on screen. */
 .nav .links {
     grid-area: links;
-    display: flex; gap: .1rem;
+    display: flex; flex-wrap: wrap; gap: .1rem .15rem;
     margin: .5rem -1rem 0; padding: 0 .6rem;
-    overflow-x: auto; scrollbar-width: none;
 }
-.nav .links::-webkit-scrollbar { display: none; }
 .nav .group-label { display: none; }
 .nav .links a {
     flex: none; display: inline-flex; align-items: center; gap: .6rem;
@@ -233,7 +235,7 @@ main { padding: 1.1rem 1rem 3rem; }
     }
     .nav .business .label { display: block; color: var(--on-navy-muted); font-size: .72rem; font-weight: 500; }
     .nav .business .name { display: block; color: #fff; font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .nav .links { flex-direction: column; gap: .1rem; margin: 0; padding: 0; overflow: visible; }
+    .nav .links { flex-direction: column; flex-wrap: nowrap; gap: .1rem; margin: 0; padding: 0; overflow: visible; }
     .nav .group-label {
         display: block; margin: 1rem .75rem .35rem;
         color: #6f86a1; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
@@ -343,7 +345,7 @@ main a.btn-secondary:hover { border-color: var(--faint); color: var(--ink); }
 }
 .kpi .label { display: block; color: var(--muted); font-size: .8rem; font-weight: 500; }
 .kpi .value { display: block; margin-top: .3rem; font-size: 1.45rem; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: proportional-nums; }
-.kpi .foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .45rem; min-height: 1.6rem; }
+.kpi .foot { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .45rem; min-height: 1.6rem; flex-wrap: wrap; }
 .kpi .note { color: var(--muted); font-size: .78rem; }
 .delta { display: inline-flex; align-items: center; gap: .2rem; padding: .08rem .45rem; border-radius: 999px; font-size: .75rem; font-weight: 600; }
 .delta.up { background: var(--ok-bg); color: var(--ok-fg); }
@@ -867,3 +869,13 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
    which stays the primary identifier — the name is what the customer remembers, the number
    is what reconciles. */
 .customer-name { display: block; color: var(--muted); font-size: .82rem; margin-top: .1rem; }
+
+/* Two stat cards to a phone screen leaves each about 170px wide, and a fixed 88px trend line
+   inside that takes more than half of it — squeezing "₵0.00 earned · ₵0.00 costs" into a
+   column two words wide and pushing "vs yesterday" out of sight. The figure is the headline
+   and the delta pill beside it already says "None yet" or "↑12%" in words, which is the part
+   worth reading at arm's length at a counter. The line returns with the room to draw it. */
+@media (max-width: 640px) {
+    .kpi .spark { display: none; }
+    .kpi .foot { min-height: 0; }
+}

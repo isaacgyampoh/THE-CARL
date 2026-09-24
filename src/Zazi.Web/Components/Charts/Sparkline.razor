@@ -4,7 +4,10 @@
     point marked. For a stat card, where the figure itself is the headline and the line only
     says "rising" or "falling".
 *@
-@if (Values.Count >= 2)
+@* A flat line says nothing, and the dot on its end implies a reading. A week with no
+   trading is the commonest case on a new business's dashboard, and drawing a rule with a
+   blob on it there looks like a chart that failed to load rather than an honest nothing. *@
+@if (Values.Count >= 2 && Max != Min)
 {
     <svg class="spark" viewBox="0 0 88 26" preserveAspectRatio="none" role="img" aria-label="@Label">
         <polyline points="@Points" vector-effect="non-scaling-stroke" />
