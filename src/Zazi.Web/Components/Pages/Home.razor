@@ -223,7 +223,7 @@ else
             <div class="panel-head">
                 <div>
                     <h2 id="agents-title">Agents today</h2>
-                    <p class="sub">Trading, holdings and day close</p>
+                    <p class="sub">Today's trading, and what each agent is holding right now</p>
                 </div>
                 <a href="/team">Team →</a>
             </div>
@@ -240,8 +240,11 @@ else
                                 <th scope="col">Agent</th>
                                 <th scope="col" class="n">Transactions</th>
                                 <th scope="col" class="n">Volume</th>
-                                <th scope="col" class="n">Cash</th>
-                                <th scope="col" class="n">Float</th>
+                                @* Held, not traded. Under a heading reading "Agents today"
+                                   these were taken for the day's figures, and an owner saw
+                                   yesterday's money and concluded the page had not reset. *@
+                                <th scope="col" class="n">Cash held</th>
+                                <th scope="col" class="n">Float held</th>
                                 <th scope="col">Closing</th>
                             </tr>
                         </thead>
@@ -259,8 +262,8 @@ else
                                 </td>
                                 <td class="n" data-label="Transactions">@_agentCount.GetValueOrDefault(person.AgentId)</td>
                                 <td class="n" data-label="Volume">@Cedis(_agentVolume.GetValueOrDefault(person.AgentId))</td>
-                                <td class="n" data-label="Cash">@Cedis(person.Cash)</td>
-                                <td class="n" data-label="Float"><span class="@(floatTotal < 0 ? "error" : "")">@Cedis(floatTotal)</span></td>
+                                <td class="n" data-label="Cash held">@Cedis(person.Cash)</td>
+                                <td class="n" data-label="Float held"><span class="@(floatTotal < 0 ? "error" : "")">@Cedis(floatTotal)</span></td>
                                 <td data-label="Closing"><span class="pill @closeTone">@closeLabel</span></td>
                             </tr>
                         }
@@ -403,7 +406,12 @@ else
 
             // Stamped after the reads return, so it is the age of these figures rather than
             // the age of the request.
-            _readAt = DateTimeOffset.Now;
+            //
+            // UtcNow, not Now: Ghana keeps GMT all year, so UTC is the local clock an owner
+            // reads. Now would render in whatever zone the container happens to be set to —
+            // it is right today only because Render's is UTC, and a host change would quietly
+            // start stamping these figures an hour or two out.
+            _readAt = DateTimeOffset.UtcNow;
         }
         catch (Exception)
         {
