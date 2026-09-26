@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Zazi.Application;
 using Zazi.Application.Float;
@@ -62,9 +63,27 @@ public sealed class FloatService : IFloatService
             ? "UNKNOWN"
             : request.Network.Trim().ToUpperInvariant();
 
+        // Keyed on the token *and* what was actually entered, never the token alone.
+        //
+        // The token identifies one rendering of the form, and a browser hands the same one
+        // back more often than it looks: the back button, a restored tab, a page recovered
+        // from the cache. With the token alone, an owner who recorded for one agent and then
+        // went back and recorded for another was silently told "Recorded" while the second
+        // allocation was discarded as a duplicate of the first — the money never appeared and
+        // nothing said why. Including the agent, the network and the amounts means a genuine
+        // second allocation is always a different identity, while pressing Record twice on
+        // one unchanged form is still the same one and still records once.
         var clientTransactionId = string.IsNullOrWhiteSpace(request.SubmissionToken)
             ? null
-            : ClientTransactionId.Deterministic("portal-allocation", request.SubmissionToken.Trim());
+            : ClientTransactionId.Deterministic(
+                "portal-allocation",
+                string.Join(
+                    '|',
+                    request.SubmissionToken.Trim(),
+                    request.AgentId.ToString("N"),
+                    network,
+                    request.CashAmount.ToString("0.00", CultureInfo.InvariantCulture),
+                    request.FloatAmount.ToString("0.00", CultureInfo.InvariantCulture)));
 
         // A resubmission of the same form — a double tap, a back button, a retry on a slow
         // connection — already produced this allocation. The ledger's uniqueness constraint

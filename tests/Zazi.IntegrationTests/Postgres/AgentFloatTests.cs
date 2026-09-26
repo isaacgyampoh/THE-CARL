@@ -233,6 +233,49 @@ public class AgentFloatTests : IDisposable
     }
 
     [SkippableFact]
+    public async Task AStaleFormTokenDoesNotSwallowADifferentAllocation()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+
+        // One rendering of the form, used twice — the back button, a restored tab, a page the
+        // browser recovered from its cache. The owner records for one person, goes back, and
+        // records something else. Keyed on the token alone, the second was silently discarded
+        // as a duplicate while the screen still said "Recorded": the commonest way an owner
+        // ends up certain the portal is broken.
+        const string token = "one-rendering-of-the-form";
+
+        await GiveAsync(tenant, cash: 300m, efloat: 700m, token: token);
+        await GiveAsync(tenant, cash: 150m, efloat: 250m, token: token);
+
+        var holdings = await WithServiceAsync(s => s.GetHoldingsAsync(tenant.OrganizationId));
+        var agent = Assert.Single(holdings, h => h.AgentId == tenant.UserId);
+
+        // Both allocations are real money and both are recorded.
+        Assert.Equal(450m, agent.Cash);
+        Assert.Equal(950m, agent.Floats.Sum(f => f.Amount));
+    }
+
+    [SkippableFact]
+    public async Task TheSameFormSubmittedTwiceUnchangedStillRecordsOnce()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+
+        // The other half of the same rule: a double tap on an unchanged form is one
+        // allocation, however many times the request arrives.
+        const string token = "unchanged-form";
+        await GiveAsync(tenant, cash: 300m, efloat: 700m, token: token);
+        await GiveAsync(tenant, cash: 300m, efloat: 700m, token: token);
+
+        var holdings = await WithServiceAsync(s => s.GetHoldingsAsync(tenant.OrganizationId));
+        var agent = Assert.Single(holdings, h => h.AgentId == tenant.UserId);
+
+        Assert.Equal(300m, agent.Cash);
+        Assert.Equal(700m, agent.Floats.Sum(f => f.Amount));
+    }
+
+    [SkippableFact]
     public async Task ResubmittingAnAllocationLeavesOneLineInTheAuditTrail()
     {
         Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
