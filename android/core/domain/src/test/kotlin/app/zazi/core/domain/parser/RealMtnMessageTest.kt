@@ -186,6 +186,59 @@ class RealMtnMessageTest {
         assertThat(parse(airtime).amount?.toPlainString()).isEqualTo("20.00")
     }
 
+    // ─── A transaction is a transaction however it is dressed ────────────────
+
+    @Test
+    fun `a confirmation opening "Dear Customer" is still a transaction`() {
+        // Networks open genuine confirmations this way, and the marketing list held the
+        // phrase. Applied before the completed-action test it discarded the message outright
+        // — not held, not logged, with nothing anywhere to say money had arrived.
+        val real = "Dear Customer, payment received for GHS 120.00 from KWESI ANTWI. " +
+            "Current Balance: GHS 880.00. Transaction ID: 90012345678."
+
+        assertThat(classify(real)).isNotEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
+    }
+
+    @Test
+    fun `a confirmation quoting terms in its footer is still a transaction`() {
+        val real = "Cash Out of GHS 80.00 to 0241234567. Current Balance: GHS 400.00. " +
+            "Ref: MP260926.1201.A00001. Terms and conditions apply."
+
+        assertThat(classify(real)).isNotEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
+    }
+
+    @Test
+    fun `marketing with no completed action is still thrown away`() {
+        // The other side of the same rule: without a statement that money moved, the
+        // marketing words are all the evidence there is, and they are enough.
+        assertThat(classify("Dear Customer, you qualify for up to GHS 1000. Dial *170#."))
+            .isEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
+    }
+
+    @Test
+    fun `a message with a balance but no reference can still post by itself`() {
+        // A whole template was being held forever because its wording carries no "Ref:".
+        // The stated closing balance proves as much as a reference does — both sit at the end
+        // of the message, so neither survives a truncation.
+        val parsed = parse(
+            "Cash In of GHS 500.00 from 0241234567. Your new balance is GHS 1,250.00."
+        )
+
+        assertThat(parsed.transactionType).isEqualTo(TransactionType.CASH_IN)
+        assertThat(parsed.amount?.toPlainString()).isEqualTo("500.00")
+        assertThat(parsed.isUsable).isTrue()
+    }
+
+    @Test
+    fun `a truncated message with neither reference nor balance is still held`() {
+        // The case the rule exists for: cut from "GHS 500.00 ... Ref: ..." to "GHS 5", it
+        // parses as a plausible five-cedi cash-in and would understate the till by 495.
+        val truncated = parse("Cash In of GHS 5")
+
+        assertThat(truncated.transactionType).isEqualTo(TransactionType.CASH_IN)
+        assertThat(truncated.isUsable).isFalse()
+    }
+
     // ─── Only what a vendor is paid for ──────────────────────────────────────
 
     @Test

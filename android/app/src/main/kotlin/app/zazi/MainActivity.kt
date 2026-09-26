@@ -783,7 +783,15 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                 // Enforced on the route, not only by hiding the buttons. A restored back
                 // stack, a deep link or a future caller must not be able to reach a form that
                 // would write a second version of a transaction the phone already recorded.
-                AuthenticatedScreen.CAPTURE -> if (automaticCapture) {
+                //
+                // Except when the agent is finishing a message the phone received and could
+                // not read. That is the opposite of inventing a transaction beside automatic
+                // capture — it is rescuing one the system already holds evidence for, and it
+                // is the only way that money ever reaches the books. Blocking it here made
+                // "Record it" on a held message navigate and bounce straight back, so the
+                // button did nothing at all on precisely the phones that need it: the ones
+                // with capture switched on.
+                AuthenticatedScreen.CAPTURE -> if (automaticCapture && recordingHeldEvidenceId == null) {
                     LaunchedEffect(Unit) { screen = AuthenticatedScreen.DASHBOARD }
                 } else {
                     val captureState by captureViewModel.state.collectAsState()

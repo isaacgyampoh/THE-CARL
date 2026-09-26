@@ -115,22 +115,11 @@ object MessageClassifier {
         hasReference: Boolean,
         hasCounterparty: Boolean
     ): Verdict {
-        if (NOT_TRANSACTIONAL.any { normalizedBody.contains(it) }) {
+        if (isNotATransaction(normalizedBody)) {
             return Verdict.NOT_A_TRANSACTION
         }
 
-        // Real money, but the agent's own spending rather than a customer's transaction.
-        if (OWN_SPENDING.any { normalizedBody.contains(it) }) {
-            return Verdict.NOT_A_TRANSACTION
-        }
-
-        val statesACompletedAction = COMPLETED_ACTION.any { normalizedBody.contains(it) }
-
-        // A balance reminder with nothing else is not a transaction. Checked after the
-        // completed-action test because every real confirmation also quotes a balance.
-        if (!statesACompletedAction && normalizedBody.contains("BALANCE")) {
-            return Verdict.NOT_A_TRANSACTION
-        }
+        val statesACompletedAction = statesACompletedAction(normalizedBody)
 
         return if (statesACompletedAction && hasAmount && hasReference && hasCounterparty) {
             Verdict.TRANSACTION
@@ -139,13 +128,39 @@ object MessageClassifier {
         }
     }
 
+    private fun statesACompletedAction(normalizedBody: String): Boolean =
+        COMPLETED_ACTION.any { normalizedBody.contains(it) }
+
     /**
      * Whether this message is definitively not a vendor's transaction, before parsing.
      *
      * <p>Covers both marketing and the agent's own spending: an airtime top-up is real money
      * and still nothing to do with the trade the vendor is paid for.</p>
      */
-    fun isNotATransaction(normalizedBody: String): Boolean =
-        NOT_TRANSACTIONAL.any { normalizedBody.contains(it) } ||
-            OWN_SPENDING.any { normalizedBody.contains(it) }
+    fun isNotATransaction(normalizedBody: String): Boolean {
+        // The agent's own airtime or data, whatever else the message says. Real money, and
+        // still not the work a vendor is paid for.
+        if (OWN_SPENDING.any { normalizedBody.contains(it) }) {
+            return true
+        }
+
+        // A message stating that money actually moved is a transaction however it is dressed.
+        //
+        // This ordering is the whole point. Networks open genuine confirmations with "Dear
+        // Customer", and quote terms in the footer, so a marketing word list applied first
+        // threw away real money — discarded outright, not even held, with nothing anywhere to
+        // say a transaction had ever arrived. Marketing wording is only evidence in the
+        // absence of a completed action; a promotion never says a payment was received.
+        if (statesACompletedAction(normalizedBody)) {
+            return false
+        }
+
+        if (NOT_TRANSACTIONAL.any { normalizedBody.contains(it) }) {
+            return true
+        }
+
+        // A balance reminder and nothing else. Safe only here, below the completed-action
+        // test, because every real confirmation also quotes a balance.
+        return normalizedBody.contains("BALANCE")
+    }
 }

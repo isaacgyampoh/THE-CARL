@@ -39,7 +39,7 @@ class MtnSmsParser : BaseSmsParser() {
             customerPhoneNumber = extractCounterparty(normalizedBody),
             customerName = extractName(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
-            confidence = confidenceFor(type, amount, reference),
+            confidence = confidenceFor(type, amount, reference, extractBalance(normalizedBody)),
             parserName = parserName,
             parserVersion = parserVersion,
             occurredAtUtcMillis = extractTimestamp(normalizedBody)
@@ -94,7 +94,7 @@ class TelecelSmsParser : BaseSmsParser() {
             customerPhoneNumber = extractCounterparty(normalizedBody),
             customerName = extractName(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
-            confidence = confidenceFor(type, amount, reference),
+            confidence = confidenceFor(type, amount, reference, extractBalance(normalizedBody)),
             parserName = parserName,
             parserVersion = parserVersion,
             occurredAtUtcMillis = extractTimestamp(normalizedBody)
@@ -148,7 +148,7 @@ class AirtelTigoSmsParser : BaseSmsParser() {
             customerPhoneNumber = extractCounterparty(normalizedBody),
             customerName = extractName(normalizedBody),
             balanceAfter = extractBalance(normalizedBody),
-            confidence = confidenceFor(type, amount, reference),
+            confidence = confidenceFor(type, amount, reference, extractBalance(normalizedBody)),
             parserName = parserName,
             parserVersion = parserVersion,
             occurredAtUtcMillis = extractTimestamp(normalizedBody)
@@ -212,23 +212,28 @@ class GenericSmsParser : BaseSmsParser() {
 /**
  * Confidence for a provider parser.
  *
- * A result only reaches auto-posting confidence when the type, a positive amount **and** a
- * provider reference were all recovered.
+ * A result reaches auto-posting confidence with a known type, a positive amount, and evidence
+ * that the message arrived whole.
  *
- * Requiring the reference is what makes truncation safe. Every real provider transaction
- * message carries one, so a message without it is truncated, promotional, or an unrecognised
- * template. Without this rule a delivery truncated from `"Cash In of GHS 500.00 ... Ref: ..."`
- * to `"Cash In of GHS 5"` parses as a perfectly plausible GHS 5 cash-in and posts silently,
- * understating the agent's till by GHS 495.
+ * That last part is what makes truncation safe. A delivery cut from
+ * `"Cash In of GHS 500.00 ... Ref: ..."` to `"Cash In of GHS 5"` parses as a perfectly
+ * plausible GHS 5 cash-in and would post silently, understating the agent's till by GHS 495.
+ *
+ * A reference proves wholeness, because it sits at the end of the message. So does a stated
+ * closing balance, for exactly the same reason — anything that survives to quote the balance
+ * left afterwards was not cut short. Accepting either is what stopped a whole network's
+ * template being held for review forever because its wording puts no "Ref:" in the text: real
+ * transactions queued up behind a prompt while an agent watched their takings not appear.
  */
 private fun confidenceFor(
     type: TransactionType,
     amount: java.math.BigDecimal?,
-    reference: String?
+    reference: String?,
+    balanceAfter: java.math.BigDecimal? = null
 ): Double = when {
     type == TransactionType.UNKNOWN -> 0.30
     amount == null || amount.signum() <= 0 -> 0.40
-    // Recognised provider and amount, but nothing to identify the transaction by.
-    reference.isNullOrBlank() -> 0.50
+    // Nothing from the tail of the message survived, so it may not have all arrived.
+    reference.isNullOrBlank() && balanceAfter == null -> 0.50
     else -> 0.95
 }
