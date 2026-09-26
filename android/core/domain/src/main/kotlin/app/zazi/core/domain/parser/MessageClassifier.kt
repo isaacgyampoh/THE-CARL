@@ -54,9 +54,14 @@ object MessageClassifier {
         "DEAR VALUED CUSTOMER", "DEAR CUSTOMER", "NOTIFICATION FOR", "HEROES OF CHANGE",
         "NEWSLETTER", "TERMS AND CONDITIONS APPLY", "T&C APPLY",
 
-        // Prize draws and subscriptions.
+        // Prize draws and subscriptions. Taken from real messages on an agent's handset:
+        // "BIG NEWS! 0533547740 your number qualifies for today's VIP spin challenge.
+        // Collect points and top winners will share 30 000GHS! Reply VIP now" reached the
+        // review queue because it quoted cedis and matched none of the wording below.
         "PROMO", "PRIZE", "JACKPOT", "SEND STOP TO", "TO EXIT", "SWIPE & WIN",
         "CONGRATULATIONS, YOU", "/DAY",
+        "QUALIFIES FOR", "SPIN CHALLENGE", "COLLECT POINTS", "TOP WINNERS",
+        "REPLY VIP", "BIG NEWS",
 
         // Airtime and data marketing.
         "DATA OFFER", "RECHARGE AND GET", "FREE SMS", "MEGABYTES"

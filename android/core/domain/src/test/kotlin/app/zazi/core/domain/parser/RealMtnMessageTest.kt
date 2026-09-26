@@ -239,6 +239,16 @@ class RealMtnMessageTest {
         assertThat(truncated.isUsable).isFalse()
     }
 
+    @Test
+    fun `a prize-draw blast from the network is not a transaction`() {
+        // Verbatim from an agent's handset. It quotes a figure in cedis, so every currency
+        // test says financial, and it sat in the review queue beside real money at GHS 0.00.
+        val blast = "BIG NEWS! 0533547740 your number qualifies for today's VIP spin " +
+            "challenge. Collect points and top winners will share 30 000GHS! Reply VIP now"
+
+        assertThat(classify(blast)).isEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
+    }
+
     // ─── Only what a vendor is paid for ──────────────────────────────────────
 
     @Test
