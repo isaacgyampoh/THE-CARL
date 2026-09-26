@@ -61,11 +61,41 @@ class MtnSmsParser : BaseSmsParser() {
         return if (stated != TransactionType.UNKNOWN) stated else classifyIn(body)
     }
 
+    /**
+     * <p>The "payment" wordings are read from the agent's float, because that is the only
+     * side of the transaction the message describes and the balance it quotes proves the
+     * direction beyond argument:</p>
+     *
+     * <ul>
+     *   <li><b>Payment received</b> — e-money arrives, so the float rises. A customer sends
+     *     the agent e-money and takes notes away: a withdrawal, which in this ledger is a
+     *     cash-out (cash falls, float rises).</li>
+     *   <li><b>Payment made</b> — e-money leaves, so the float falls. The agent sends
+     *     e-money and keeps the customer's notes: a deposit, which is a cash-in.</li>
+     * </ul>
+     *
+     * <p>Measured, not assumed: two real messages fifteen minutes apart on one handset read
+     * GHS 1042.16 after a payment made and GHS 1337.16 after a payment received of GHS
+     * 295.00, and 1042.16 + 295.00 is 1337.16 exactly.</p>
+     *
+     * <p><b>If a vendor tells you this is backwards, this is the block to change</b> — and
+     * it is worth checking with one, because getting it the wrong way round is wrong by
+     * twice the amount on every transaction it touches. The older "received from" line below
+     * reads the cash side rather than the float and is deliberately left alone: it is a
+     * different wording on a different template.</p>
+     */
     private fun classifyIn(body: String): TransactionType = when {
         mentionsReversal(body) -> TransactionType.REVERSAL
         body.contains("COMMISSION") -> TransactionType.COMMISSION
         body.contains("CASH IN") || body.contains("CASH-IN") -> TransactionType.CASH_IN
         body.contains("CASH OUT") || body.contains("CASH-OUT") -> TransactionType.CASH_OUT
+
+        // Float rises: the customer sent e-money and walked away with notes.
+        body.contains("PAYMENT RECEIVED") -> TransactionType.CASH_OUT
+
+        // Float falls: the agent sent e-money and kept the notes.
+        body.contains("PAYMENT MADE") || body.contains("PAYMENT OF") -> TransactionType.CASH_IN
+
         // "Received from" on an agent line is a customer depositing cash with the agent.
         body.contains("RECEIVED FROM") -> TransactionType.CASH_IN
         body.contains("PAID TO") || body.contains("WITHDRAWN") -> TransactionType.CASH_OUT

@@ -58,6 +58,10 @@ object InboxBackfill {
             return Result(0, 0, 0)
         }
 
+        // Messages already on file get their own identity first. Skipping this would read
+        // every one of them back in as new on this very run.
+        capture.identifyStoredMessages()
+
         var examined = 0
         var recorded = 0
         var skipped = 0

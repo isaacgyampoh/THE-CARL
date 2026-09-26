@@ -100,6 +100,24 @@ class CaptureRepository(
      * Anything a parser could make sense of is kept, including the ones it refuses to
      * post.</p>
      */
+    /**
+     * Gives messages stored before this column existed their own identity.
+     *
+     * <p>Without it the first catch-up after the upgrade would read every one of them back
+     * in as new — the very duplication the column was added to prevent, happening once on
+     * the way to preventing it. Cheap, bounded, and idempotent: a row keeps the hash of the
+     * text it already holds.</p>
+     */
+    suspend fun identifyStoredMessages(limit: Int = 1_000): Int {
+        var repaired = 0
+        database.evidenceDao().withoutRawHash(limit).forEach { row ->
+            val body = row.rawMessage ?: return@forEach
+            database.evidenceDao().setRawHash(row.evidenceId, EvidenceFingerprint.computeRawHash(body))
+            repaired++
+        }
+        return repaired
+    }
+
     override suspend fun captureSms(request: SmsCaptureRequest): CaptureOutcome {
         val parsed = parsers.parse(request.senderIdentity, request.body)
 
@@ -113,6 +131,22 @@ class CaptureRepository(
         // reporting a mistake hangs off a transaction, no way to tell us either. It is kept as
         // evidence so it reaches the agent, who can record it by hand in seconds.
         val normalized = BaseSmsParser.normalize(request.body)
+
+        // Before anything is parsed: have we already stored this exact message, arriving at
+        // this exact moment? The canonical fingerprint cannot answer that, because it is
+        // built from what the parser made of the text — so teaching the parser a new wording
+        // changes the identity of messages already on file, and the catch-up then reads the
+        // whole inbox back in as new money. Seen on a real handset: one parser change turned
+        // 39 stored messages into 64 and added a thousand cedis of float that never moved.
+        val rawHash = EvidenceFingerprint.computeRawHash(request.body)
+        database.evidenceDao()
+            .findByRawHash(rawHash, request.receivedAtUtcMillis)
+            ?.let { seen ->
+                return CaptureOutcome.DuplicateOnThisDevice(
+                    seen.localTransactionId.orEmpty(),
+                    seen.fingerprint
+                )
+            }
 
         // Zazi detects transactions, not messages. A network's shortcode carries loan offers,
         // campaign notices and prize draws that quote figures in cedis, and every one of them
@@ -166,6 +200,7 @@ class CaptureRepository(
             balanceAfterMinor = parsed.balanceAfter?.let(MinorUnits::fromDecimal),
             customerName = parsed.customerName,
             rawMessage = request.body,
+            rawHash = rawHash,
             sessionId = request.sessionId,
             notes = null
         )
@@ -189,6 +224,7 @@ class CaptureRepository(
         customerName: String? = null,
         evidenceQualityAllowsPosting: Boolean,
         rawMessage: String?,
+        rawHash: String? = null,
         sessionId: String?,
         notes: String?
     ): CaptureOutcome {
@@ -262,6 +298,7 @@ class CaptureRepository(
             state = if (postable) EvidenceState.ACCEPTED.name else EvidenceState.PENDING_REVIEW.name,
             outcomeReason = if (postable) null else heldReason(transactionType, amountMinor, typeAllowsPosting),
             rawMessage = rawMessage,
+            rawHash = rawHash,
             rawMessagePurgedAtUtcMillis = null,
             deviceId = deviceId,
             createdAtUtcMillis = timestamp

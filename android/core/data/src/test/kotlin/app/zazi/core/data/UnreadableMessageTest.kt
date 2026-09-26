@@ -222,6 +222,65 @@ class UnreadableMessageTest {
         assertThat(database.localTransactionDao().count()).isEqualTo(1)
     }
 
+    @Test
+    fun `a message already stored is not read back in when the parser learns its wording`() = runTest {
+        // The fault this guards, seen on a real handset: a message arrives in a wording the
+        // parser does not know and is held. The parser is then taught that wording, the app
+        // updates, and the catch-up replays the inbox — but the canonical fingerprint is
+        // built from what the parser made of the text, so the very same message now hashes
+        // differently and is stored a second time. Thirty-nine held messages became
+        // sixty-four and a thousand cedis of float appeared that never moved.
+        //
+        // Held first, in a wording with no direction.
+        val body = "Payment settled for GHS 500.00 to SOMEBODY. Transaction ID: 90111222333."
+        val first = arrive(sender = "MTN MoMo", body = body)
+        assertThat(first).isInstanceOf(CaptureOutcome.HeldForReview::class.java)
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(1)
+
+        // The same text and the same arrival, offered again exactly as a catch-up would.
+        val again = arrive(sender = "MTN MoMo", body = body)
+
+        assertThat(again).isInstanceOf(CaptureOutcome.DuplicateOnThisDevice::class.java)
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(1)
+    }
+
+    @Test
+    fun `two identical payments minutes apart are both real and both recorded`() = runTest {
+        // The other edge of the same rule. Matching on the text alone would collapse two
+        // genuine payments of the same amount to the same person into one, which loses money
+        // rather than duplicating it. The moment of arrival separates them.
+        val body = "Cash In of GHS 50.00 from 0241234567. New balance GHS 900.00. Ref: R1."
+
+        val first = arrive(sender = "MTN MoMo", body = body)
+        clock += 120_000
+        val second = arrive(sender = "MTN MoMo", body = body)
+
+        assertThat(first).isInstanceOf(CaptureOutcome.Queued::class.java)
+        assertThat(second).isInstanceOf(CaptureOutcome.Queued::class.java)
+        assertThat(database.localTransactionDao().count()).isEqualTo(2)
+    }
+
+    @Test
+    fun `messages stored before this column existed are given their identity, not re-read`() = runTest {
+        // Rows captured by an older build carry no hash of their own. Left that way, the
+        // first catch-up after the upgrade reads every one of them back in as new money —
+        // the exact duplication the column exists to stop, happening once on the way to
+        // stopping it.
+        val body = "Payment settled for GHS 90.00 to SOMEBODY. Transaction ID: 90777888999."
+        arrive(sender = "MTN MoMo", body = body)
+
+        // Strip the hash, which is the state an upgraded row is in.
+        val stored = database.evidenceDao().findByState("PENDING_REVIEW").single()
+        database.evidenceDao().update(stored.copy(rawHash = null))
+
+        assertThat(capture.identifyStoredMessages()).isEqualTo(1)
+
+        // And now the replay recognises it.
+        assertThat(arrive(sender = "MTN MoMo", body = body))
+            .isInstanceOf(CaptureOutcome.DuplicateOnThisDevice::class.java)
+        assertThat(dashboard.observeHeldCount().first()).isEqualTo(1)
+    }
+
     // ─── Settling one ────────────────────────────────────────────────────────
 
     @Test

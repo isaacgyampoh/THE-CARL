@@ -20,6 +20,7 @@ import androidx.room.PrimaryKey
     tableName = "transaction_evidence",
     indices = [
         Index("fingerprint"),
+        Index("rawHash"),
         Index("state"),
         Index("observedAtUtcMillis"),
         Index("localTransactionId")
@@ -77,6 +78,18 @@ data class EvidenceEntity(
     val rawMessage: String?,
 
     val rawMessagePurgedAtUtcMillis: Long?,
+
+    /**
+     * Hash of the message exactly as it arrived.
+     *
+     * <p>The identity that survives a parser change. The canonical fingerprint is built from
+     * what the parser made of a message — its type and its amount — so teaching the parser a
+     * new wording changes the fingerprint of messages already stored, and a catch-up then
+     * reads the same texts back in as new transactions. This is the same message however
+     * well it is understood.</p>
+     */
+    val rawHash: String? = null,
+
     val deviceId: String?,
 
     /**

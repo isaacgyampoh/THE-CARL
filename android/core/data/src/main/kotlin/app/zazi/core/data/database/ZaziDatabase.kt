@@ -39,7 +39,7 @@ abstract class ZaziDatabase : RoomDatabase() {
     abstract fun telemetryDao(): TelemetryDao
 
     companion object {
-        const val VERSION = 4
+        const val VERSION = 5
         const val DATABASE_NAME = "zazi.db"
 
         /**
@@ -162,6 +162,23 @@ object ZaziDatabaseMigrations {
         }
     }
 
+    /**
+     * Records each message's own hash, so identity no longer depends on the parser.
+     *
+     * <p>Additive and nullable. Rows stored before this have no hash and keep being matched
+     * the old way; everything captured from here on is recognisable as the same message
+     * however the parser later changes its mind about what it means.</p>
+     */
+    private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE transaction_evidence ADD COLUMN rawHash TEXT")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_transaction_evidence_rawHash " +
+                    "ON transaction_evidence (rawHash)"
+            )
+        }
+    }
+
     val ALL: Array<androidx.room.migration.Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

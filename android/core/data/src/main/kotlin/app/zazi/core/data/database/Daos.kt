@@ -27,6 +27,23 @@ interface EvidenceDao {
     @Query("SELECT * FROM transaction_evidence WHERE fingerprint = :fingerprint LIMIT 1")
     suspend fun findByFingerprint(fingerprint: String): EvidenceEntity?
 
+    /**
+     * The same message, arriving again.
+     *
+     * <p>Matched on the text and the moment it arrived, so a catch-up that reads the inbox
+     * back finds what it already stored even after the parser has learned a new wording —
+     * and two genuinely separate payments of the same amount, minutes apart, still count
+     * twice, because their arrival times differ.</p>
+     */
+    @Query(
+        """
+        SELECT * FROM transaction_evidence
+        WHERE rawHash = :rawHash AND observedAtUtcMillis = :observedAtUtcMillis
+        LIMIT 1
+        """
+    )
+    suspend fun findByRawHash(rawHash: String, observedAtUtcMillis: Long): EvidenceEntity?
+
     @Query("SELECT * FROM transaction_evidence WHERE state = :state ORDER BY observedAtUtcMillis DESC")
     suspend fun findByState(state: String): List<EvidenceEntity>
 
@@ -52,6 +69,19 @@ interface EvidenceDao {
         """
     )
     suspend fun settlePendingReview(evidenceId: String, state: String, reason: String): Int
+
+    /** Evidence stored before messages were identified by their own text. */
+    @Query(
+        """
+        SELECT * FROM transaction_evidence
+        WHERE rawHash IS NULL AND rawMessage IS NOT NULL
+        LIMIT :limit
+        """
+    )
+    suspend fun withoutRawHash(limit: Int): List<EvidenceEntity>
+
+    @Query("UPDATE transaction_evidence SET rawHash = :rawHash WHERE evidenceId = :evidenceId")
+    suspend fun setRawHash(evidenceId: String, rawHash: String)
 
     @Query("SELECT COUNT(*) FROM transaction_evidence")
     suspend fun count(): Int
