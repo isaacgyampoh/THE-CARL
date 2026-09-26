@@ -51,6 +51,14 @@
             Give this to @_issuedForName now. It is shown once and cannot be recovered —
             generate a new one if it is lost. Expires @_issuedExpiry?.ToLocalTime().ToString("g").
         </p>
+        @* A code is no use on a phone without the app, and this is the moment the owner needs
+           to know where it comes from. Zazi is not on the Play Store yet, so there is nowhere
+           else they would think to look. *@
+        <p class="keypad-hint">
+            <strong>On a smartphone?</strong> They install Zazi from
+            <a href="/download">app.getzazi.com/download</a>, open it, tap
+            <strong>I have an activation code</strong> and type this in.
+        </p>
         @* Most agents work on a keypad phone with no internet. The same code links that phone
            by SMS, so the owner is told how, right where the code is. Shown only once a Zazi
            SMS number is configured — an instruction to text a number that does not exist yet
@@ -170,7 +178,8 @@ else
 
 <p class="muted">
     A worker does not need an email address or a password. Create them here, then give them
-    an activation code to enter on their phone.
+    an activation code to enter on their phone. They get the app from
+    <a href="/download">app.getzazi.com/download</a>.
 </p>
 
 <EditForm Model="_newWorker" OnValidSubmit="CreateWorkerAsync" FormName="add-worker">
@@ -255,7 +264,13 @@ else
         }
         @if (_devices.Count == 0)
         {
-            <tr><td colspan="5" class="muted">No devices activated yet.</td></tr>
+            <tr>
+                <td colspan="5" class="muted">
+                    No devices activated yet. A worker installs Zazi from
+                    <a href="/download">app.getzazi.com/download</a>, then enters an activation
+                    code from this page.
+                </td>
+            </tr>
         }
         </tbody>
     </table>
