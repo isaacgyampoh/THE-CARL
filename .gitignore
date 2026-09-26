@@ -42,6 +42,11 @@ appsettings.*.local.json
 # Build artefacts. Android build/ output is already ignored, but an APK copied elsewhere for
 # distribution is not, and a signed pilot build is a redistributable credential-bearing binary.
 *.apk
+# …except the one the portal hands out. Zazi is not on Play yet, so /download serves this
+# build, and a rule meant to keep build output out of the repository was silently dropping
+# the one artefact that has to be in it — the page deployed, the file did not, and the link
+# answered a redirect to sign-in.
+!src/Zazi.Web/wwwroot/download/zazi.apk
 *.aab
 *.idsig
 
