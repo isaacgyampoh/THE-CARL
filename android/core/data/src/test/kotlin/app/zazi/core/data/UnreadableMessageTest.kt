@@ -206,6 +206,22 @@ class UnreadableMessageTest {
         assertThat(database.localTransactionDao().count()).isEqualTo(0)
     }
 
+    @Test
+    fun `replaying a message the phone already recorded records nothing new`() = runTest {
+        // What the catch-up after an update does: hands the same alerts to capture a second
+        // time. The fingerprint is built from the message and the moment it arrived, so a
+        // replay carrying the same arrival time is the same evidence and is refused. Without
+        // that, recovering a missed day would double every transaction that was not missed.
+        val body = "Cash In of GHS 500.00 from 0241234567. New balance GHS 1,250.00. Ref: MP1."
+
+        val first = arrive(sender = "MTN MoMo", body = body)
+        val replay = arrive(sender = "MTN MoMo", body = body)
+
+        assertThat(first).isInstanceOf(CaptureOutcome.Queued::class.java)
+        assertThat(replay).isInstanceOf(CaptureOutcome.DuplicateOnThisDevice::class.java)
+        assertThat(database.localTransactionDao().count()).isEqualTo(1)
+    }
+
     // ─── Settling one ────────────────────────────────────────────────────────
 
     @Test

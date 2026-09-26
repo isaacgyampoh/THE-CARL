@@ -17,8 +17,12 @@ android {
         // The release this build actually is. It had stayed at the first-commit values while
         // the product was verified and reported as v2, which is the kind of drift that ends
         // with two different builds claiming the same version in a support conversation.
-        versionCode = 11
-        versionName = "2.8.0"
+        // 12, because 11 is already on the phones this update has to reach. Android
+        // refuses an install whose version is not higher, so shipping the fix under the
+        // same number would have left every existing agent on the broken build with no
+        // sign anything was wrong.
+        versionCode = 12
+        versionName = "2.8.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a

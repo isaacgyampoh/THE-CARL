@@ -6,12 +6,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
-      RECEIVE_SMS only. READ_SMS would grant access to the entire message history, which
-      Zazi has no reason to read: it observes transaction alerts as they arrive and
-      never trawls the inbox. SEND_SMS is deliberately absent — the product observes and
-      reconciles, it does not transact.
+      RECEIVE_SMS observes alerts as they arrive. READ_SMS is asked for one job only: after
+      an update, reading back the transaction alerts that arrived while a fault stopped them
+      being recorded. An agent whose takings went missing cannot get them back any other way
+      — the messages are on the phone and nowhere else. SEND_SMS is deliberately absent: the
+      product observes and reconciles, it does not transact.
     -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <!--
       Telephony is not required. On a device without it, automatic capture is simply
@@ -48,6 +50,19 @@
           BROADCAST_SMS, which only the system has, so another application cannot inject a
           forged transaction message.
         -->
+        <!--
+          Fires once after this app is updated. An agent does not open Zazi to check on it;
+          they open it when something looks wrong. Catching up at update time is what makes a
+          fix reach the money without anyone being told to do anything.
+        -->
+        <receiver
+            android:name=".sms.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".sms.SmsBroadcastReceiver"
             android:exported="true"

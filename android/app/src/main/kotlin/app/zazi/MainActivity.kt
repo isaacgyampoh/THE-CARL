@@ -7,6 +7,7 @@ import app.zazi.core.data.repository.HeldMessage
 import app.zazi.core.data.network.FloatRequestInfo
 import app.zazi.ui.FloatRequestDialog
 import app.zazi.core.data.network.DayCloseResponse
+import app.zazi.sms.InboxBackfill
 import app.zazi.ui.AppLock
 import app.zazi.ui.CloseDayScreen
 import app.zazi.ui.LockScreen
@@ -489,6 +490,10 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
 
             var smsPermissionGranted by remember { mutableStateOf(context.hasSmsPermission()) }
 
+            // Bumped whenever a permission answer comes back, so the catch-up below runs
+            // again once permission is given rather than only on the launch that asked.
+            var permissionEpoch by remember { mutableStateOf(0) }
+
             // Both halves, because either one alone means no message reaches the app: the
             // server decides whether this kind of device may capture at all, Android decides
             // whether this installation was allowed to. While this is true the phone is the
@@ -499,13 +504,53 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
             when (screen) {
                 AuthenticatedScreen.DASHBOARD -> {
 
+                    // Both SMS permissions in one ask. They are one permission group, so an
+                    // agent who has already allowed messages to be read is not prompted
+                    // again — READ_SMS is granted alongside without another dialog, which is
+                    // what lets an update start recovering missed alerts on its own.
                     val permissionLauncher = rememberLauncherForActivityResult(
-                        ActivityResultContracts.RequestPermission()
+                        ActivityResultContracts.RequestMultiplePermissions()
                     ) { granted ->
                         // A refusal is a legitimate answer, not a failure. Manual capture
                         // continues to work and nothing queued is affected.
-                        smsPermissionGranted = granted
+                        smsPermissionGranted =
+                            granted[Manifest.permission.RECEIVE_SMS] == true
                     }
+
+            // Reads back alerts that arrived while a fault stopped them being recorded, once
+            // for each version installed. The update broadcast does this too; this is the
+            // belt to its braces, for the phone that was off during the update, or where the
+            // permission was only granted afterwards. Capture fingerprints every message, so
+            // running it again records nothing twice.
+            LaunchedEffect(permissionEpoch) {
+                runCatching {
+                    val store = context.getSharedPreferences("zazi-catchup", Context.MODE_PRIVATE)
+                    val installed = context.packageManager
+                        .getPackageInfo(context.packageName, 0).longVersionCode
+                    val done = store.getLong("backfilled-version", 0L)
+                    if (done < installed) {
+                        if (InboxBackfill.canRead(context)) {
+                            container.captureRepository()?.let { capture ->
+                                InboxBackfill.run(context.applicationContext, capture)
+                                application.scheduleSync()
+                                dashboardViewModel.refresh(isOnline)
+                            }
+                            store.edit().putLong("backfilled-version", installed).apply()
+                        } else if (smsPermissionGranted && store.getLong("asked-version", 0L) < installed) {
+                            // Reading alerts as they arrive and reading them back afterwards
+                            // are separate permissions, and an update does not carry the
+                            // second across — measured on a real handset, where RECEIVE_SMS
+                            // survived and READ_SMS did not. So an agent who already allowed
+                            // capture is asked once, and only once per version, rather than
+                            // silently getting no catch-up at all.
+                            store.edit().putLong("asked-version", installed).apply()
+                            permissionLauncher.launch(arrayOf(Manifest.permission.READ_SMS))
+                        }
+                    }
+                }
+            }
+
+
 
                     DashboardScreen(
                         state = dashboardState.copy(isAutomaticCapture = automaticCapture),
@@ -569,7 +614,12 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                         // Asked for only when the agent taps, never on launch: a permission
                         // prompt before any explanation is how people learn to decline.
                         onRequestSmsPermission = {
-                            permissionLauncher.launch(Manifest.permission.RECEIVE_SMS)
+                            permissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.RECEIVE_SMS,
+                                    Manifest.permission.READ_SMS
+                                )
+                            )
                         },
                         onReviewHeld = { screen = AuthenticatedScreen.HELD }
                     )
