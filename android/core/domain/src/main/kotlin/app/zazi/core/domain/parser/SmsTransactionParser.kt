@@ -130,7 +130,8 @@ abstract class BaseSmsParser : SmsTransactionParser {
                 continue
             }
 
-            val captured = match.groupValues[1]
+            // Whichever side the currency was written on.
+            val captured = match.groupValues[1].ifEmpty { match.groupValues[2] }
 
             // "GHS 1 250.00" matches only "1". Reading that as one cedi understates the
             // transaction by three orders of magnitude, and it carries a real reference so
@@ -214,6 +215,17 @@ abstract class BaseSmsParser : SmsTransactionParser {
     }
 
     companion object {
+        /**
+         * A sender identity reduced to letters and digits, uppercased.
+         *
+         * <p>Networks write the same sender half a dozen ways — "MTN MoMo", "MTNMobileMoney",
+         * "AirtelTigo Money", "AT-Money", "T-Cash" — and which one arrives depends on the
+         * aggregator, the handset and sometimes the SIM. Comparing the raw string meant a
+         * space or a hyphen decided whether an agent's transaction was recognised.</p>
+         */
+        fun normalizeSender(senderIdentity: String?): String =
+            senderIdentity?.uppercase()?.filter { it.isLetterOrDigit() }.orEmpty()
+
         /** Collapses whitespace and uppercases. Applied before any parser sees a message. */
         fun normalize(body: String): String =
             body.trim().replace(Regex("\\s+"), " ").uppercase()
@@ -240,8 +252,19 @@ abstract class BaseSmsParser : SmsTransactionParser {
             return if (prefix.isBlank()) normalizedBody else prefix
         }
 
-        private val AMOUNT_PATTERN =
-            Regex("""(?:GHS|GH¢|GHC|₵|CEDIS)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")
+        /**
+         * An amount with its currency, written either way round.
+         *
+         * <p>"GHS 500.00" is the common form and was the only one matched. Templates that
+         * write "500.00 GHS" — and some do — yielded no amount at all, which took the parse
+         * below the confidence needed to post and queued a real transaction for review. The
+         * currency marker is still required in one position or the other: a bare number in a
+         * message is as likely to be a date, a balance or part of a reference.</p>
+         */
+        private val AMOUNT_PATTERN = Regex(
+            """(?:(?:GHS|GH¢|GHC|₵|CEDIS)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""" +
+                """|([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:GHS|GH¢|GHC|₵|CEDIS))"""
+        )
 
         private val BALANCE_PATTERN =
             Regex("""BALANCE[^0-9]{0,20}?([0-9][0-9,]*(?:\.[0-9]{1,2})?)""")

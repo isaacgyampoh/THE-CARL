@@ -15,9 +15,17 @@ class MtnSmsParser : BaseSmsParser() {
     override val parserVersion = "mtn-v1"
     override val provider = Provider.MTN
 
+    /**
+     * <p>"MOBILEMONEY" is the one that matters. It is what MTN Ghana actually sends from, and
+     * it contains neither "MTN" nor "MOMO" — so every genuine alert from it fell past this
+     * parser to the generic one, scored too low to post, and queued for review. That was never
+     * a regression; it has been the case since the first commit and only shows against real
+     * traffic, which is why it survived every test written from imagined messages.</p>
+     */
     override fun claimsSender(senderIdentity: String?): Boolean {
-        val sender = senderIdentity?.uppercase().orEmpty()
-        return sender.contains("MTN") || sender.contains("MOMO")
+        val sender = BaseSmsParser.normalizeSender(senderIdentity)
+        return sender.contains("MTN") || sender.contains("MOMO") ||
+            sender.contains("MOBILEMONEY")
     }
 
     // "MTN" qualified, never a bare "MOMO". The word is generic for mobile money in Ghana, so
@@ -74,8 +82,12 @@ class TelecelSmsParser : BaseSmsParser() {
 
     // Vodafone Ghana became Telecel; handsets and shortcodes still carry the old name.
     override fun claimsSender(senderIdentity: String?): Boolean {
-        val sender = senderIdentity?.uppercase().orEmpty()
-        return sender.contains("TELECEL") || sender.contains("VODAFONE")
+        val sender = BaseSmsParser.normalizeSender(senderIdentity)
+        // The network was Vodafone Cash and the old sender identities are still in use, so
+        // both names and both short forms have to be recognised.
+        return sender.contains("TELECEL") || sender.contains("VODAFONE") ||
+            sender.contains("VODACASH") || sender.contains("VFCASH") ||
+            sender.contains("TCASH")
     }
 
     override fun claimsBody(normalizedBody: String): Boolean =
@@ -125,11 +137,13 @@ class AirtelTigoSmsParser : BaseSmsParser() {
     override val provider = Provider.AIRTELTIGO
 
     override fun claimsSender(senderIdentity: String?): Boolean {
-        val sender = senderIdentity?.uppercase().orEmpty().trim()
-        // Exact "AT" rather than a contained "AT ", which matched any sender with those two
-        // letters followed by a space.
+        val raw = senderIdentity?.uppercase().orEmpty().trim()
+        val sender = BaseSmsParser.normalizeSender(senderIdentity)
+        // Airtel and Tigo merged and both heritages still send. A bare "AT" stays exact or
+        // prefixed: as a substring it matched any sender with those two letters in it.
         return sender.contains("AIRTELTIGO") || sender.contains("ATMONEY") ||
-            sender == "AT" || sender.startsWith("AT-") || sender.startsWith("AT.")
+            sender.contains("AIRTELMONEY") || sender.contains("TIGOCASH") ||
+            raw == "AT" || raw.startsWith("AT-") || raw.startsWith("AT.")
     }
 
     override fun claimsBody(normalizedBody: String): Boolean =

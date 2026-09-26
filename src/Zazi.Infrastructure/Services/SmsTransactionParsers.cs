@@ -134,7 +134,8 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
                 continue;
             }
 
-            var captured = match.Groups[1].Value;
+            // Whichever side the currency was written on.
+            var captured = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
 
             // "GHS 1 250.00" matches only "1". Reading that as one cedi understates the
             // transaction by three orders of magnitude, and it carries a real reference so
@@ -205,8 +206,20 @@ public abstract class BaseSmsTransactionParser : ISmsTransactionParser
     private static readonly Regex SplitNumberTail = new(@"^\s+[0-9]", RegexOptions.Compiled);
 
     /// <summary>Currency marker is required; thousands separators permitted.</summary>
+    /// <summary>
+    /// An amount with its currency, written either way round.
+    /// </summary>
+    /// <remarks>
+    /// "GHS 500.00" is the common form and was the only one matched. Templates that write
+    /// "500.00 GHS" yielded no amount, which took the evidence below the bar to post and
+    /// queued a real transaction for review. The marker is still required on one side or the
+    /// other: a bare number is as likely to be a date, a balance or part of a reference.
+    /// Changed on both platforms together, because the fixture corpus holds them to the same
+    /// answer.
+    /// </remarks>
     private static readonly Regex AmountPattern = new(
-        @"(?:GHS|GH¢|GHC|GH₵|₵|CEDIS)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)",
+        @"(?:(?:GHS|GH¢|GHC|GH₵|₵|CEDIS)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)" +
+        @"|([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:GHS|GH¢|GHC|GH₵|₵|CEDIS))",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Label-anchored reference. No catch-all fallback, by design.</summary>

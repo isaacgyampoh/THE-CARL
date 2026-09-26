@@ -259,16 +259,16 @@
     },
     {
       "id": "mtn-currency-marker-after-amount",
-      "note": "Currency stated after the figure. No amount is recovered, so it is held rather than posted on a guess. Documents current behaviour: a template like this needs a parser change, not a silent reinterpretation.",
+      "note": "Currency stated after the figure. Both platforms now read it: templates that write the marker on the right are real, and yielding no amount sent a complete transaction to review. The marker is still required on one side or the other — a bare number is as likely to be a date or part of a reference.",
       "sender": "MTN",
       "body": "Cash In of 500.00 GHS from 0241000001. Ref: MP240815.1304.C00024",
       "expect": {
         "provider": "MTN",
         "transactionType": "CASH_IN",
-        "amount": null,
+        "amount": "500.00",
         "reference": "MP240815.1304.C00024",
         "customerPhone": "0241000001",
-        "autoPostAllowed": false
+        "autoPostAllowed": true
       }
     },
     {
