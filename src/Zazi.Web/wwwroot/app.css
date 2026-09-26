@@ -879,3 +879,7 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
     .kpi .spark { display: none; }
     .kpi .foot { min-height: 0; }
 }
+
+/* A line under a field saying what it means. Owners were recording their cash once per
+   network because nothing on the form said the cash was one pile. */
+.hint { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }

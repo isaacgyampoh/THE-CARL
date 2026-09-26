@@ -130,7 +130,7 @@ else
 
     <p class="muted">
         Enter what you handed over. Use a negative amount to record money taken back at the end
-        of a shift.
+        of a shift. Either figure can be left at zero.
     </p>
 
     <p>
@@ -144,23 +144,33 @@ else
         </InputSelect>
     </p>
 
-    <p>
-        <label for="network">Network <span class="muted">(for the float)</span></label>
-        <InputSelect id="network" @bind-Value="Give.Network">
-            <option value="MTN">MTN</option>
-            <option value="TELECEL">Telecel</option>
-            <option value="AIRTELTIGO">AirtelTigo</option>
-        </InputSelect>
-    </p>
-
+    @*
+        Cash first, and the network asked for only beside the float. The network used to be
+        the second question on this form, above both amounts, which read as though the cash
+        belonged to it — so an owner running three SIMs from one drawer thought they had to
+        record their cash three times, once per network. They do not. An agent keeps one pile
+        of notes however many networks they trade, and the ledger holds cash that way too:
+        one balance per person, and a float balance for each network.
+    *@
     <p>
         <label for="cash">Cash given (GHS)</label>
         <InputNumber id="cash" @bind-Value="Give.Cash" step="0.01" inputmode="decimal" />
+        <span class="hint">Notes in their hand. One pile, whatever networks they trade.</span>
     </p>
 
     <p>
         <label for="efloat">Float given (GHS)</label>
         <InputNumber id="efloat" @bind-Value="Give.EFloat" step="0.01" inputmode="decimal" />
+        <span class="hint">E-money, counted separately for each network below.</span>
+    </p>
+
+    <p>
+        <label for="network">Network <span class="muted">(for the float only)</span></label>
+        <InputSelect id="network" @bind-Value="Give.Network">
+            <option value="MTN">MTN</option>
+            <option value="TELECEL">Telecel</option>
+            <option value="AIRTELTIGO">AirtelTigo</option>
+        </InputSelect>
     </p>
 
     <p>
