@@ -264,18 +264,20 @@ class RealMtnMessageTest {
     }
 
     @Test
-    fun `trading and earnings post by themselves, nothing else does`() {
+    fun `only a deposit or a withdrawal posts by itself`() {
         // A vendor's whole job is a customer putting cash into a wallet or taking it out.
         // Deposit is cash-in; withdrawal is cash-out. Commission is not a customer's
         // transaction but it is the vendor's earnings, and holding each one for review would
         // bury the queue and leave the profit figures permanently short.
         listOf(
             TransactionType.CASH_IN,
-            TransactionType.CASH_OUT,
-            TransactionType.COMMISSION
+            TransactionType.CASH_OUT
         ).forEach { assertThat(MessageClassifier.postsAutomatically(it)).isTrue() }
 
+        // Commission is the vendor's earnings, not a customer's deposit or withdrawal, and
+        // the product records only the trade. It is ignored with everything else.
         listOf(
+            TransactionType.COMMISSION,
             TransactionType.TRANSFER,
             TransactionType.REVERSAL,
             TransactionType.ADJUSTMENT,
@@ -283,37 +285,4 @@ class RealMtnMessageTest {
         ).forEach { assertThat(MessageClassifier.postsAutomatically(it)).isFalse() }
     }
 
-    // ─── The payment wordings, read from the float ───────────────────────────
-
-    @Test
-    fun `payment received is a withdrawal, payment made is a deposit`() {
-        // The float is the only side these messages describe, and the balances prove which
-        // way it moved: 1042.16 after the payment made, 1337.16 after receiving 295.00.
-        // Float up means the customer sent e-money and took notes — a cash-out. Float down
-        // means the agent sent e-money and kept the notes — a cash-in.
-        assertThat(parse(paymentReceived).transactionType).isEqualTo(TransactionType.CASH_OUT)
-        assertThat(parse(paymentMade).transactionType).isEqualTo(TransactionType.CASH_IN)
-    }
-
-    @Test
-    fun `the payment wordings now post without anybody being asked`() {
-        // The whole point. These are the messages that filled the review queue on a real
-        // handset while an agent watched their takings not appear.
-        listOf(paymentReceived, paymentMade, paymentReceivedSmall).forEach { message ->
-            assertThat(parse(message).isUsable).isTrue()
-            assertThat(classify(message)).isNotEqualTo(MessageClassifier.Verdict.NOT_A_TRANSACTION)
-        }
-    }
-
-    @Test
-    fun `a completed payment to a merchant is read the same way`() {
-        // Verbatim, and the wording differs again: "Your payment of X to Y has been
-        // completed". Float falls, so it is a cash-in like any other payment made.
-        val completed = "Your payment of GHS 295.00 to BANKPUSH has been completed at " +
-            "2026-09-24 09:16:58. Your new balance: GHS 1039.95. Financial Transaction Id: " +
-            "90136359321."
-
-        assertThat(parse(completed).transactionType).isEqualTo(TransactionType.CASH_IN)
-        assertThat(parse(completed).isUsable).isTrue()
-    }
 }

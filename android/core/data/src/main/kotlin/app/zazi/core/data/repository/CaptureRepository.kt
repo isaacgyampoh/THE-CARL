@@ -156,12 +156,30 @@ class CaptureRepository(
             return CaptureOutcome.Ignored("Marketing, an offer or a notice — not a transaction.")
         }
 
-        val unreadable = parsed.transactionType == TransactionType.UNKNOWN && parsed.amount == null
-        if (unreadable) {
+        // Zazi records a vendor's trade and nothing else: a customer putting cash into a
+        // wallet, or taking it out. Transfers, airtime, merchant payments, commission credits
+        // and balance replies are real messages about real money and are still none of the
+        // agent's takings, so they are dropped without a word rather than queued. A queue
+        // holding those is one nobody opens, and the deposit underneath goes unrecorded.
+        val isTrade = parsed.transactionType == TransactionType.CASH_IN ||
+            parsed.transactionType == TransactionType.CASH_OUT
+
+        // A reversal undoes money that was already counted, so it is never silent whatever
+        // else it says. It cannot post by itself — that needs the original transaction, which
+        // a parser cannot supply — so it goes to the agent and the day stays answerable.
+        val isReversal = parsed.transactionType == TransactionType.REVERSAL
+
+        if (!isTrade && !isReversal) {
             val fromAProvider = parsed.provider != Provider.UNKNOWN
-            val aboutMoney = BaseSmsParser.looksFinancial(normalized)
-            if (!fromAProvider || !aboutMoney) {
-                return CaptureOutcome.Ignored("Not a recognisable transaction message.")
+            val readsLikeTrade = MessageClassifier.looksLikeTrade(normalized)
+
+            // The one thing that must never be silent: a message that says deposit or
+            // withdrawal and still could not be read. That is money that arrived, and the
+            // agent is the only one who can say what it was.
+            if (!fromAProvider || !readsLikeTrade) {
+                return CaptureOutcome.Ignored(
+                    "Not a deposit or a withdrawal, so it is not part of the day's trading."
+                )
             }
         }
 

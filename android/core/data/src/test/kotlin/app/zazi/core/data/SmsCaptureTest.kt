@@ -153,18 +153,20 @@ class SmsCaptureTest {
     }
 
     @Test
-    fun `commission is classified as commission and not as an ordinary cash-in`() = runTest {
+    fun `a commission credit is not the vendor's trade and is not recorded`() = runTest {
+        // It is still read as commission rather than mistaken for a deposit — "RECEIVED"
+        // appears in both templates, and testing it before "COMMISSION" once made every
+        // commission alert a cash-in, inflating the till against float that never moved.
+        //
+        // But the product records a customer putting cash into a wallet or taking it out,
+        // and a commission credit is neither. It is dropped without a word, like a transfer
+        // or an airtime top-up.
         val outcome = sms(
             "You have received Commission of GHS 12.75. Ref: MP240815.2201.L00011"
-        ) as CaptureOutcome.Queued
+        )
 
-        val transaction = database.localTransactionDao().findByClientId(outcome.clientTransactionId)!!
-
-        // "RECEIVED" appears in both templates. Testing it before "COMMISSION" once made
-        // every commission alert a cash-in, which inflates the till against float that never
-        // moved.
-        assertThat(transaction.transactionType).isEqualTo(TransactionType.COMMISSION.name)
-        assertThat(transaction.amountMinor).isEqualTo(1_275L)
+        assertThat(outcome).isInstanceOf(CaptureOutcome.Ignored::class.java)
+        assertThat(database.localTransactionDao().count()).isEqualTo(0)
     }
 
     @Test

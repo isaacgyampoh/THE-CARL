@@ -90,11 +90,9 @@ class MtnSmsParser : BaseSmsParser() {
         body.contains("CASH IN") || body.contains("CASH-IN") -> TransactionType.CASH_IN
         body.contains("CASH OUT") || body.contains("CASH-OUT") -> TransactionType.CASH_OUT
 
-        // Float rises: the customer sent e-money and walked away with notes.
-        body.contains("PAYMENT RECEIVED") -> TransactionType.CASH_OUT
-
-        // Float falls: the agent sent e-money and kept the notes.
-        body.contains("PAYMENT MADE") || body.contains("PAYMENT OF") -> TransactionType.CASH_IN
+        // Deposits and withdrawals, whichever word the network uses for them.
+        body.contains("DEPOSIT") -> TransactionType.CASH_IN
+        body.contains("WITHDRAW") -> TransactionType.CASH_OUT
 
         // "Received from" on an agent line is a customer depositing cash with the agent.
         body.contains("RECEIVED FROM") -> TransactionType.CASH_IN

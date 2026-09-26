@@ -93,16 +93,37 @@ object MessageClassifier {
      * top-up is the agent's own spending and is rejected before this is reached.</p>
      */
     fun postsAutomatically(type: TransactionType): Boolean = when (type) {
-        TransactionType.CASH_IN, TransactionType.CASH_OUT, TransactionType.COMMISSION -> true
+        TransactionType.CASH_IN, TransactionType.CASH_OUT -> true
         else -> false
     }
+
+    /**
+     * The wording of a deposit or a withdrawal, however badly the rest of it reads.
+     *
+     * <p>Used to tell the two silences apart. A message that is plainly not a vendor's trade
+     * — a transfer, an airtime top-up, a merchant payment, a commission credit, a balance
+     * reply — is dropped without a word, because a queue full of those is one nobody opens.
+     * A message that says deposit or withdrawal and still could not be read is the opposite:
+     * it is money that arrived, and it has to reach a person.</p>
+     */
+    fun looksLikeTrade(normalizedBody: String): Boolean =
+        TRADE_WORDING.any { normalizedBody.contains(it) }
+
+    private val TRADE_WORDING = listOf(
+        "CASH IN", "CASH-IN", "CASHIN",
+        "CASH OUT", "CASH-OUT", "CASHOUT",
+        "DEPOSIT", "WITHDRAW"
+    )
 
     /** A completed movement of money, stated in the past. An offer has none of these. */
     private val COMPLETED_ACTION = listOf(
         "PAYMENT RECEIVED", "PAYMENT MADE", "PAYMENT OF",
         "YOU HAVE RECEIVED", "YOU HAVE SENT", "HAS BEEN RECEIVED",
         "CASH IN", "CASH-IN", "CASH OUT", "CASH-OUT",
-        "RECEIVED FROM", "SENT TO", "PAID TO", "WITHDRAWN", "DEPOSITED",
+        // Stems, not past tenses. "DEPOSITED" did not match "Deposit of GHS 300.00", so a
+        // genuine deposit that quoted a balance was thrown out as a balance reminder — the
+        // two words a vendor's whole trade is described in, failing on their own message.
+        "RECEIVED FROM", "SENT TO", "PAID TO", "WITHDRAW", "DEPOSIT",
         "TRANSFERRED", "REVERSED"
     )
 

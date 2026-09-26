@@ -72,7 +72,7 @@ class UnreadableMessageTest {
         // extractions fail, which before this change discarded the message outright.
         val outcome = arrive(
             sender = "MTN MoMo",
-            body = "Transaction complete. 500.00 GHS has been applied to your agent till."
+            body = "Deposit complete. 500.00 GHS has been applied to your agent till."
         )
 
         assertThat(outcome).isInstanceOf(CaptureOutcome.HeldForReview::class.java)
@@ -87,7 +87,7 @@ class UnreadableMessageTest {
         // exactly the safety this refusal exists to provide.
         val outcome = arrive(
             sender = "MTN MoMo",
-            body = "MTN Mobile Money: GHS 1 250.00 processed on your till."
+            body = "MTN Mobile Money: Deposit of GHS 1 250.00 processed on your till."
         )
 
         assertThat(outcome).isInstanceOf(CaptureOutcome.HeldForReview::class.java)
@@ -95,7 +95,7 @@ class UnreadableMessageTest {
 
     @Test
     fun `the held message keeps its text, because the agent has to read what we could not`() = runTest {
-        val body = "Telecel Cash: 80.00 GHS handled for 0241234567."
+        val body = "Telecel Cash: Withdrawal of 80.00 GHS handled for 0241234567."
         arrive(sender = "TelecelCash", body = body)
 
         val held = dashboard.observeHeld().first().single()
@@ -152,12 +152,12 @@ class UnreadableMessageTest {
     }
 
     @Test
-    fun `a real payment that mentions downloading the app is still a transaction`() = runTest {
-        // Also verbatim. MTN appends "Download the MoMo App ... Click here:" to genuine
-        // confirmations, so a promotion filter keyed on those words would discard real money.
+    fun `a real deposit that mentions downloading the app is still recorded`() = runTest {
+        // MTN appends "Download the MoMo App ... Click here:" to genuine confirmations, so a
+        // promotion filter keyed on those words would discard real money.
         val outcome = arrive(
             sender = "MTN MoMo",
-            body = "Payment made for GHS 295.00 to AARON AMPEM LARTEY Current Balance: GHS " +
+            body = "Deposit of GHS 295.00 from AARON AMPEM LARTEY Current Balance: GHS " +
                 "1042.16 . Available Balance: GHS 1042.16. Reference: X. Transaction ID: " +
                 "90078777179. Fee charged: GHS2.21 Tax charged: 0. Download the MoMo App " +
                 "for a Faster & Easier Experience. Click here: https://mtnmymomo.onelink.me/X"
@@ -176,7 +176,7 @@ class UnreadableMessageTest {
         database.evidenceDao().insert(
             heldEvidence(
                 evidenceId = "real-1",
-                body = "Payment received for GHS 65.00 from SOLOMON OPARE Current Balance: " +
+                body = "Withdrawal of GHS 65.00 by SOLOMON OPARE Current Balance: " +
                     "GHS 1339.37. Transaction ID: 90075281288."
             )
         )
@@ -194,7 +194,7 @@ class UnreadableMessageTest {
         database.evidenceDao().insert(
             heldEvidence(
                 evidenceId = "real-2",
-                body = "Payment made for GHS 295.00 to AARON AMPEM LARTEY Current Balance: " +
+                body = "Deposit of GHS 295.00 from AARON AMPEM LARTEY Current Balance: " +
                     "GHS 1042.16. Transaction ID: 90078777179."
             )
         )
@@ -232,7 +232,7 @@ class UnreadableMessageTest {
         // sixty-four and a thousand cedis of float appeared that never moved.
         //
         // Held first, in a wording with no direction.
-        val body = "Payment settled for GHS 500.00 to SOMEBODY. Transaction ID: 90111222333."
+        val body = "Deposit settled. See your statement for details."
         val first = arrive(sender = "MTN MoMo", body = body)
         assertThat(first).isInstanceOf(CaptureOutcome.HeldForReview::class.java)
         assertThat(dashboard.observeHeldCount().first()).isEqualTo(1)
@@ -266,7 +266,7 @@ class UnreadableMessageTest {
         // first catch-up after the upgrade reads every one of them back in as new money —
         // the exact duplication the column exists to stop, happening once on the way to
         // stopping it.
-        val body = "Payment settled for GHS 90.00 to SOMEBODY. Transaction ID: 90777888999."
+        val body = "Deposit settled at the counter. See your statement."
         arrive(sender = "MTN MoMo", body = body)
 
         // Strip the hash, which is the state an upgraded row is in.
@@ -285,7 +285,7 @@ class UnreadableMessageTest {
 
     @Test
     fun `recording a held message takes it out of the queue`() = runTest {
-        arrive(sender = "MTN MoMo", body = "MTN MoMo: 90.00 GHS on your till.")
+        arrive(sender = "MTN MoMo", body = "MTN MoMo: Deposit of 90.00 GHS on your till.")
         val held = dashboard.observeHeld().first().single()
 
         assertThat(dashboard.settleHeld(held.evidenceId, recorded = true)).isTrue()
@@ -294,7 +294,7 @@ class UnreadableMessageTest {
 
     @Test
     fun `a message cannot be settled twice`() = runTest {
-        arrive(sender = "MTN MoMo", body = "MTN MoMo: 90.00 GHS on your till.")
+        arrive(sender = "MTN MoMo", body = "MTN MoMo: Deposit of 90.00 GHS on your till.")
         val held = dashboard.observeHeld().first().single()
 
         assertThat(dashboard.settleHeld(held.evidenceId, recorded = true)).isTrue()
@@ -304,7 +304,7 @@ class UnreadableMessageTest {
 
     @Test
     fun `dismissing a message also takes it out of the queue`() = runTest {
-        arrive(sender = "MTN MoMo", body = "MTN MoMo: 90.00 GHS on your till.")
+        arrive(sender = "MTN MoMo", body = "MTN MoMo: Deposit of 90.00 GHS on your till.")
         val held = dashboard.observeHeld().first().single()
 
         assertThat(dashboard.settleHeld(held.evidenceId, recorded = false)).isTrue()
