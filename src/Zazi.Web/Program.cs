@@ -425,7 +425,26 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseStaticFiles();
+// The default provider serves only MIME types it knows, and an Android package is not one of
+// them — so the install link a worker is sent would have answered 404 while every other file
+// on the site worked. Named explicitly rather than serving unknown types, which would hand out
+// anything that ever found its way into wwwroot.
+var contentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = contentTypes,
+    OnPrepareResponse = context =>
+    {
+        // A build is replaced in place at the same address, so a phone that has downloaded it
+        // once must not be handed yesterday's copy from a cache.
+        if (context.File.Name.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Context.Response.Headers.CacheControl = "no-cache, must-revalidate";
+        }
+    }
+});
 
 app.UseAuthentication();
 // The framework script is served as a routed endpoint in .NET 8, not as a static file, so
@@ -501,6 +520,10 @@ app.AssertAnonymouslyReachable(
     // for — and the redirect would look like ordinary sign-in traffic in the logs.
     "/forgot-password",
     "/reset-password",
+    // The page a worker opens on their own phone, before they have an account and usually
+    // before they have heard of Zazi. Behind sign-in it would be unreachable by the only
+    // people it is for.
+    "/download",
     // Google Play requires a privacy policy anyone can open, and somebody locked out cannot
     // sign in to ask for help.
     "/privacy",

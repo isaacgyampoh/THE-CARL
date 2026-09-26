@@ -1,0 +1,65 @@
+@page "/download"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+@* Public by necessity: this is the page a worker opens on their own phone, before they have
+   an account and usually before they have heard of Zazi. Anything behind sign-in here would be
+   unreachable by exactly the person it is for. Kept to one screen and one button — it is read
+   standing at a counter on a borrowed handset. *@
+
+<PageTitle>Get the Zazi app · Zazi</PageTitle>
+
+<div class="legal">
+    <h1>Get the Zazi app</h1>
+    <p class="lead">
+        For the phone that records transactions. Android 8 or newer. Zazi is not on the Play
+        Store yet, so it installs from here.
+    </p>
+
+    <p>
+        <a class="btn btn-primary" href="/download/zazi.apk" download>Download Zazi @Version</a>
+    </p>
+    <p class="muted">About 22&nbsp;MB. On a slow connection give it a minute.</p>
+
+    <h2>Installing it</h2>
+    <ol>
+        <li>Tap <strong>Download</strong> above, then open the file when it finishes.</li>
+        <li>
+            Android will say it cannot install apps from this source. Tap
+            <strong>Settings</strong> on that message, turn on <strong>Allow from this
+            source</strong>, then press back and tap <strong>Install</strong>.
+        </li>
+        <li>Open Zazi.</li>
+    </ol>
+    <p class="muted">
+        That warning is normal for any app not yet on the Play Store. It is asking whether you
+        trust where the file came from, not telling you something is wrong with it.
+    </p>
+
+    <h2>Signing in</h2>
+    <p>
+        If you own the business, sign in with the email address and password you signed up with.
+    </p>
+    <p>
+        If you work for one, you do not need an email address or a password. Ask the owner for
+        an <strong>activation code</strong> from their Team page, tap
+        <strong>I have an activation code</strong>, and type it in.
+    </p>
+
+    <h2>What it does on the phone</h2>
+    <ul>
+        <li>Records each transaction as the network's own message arrives, so nothing is missed at a busy counter.</li>
+        <li>Keeps working with no signal, and sends everything once there is data again.</li>
+        <li>At the end of the day you count your cash and float, and Zazi says whether it agrees.</li>
+    </ul>
+    <p class="muted">
+        Zazi records mobile money. It does not move it. You keep using MTN, Telecel and
+        AirtelTigo exactly as you do now. <a href="/privacy">What Zazi holds</a>.
+    </p>
+</div>
+
+@code {
+    // Stated so somebody can tell what they are about to install, and so support can tell what
+    // somebody already has. Matches versionName in the Android build.
+    private const string Version = "2.8.0";
+}
