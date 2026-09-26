@@ -8,9 +8,7 @@ import app.zazi.core.data.network.FloatRequestInfo
 import app.zazi.ui.FloatRequestDialog
 import app.zazi.core.data.network.DayCloseResponse
 import app.zazi.sms.InboxBackfill
-import app.zazi.ui.AppLock
 import app.zazi.ui.CloseDayScreen
-import app.zazi.ui.LockScreen
 import app.zazi.ui.HeldMessagesScreen
 import androidx.core.content.FileProvider
 import android.content.Intent
@@ -24,7 +22,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Surface
 import androidx.activity.compose.BackHandler
@@ -107,7 +104,7 @@ import kotlinx.coroutines.launch
  * repository already knows whether the user is signed in, enrolled or revoked, and a second
  * copy of that knowledge in the UI would eventually disagree with it.</p>
  */
-class MainActivity : FragmentActivity() {
+class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,39 +126,6 @@ class MainActivity : FragmentActivity() {
                 // when it lifts. Branching instead would have made the brand cost the user
                 // time rather than occupy time they were spending anyway.
                 var statusGround by remember { mutableStateOf<Color?>(null) }
-
-                // The phone holds every transaction the business has recorded and the
-                // customer numbers against them. Locked on a cold start, and again when the
-                // app has been away long enough that the phone has probably changed hands —
-                // but not on every glance at a notification, which at a busy counter would
-                // have an agent unlocking between customers.
-                val locking = remember { AppLock.availability(this@MainActivity) }
-                var unlocked by rememberSaveable { mutableStateOf(!AppLock.startsLocked(locking)) }
-                var lockRefusal by rememberSaveable { mutableStateOf<String?>(null) }
-
-                if (!unlocked) {
-                    // Asked for as soon as the screen appears, so the ordinary case is one
-                    // fingerprint and no tapping at all.
-                    LaunchedEffect(Unit) {
-                        AppLock.prompt(
-                            activity = this@MainActivity,
-                            onUnlocked = { unlocked = true; lockRefusal = null },
-                            onFailed = { lockRefusal = it }
-                        )
-                    }
-
-                    LockScreen(
-                        refused = lockRefusal,
-                        onUnlock = {
-                            AppLock.prompt(
-                                activity = this@MainActivity,
-                                onUnlocked = { unlocked = true; lockRefusal = null },
-                                onFailed = { lockRefusal = it }
-                            )
-                        }
-                    )
-                    return@ZaziTheme
-                }
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     // The strip behind the status bar, coloured by whichever screen asks for it.

@@ -21,8 +21,8 @@ android {
         // refuses an install whose version is not higher, so shipping the fix under the
         // same number would have left every existing agent on the broken build with no
         // sign anything was wrong.
-        versionCode = 12
-        versionName = "2.8.1"
+        versionCode = 13
+        versionName = "2.8.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a
@@ -199,7 +199,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.biometric)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
