@@ -106,6 +106,15 @@
                         <span>Held</span>
                     </NavLink>
                 }
+                @* Beside Held, because both answer the same question: what did the phones
+                   receive and not record. *@
+                @if (Can(ZaziPolicies.OrganizationManage))
+                {
+                    <NavLink href="/message-formats">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H7l-3 3z"/></svg>
+                        <span>Message formats</span>
+                    </NavLink>
+                }
                 @if (Can(ZaziPolicies.OrganizationRead))
                 {
                     <NavLink href="/operations">

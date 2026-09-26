@@ -1,6 +1,7 @@
 package app.zazi.core.data.repository
 
 import app.zazi.core.data.database.ZaziDatabase
+import app.zazi.core.domain.parser.Masking
 import app.zazi.core.data.network.SubmitParsingReportRequest
 import app.zazi.core.data.network.ZaziApi
 
@@ -93,6 +94,55 @@ class ParsingReportRepository(
         sourceType != SMS_SOURCE -> ReportUnavailable.NOT_FROM_A_MESSAGE
         rawMessage.isNullOrBlank() -> ReportUnavailable.MESSAGE_PURGED
         else -> null
+    }
+
+    /**
+     * Sends the wordings the phone could not read, so they can be fixed without it.
+     *
+     * <p>Until this existed the only way to learn why an agent's takings were not being
+     * recorded was to hold their handset: the messages sat in the phone's own review queue
+     * and never left it. A network changes a template, every agent on it stops being
+     * recorded, and nobody can see the wording that did it.</p>
+     *
+     * <p>Sent once each, best effort, and never in place of showing the agent: the message
+     * stays in their queue until they deal with it. Customer names and numbers are removed
+     * first — what fixes a parser is the shape of a message, never who was in it.</p>
+     *
+     * @return how many were sent.
+     */
+    suspend fun reportUnreadable(limit: Int = 25, deviceId: String? = null): Int {
+        var sent = 0
+
+        database.evidenceDao().findByState("PENDING_REVIEW")
+            .filter { it.sourceType == SMS_SOURCE && it.rawMessage != null && it.reportedAtUtcMillis == null }
+            .take(limit)
+            .forEach { row ->
+                val body = row.rawMessage ?: return@forEach
+                val response = runCatching {
+                    api.reportParsing(
+                        SubmitParsingReportRequest(
+                            clientTransactionId = row.evidenceId,
+                            rawMessage = Masking.maskPeople(body),
+                            verdict = ParsingVerdict.NOT_A_TRANSACTION.wireName,
+                            deviceId = deviceId,
+                            senderIdentity = row.senderIdentity,
+                            observedNetwork = row.provider,
+                            observedType = row.transactionType,
+                            observedAmountMinor = row.amountMinor ?: 0L,
+                            note = "Held on the handset: " + (row.outcomeReason ?: "could not be read"),
+                            parserVersion = row.parserVersion,
+                            appVersion = appVersion
+                        )
+                    )
+                }.getOrNull()
+
+                if (response?.isSuccessful == true) {
+                    database.evidenceDao().markReported(row.evidenceId, System.currentTimeMillis())
+                    sent++
+                }
+            }
+
+        return sent
     }
 
     suspend fun report(

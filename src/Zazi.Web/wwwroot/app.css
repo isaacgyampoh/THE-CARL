@@ -883,3 +883,14 @@ main > form:not(.search-row):not(.filters) button[type="submit"] { margin-bottom
 /* A line under a field saying what it means. Owners were recording their cash once per
    network because nothing on the form said the cash was one pile. */
 .hint { display: block; margin-top: .25rem; color: var(--muted); font-size: .78rem; }
+
+/* A message exactly as the network sent it. Monospaced and wrapped, because what matters is
+   the punctuation and the spacing — those are what the parser reads. */
+.format-card { padding: 1rem 1.1rem 1.15rem; margin-bottom: .85rem; }
+.format-card h2 { margin: 0; font-size: 1rem; }
+.format-body {
+    margin: .7rem 0 .55rem; padding: .7rem .8rem;
+    background: var(--code-bg); border-radius: var(--radius-sm);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .82rem; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap;
+}

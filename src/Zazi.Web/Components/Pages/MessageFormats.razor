@@ -1,0 +1,112 @@
+@page "/message-formats"
+@using System.Globalization
+@using Zazi.Application.Parsing
+@using Zazi.Application.Security
+@attribute [Authorize(Policy = ZaziPolicies.OrganizationManage)]
+@inject IParsingReportService Reports
+@inject ICurrentUserContext CurrentUser
+
+@* Statically rendered: it is a list with no buttons, and a GET page survives a refresh and
+   can be sent to somebody. *@
+
+<PageTitle>Message formats · Zazi</PageTitle>
+
+<h1>Message formats</h1>
+
+<p class="muted lead">
+    Mobile money alerts the phones received and could not read. Each one is a wording Zazi does
+    not know yet. Send these to whoever maintains the app and the next release reads them —
+    until now the only way to see them was to hold the phone.
+</p>
+
+@if (_failed)
+{
+    <p class="error" role="alert">The message formats could not be loaded.</p>
+}
+else if (_reports.Count == 0)
+{
+    <p class="empty">
+        Nothing here. Every alert the phones have received has been read, or nothing has
+        arrived that they could not.
+    </p>
+}
+else
+{
+    <p class="muted">
+        @_reports.Count @(_reports.Count == 1 ? "wording" : "wordings") waiting. Customer names
+        and numbers are removed before a message leaves the phone.
+    </p>
+
+    @foreach (var report in _reports)
+    {
+        <section class="panel format-card">
+            <div class="panel-head">
+                <div>
+                    <h2>@NetworkName(report.ObservedNetwork)</h2>
+                    <p class="sub">
+                        @report.ReportedAtUtc.ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)
+                        @if (!string.IsNullOrWhiteSpace(report.SenderIdentity))
+                        {
+                            <text> · from @report.SenderIdentity</text>
+                        }
+                    </p>
+                </div>
+                @if (report.ObservedAmountMinor > 0)
+                {
+                    <span class="amount">@Cedis(report.ObservedAmountMinor)</span>
+                }
+            </div>
+
+            @* The message itself, which is the whole point of the page. *@
+            <p class="format-body">@report.RawMessage</p>
+
+            <p class="sub">
+                Read as @TypeName(report.ObservedType)@(string.IsNullOrWhiteSpace(report.ParserVersion)
+                    ? string.Empty
+                    : $" by {report.ParserVersion}")@(string.IsNullOrWhiteSpace(report.AppVersion)
+                    ? string.Empty
+                    : $", app {report.AppVersion}")
+            </p>
+        </section>
+    }
+}
+
+@code {
+    private IReadOnlyList<ParsingReportDto> _reports = [];
+    private bool _failed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _reports = await Reports.ListUnreviewedAsync(CurrentUser.OrganizationId, limit: 200);
+        }
+        catch (Exception)
+        {
+            // Reported as unavailable rather than rendered as "nothing to see", which would
+            // read as the phones having no trouble at all.
+            _failed = true;
+        }
+    }
+
+    private static string Cedis(long minor) =>
+        $"₵{(minor / 100m).ToString("N2", CultureInfo.InvariantCulture)}";
+
+    private static string NetworkName(string network) => network.ToUpperInvariant() switch
+    {
+        "MTN" => "MTN",
+        "TELECEL" => "Telecel",
+        "AIRTELTIGO" => "AirtelTigo",
+        _ => "Unrecognised sender"
+    };
+
+    private static string TypeName(Zazi.Domain.TransactionType type) => type switch
+    {
+        Zazi.Domain.TransactionType.CashIn => "a deposit",
+        Zazi.Domain.TransactionType.CashOut => "a withdrawal",
+        Zazi.Domain.TransactionType.Commission => "commission",
+        Zazi.Domain.TransactionType.Transfer => "a transfer",
+        Zazi.Domain.TransactionType.Reversal => "a reversal",
+        _ => "nothing recognisable"
+    };
+}

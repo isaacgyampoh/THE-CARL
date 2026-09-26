@@ -83,6 +83,9 @@ interface EvidenceDao {
     @Query("UPDATE transaction_evidence SET rawHash = :rawHash WHERE evidenceId = :evidenceId")
     suspend fun setRawHash(evidenceId: String, rawHash: String)
 
+    @Query("UPDATE transaction_evidence SET reportedAtUtcMillis = :at WHERE evidenceId = :evidenceId")
+    suspend fun markReported(evidenceId: String, at: Long)
+
     @Query("SELECT COUNT(*) FROM transaction_evidence")
     suspend fun count(): Int
 

@@ -499,6 +499,11 @@ private fun ZaziApp(container: AppContainer, application: ZaziApplication) {
                                 application.scheduleSync()
                                 dashboardViewModel.refresh(isOnline)
                             }
+                            // The wordings this phone could not read, sent masked so they can
+                            // be fixed without anybody holding the handset. Best effort: a
+                            // failure here costs nothing, and they stay in the agent's queue
+                            // either way.
+                            runCatching { container.parsingReportRepository.reportUnreadable() }
                             store.edit().putLong("backfilled-version", installed).apply()
                         } else if (smsPermissionGranted && store.getLong("asked-version", 0L) < installed) {
                             // Reading alerts as they arrive and reading them back afterwards

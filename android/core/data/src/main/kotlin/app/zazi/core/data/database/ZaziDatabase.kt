@@ -39,7 +39,7 @@ abstract class ZaziDatabase : RoomDatabase() {
     abstract fun telemetryDao(): TelemetryDao
 
     companion object {
-        const val VERSION = 5
+        const val VERSION = 6
         const val DATABASE_NAME = "zazi.db"
 
         /**
@@ -179,6 +179,13 @@ object ZaziDatabaseMigrations {
         }
     }
 
+    /** Remembers which unreadable wordings have already been sent for a parser fix. */
+    private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE transaction_evidence ADD COLUMN reportedAtUtcMillis INTEGER")
+        }
+    }
+
     val ALL: Array<androidx.room.migration.Migration> =
-        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

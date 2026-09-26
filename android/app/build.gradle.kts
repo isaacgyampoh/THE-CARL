@@ -21,8 +21,8 @@ android {
         // refuses an install whose version is not higher, so shipping the fix under the
         // same number would have left every existing agent on the broken build with no
         // sign anything was wrong.
-        versionCode = 15
-        versionName = "2.9.0"
+        versionCode = 16
+        versionName = "2.9.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Base URL is configuration, not a constant, and a pilot on a real handset needs a

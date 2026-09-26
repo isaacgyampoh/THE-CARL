@@ -90,6 +90,9 @@ data class EvidenceEntity(
      */
     val rawHash: String? = null,
 
+    /** When this wording was sent for a parser fix, so it is never sent twice. */
+    val reportedAtUtcMillis: Long? = null,
+
     val deviceId: String?,
 
     /**

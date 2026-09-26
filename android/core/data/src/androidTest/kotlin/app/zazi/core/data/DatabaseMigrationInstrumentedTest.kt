@@ -81,7 +81,7 @@ class DatabaseMigrationInstrumentedTest {
             )
         }
 
-        val migrated = helper.runMigrationsAndValidate(name, 5, true, *ZaziDatabaseMigrations.ALL)
+        val migrated = helper.runMigrationsAndValidate(name, 6, true, *ZaziDatabaseMigrations.ALL)
 
         // The money is untouched. This is the property that matters: a column added to a
         // table holding unsynced financial records must not disturb a single figure.
@@ -96,7 +96,7 @@ class DatabaseMigrationInstrumentedTest {
             assertThat(cursor.isNull(2)).isTrue()
         }
 
-        migrated.query("SELECT balanceAfterMinor, customerName, rawHash FROM transaction_evidence")
+        migrated.query("SELECT balanceAfterMinor, customerName, rawHash, reportedAtUtcMillis FROM transaction_evidence")
             .use { cursor -> assertThat(cursor.count).isEqualTo(0) }
 
         // The name column arrives empty for work captured before it existed — "not known",
