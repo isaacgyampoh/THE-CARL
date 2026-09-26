@@ -231,4 +231,33 @@ public class AgentFloatTests : IDisposable
         Assert.Equal(101.00m, ledger!.Cash);
         Assert.Equal(0.80m, ledger.TotalFloat);
     }
+
+    [SkippableFact]
+    public async Task ResubmittingAnAllocationLeavesOneLineInTheAuditTrail()
+    {
+        Skip.IfNot(_postgres.IsAvailable, _postgres.SkipReason);
+        var tenant = await TenantSeedFactory.CreateAsync(_postgres);
+
+        // The same form submitted twice: a double tap, a back button, a retry on a slow
+        // connection. The ledger already kept the money right; the audit entry did not, and
+        // left two lines each saying the float had been handed over.
+        const string token = "one-and-the-same-submission";
+        await GiveAsync(tenant, cash: 500m, efloat: 1200m, token: token);
+        await GiveAsync(tenant, cash: 500m, efloat: 1200m, token: token);
+
+        await using var db = _postgres.CreateContext();
+
+        var recorded = await db.AuditLogs
+            .CountAsync(a => a.OrganizationId == tenant.OrganizationId && a.Action == "FLOAT_RECORDED");
+
+        // An audit trail is what somebody reads when money is disputed. Two lines saying the
+        // float was given is how an owner concludes their agent was given it twice.
+        Assert.Equal(1, recorded);
+
+        // And the money itself is still counted once.
+        var holdings = await WithServiceAsync(s => s.GetHoldingsAsync(tenant.OrganizationId));
+        var agent = Assert.Single(holdings, h => h.AgentId == tenant.UserId);
+        Assert.Equal(500m, agent.Cash);
+        Assert.Equal(1200m, agent.Floats.Sum(f => f.Amount));
+    }
 }

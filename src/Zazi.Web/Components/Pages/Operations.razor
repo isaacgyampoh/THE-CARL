@@ -112,6 +112,15 @@ else
     }
 
     <h2>Devices</h2>
+    @if (_devices.Count == 0)
+    {
+        @* Every other section here says when it has nothing. Without this the heading was
+           followed by an empty table, which on a phone — where the header row is hidden —
+           renders as a heading with literally nothing under it. *@
+        <p class="muted">No phones have been activated yet.</p>
+    }
+    else
+    {
     <div class="scroll">
         <table>
             <thead>
@@ -144,6 +153,8 @@ else
             </tbody>
         </table>
     </div>
+    }
+
 
     <h2>Recent events</h2>
     @if (_events.Count == 0)

@@ -62,6 +62,24 @@ public sealed class FloatService : IFloatService
             ? "UNKNOWN"
             : request.Network.Trim().ToUpperInvariant();
 
+        var clientTransactionId = string.IsNullOrWhiteSpace(request.SubmissionToken)
+            ? null
+            : ClientTransactionId.Deterministic("portal-allocation", request.SubmissionToken.Trim());
+
+        // A resubmission of the same form — a double tap, a back button, a retry on a slow
+        // connection — already produced this allocation. The ledger's uniqueness constraint
+        // keeps the money right on its own, but the audit entry below is written whatever the
+        // ledger decided, so a replay left two lines saying the float was handed over. An
+        // audit trail is what somebody reads when money is disputed, and reading it twice is
+        // how an owner concludes their agent was given the float twice.
+        if (clientTransactionId is not null
+            && await _dbContext.Transactions.AsNoTracking().AnyAsync(
+                t => t.OrganizationId == organizationId && t.ClientTransactionId == clientTransactionId,
+                cancellationToken))
+        {
+            return;
+        }
+
         // An Adjustment, not a bespoke record: it moves the balances through the ledger every
         // other movement uses, and inherits its audit trail and reversal behaviour.
         //
@@ -86,10 +104,9 @@ public sealed class FloatService : IFloatService
                 AdjustmentCashDelta: request.CashAmount,
                 AdjustmentFloatDelta: request.FloatAmount,
                 // A repeat of the same submission lands on the same identity, and the ledger's
-                // uniqueness constraint keeps one record rather than two.
-                ClientTransactionId: string.IsNullOrWhiteSpace(request.SubmissionToken)
-                    ? null
-                    : ClientTransactionId.Deterministic("portal-allocation", request.SubmissionToken.Trim())),
+                // uniqueness constraint keeps one record rather than two. The check above
+                // catches the ordinary replay; this remains the guard against a concurrent one.
+                ClientTransactionId: clientTransactionId),
             cancellationToken);
 
         _dbContext.AuditLogs.Add(new AuditLogEntry
