@@ -246,6 +246,10 @@ builder.Services.AddScoped<Zazi.Application.Growth.IBusinessSettingsService, Zaz
 builder.Services.AddScoped<Zazi.Application.Growth.ICustomerReceipts, Zazi.Infrastructure.Growth.CustomerReceipts>();
 builder.Services.AddScoped<Zazi.Application.Growth.IFloatRequestService, Zazi.Infrastructure.Growth.FloatRequestService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IReportService, Zazi.Infrastructure.Growth.ReportService>();
+// The portal reads the wordings handsets could not parse. Registered in the API already;
+// without it here the page that lists them answered 500, because a Razor page cannot
+// resolve a service the portal's own container has never heard of.
+builder.Services.AddScoped<Zazi.Application.Parsing.IParsingReportService, Zazi.Infrastructure.Parsing.ParsingReportService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IInsightsService, Zazi.Infrastructure.Growth.InsightsService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IExpenseService, Zazi.Infrastructure.Growth.ExpenseService>();
 builder.Services.AddScoped<Zazi.Application.Growth.IDailyDigestService, Zazi.Infrastructure.Growth.DailyDigestService>();
